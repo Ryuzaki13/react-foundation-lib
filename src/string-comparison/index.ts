@@ -1,0 +1,1 @@
+export { compareStrings } from "./compareStrings";

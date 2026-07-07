@@ -1,0 +1,380 @@
+{
+  "name": "@ryuzaki13/react-foundation-lib",
+  "version": "0.1.0",
+  "description": "Reusable React and TypeScript foundation utilities, hooks, and primitives for application development.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    "./array": {
+      "types": "./dist/array/index.d.ts",
+      "import": "./dist/array/index.js"
+    },
+    "./binary": {
+      "types": "./dist/binary/index.d.ts",
+      "import": "./dist/binary/index.js"
+    },
+    "./bounded-copy-stack": {
+      "types": "./dist/bounded-copy-stack/index.d.ts",
+      "import": "./dist/bounded-copy-stack/index.js"
+    },
+    "./context-menu": {
+      "types": "./dist/context-menu/index.d.ts",
+      "import": "./dist/context-menu/index.js"
+    },
+    "./copy": {
+      "types": "./dist/copy/index.d.ts",
+      "import": "./dist/copy/index.js"
+    },
+    "./crypto": {
+      "types": "./dist/crypto/index.d.ts",
+      "import": "./dist/crypto/index.js"
+    },
+    "./currency": {
+      "types": "./dist/currency/index.d.ts",
+      "import": "./dist/currency/index.js"
+    },
+    "./date-segments": {
+      "types": "./dist/date-segments/index.d.ts",
+      "import": "./dist/date-segments/index.js"
+    },
+    "./dom": {
+      "types": "./dist/dom/index.d.ts",
+      "import": "./dist/dom/index.js"
+    },
+    "./error": {
+      "types": "./dist/error/index.d.ts",
+      "import": "./dist/error/index.js"
+    },
+    "./error-report": {
+      "types": "./dist/error-report/index.d.ts",
+      "import": "./dist/error-report/index.js"
+    },
+    "./excel": {
+      "types": "./dist/excel/index.d.ts",
+      "import": "./dist/excel/index.js"
+    },
+    "./file": {
+      "types": "./dist/file/index.d.ts",
+      "import": "./dist/file/index.js"
+    },
+    "./form": {
+      "types": "./dist/form/index.d.ts",
+      "import": "./dist/form/index.js"
+    },
+    "./formatters": {
+      "types": "./dist/formatters/index.d.ts",
+      "import": "./dist/formatters/index.js"
+    },
+    "./formulas": {
+      "types": "./dist/formulas/index.d.ts",
+      "import": "./dist/formulas/index.js"
+    },
+    "./hooks": {
+      "types": "./dist/hooks/index.d.ts",
+      "import": "./dist/hooks/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js"
+    },
+    "./media": {
+      "types": "./dist/media/index.d.ts",
+      "import": "./dist/media/index.js"
+    },
+    "./notifications": {
+      "types": "./dist/notifications/index.d.ts",
+      "import": "./dist/notifications/index.js"
+    },
+    "./number-scale": {
+      "types": "./dist/number-scale/index.d.ts",
+      "import": "./dist/number-scale/index.js"
+    },
+    "./odata": {
+      "types": "./dist/odata/index.d.ts",
+      "import": "./dist/odata/index.js"
+    },
+    "./odata-service": {
+      "types": "./dist/odata-service/index.d.ts",
+      "import": "./dist/odata-service/index.js"
+    },
+    "./presets": {
+      "types": "./dist/presets/index.d.ts",
+      "import": "./dist/presets/index.js"
+    },
+    "./pwa": {
+      "types": "./dist/pwa/index.d.ts",
+      "import": "./dist/pwa/index.js"
+    },
+    "./query-client": {
+      "types": "./dist/query-client/index.d.ts",
+      "import": "./dist/query-client/index.js"
+    },
+    "./range-output": {
+      "types": "./dist/range-output/index.d.ts",
+      "import": "./dist/range-output/index.js"
+    },
+    "./seo": {
+      "types": "./dist/seo/index.d.ts",
+      "import": "./dist/seo/index.js"
+    },
+    "./session-storage": {
+      "types": "./dist/session-storage/index.d.ts",
+      "import": "./dist/session-storage/index.js"
+    },
+    "./string-comparison": {
+      "types": "./dist/string-comparison/index.d.ts",
+      "import": "./dist/string-comparison/index.js"
+    },
+    "./table": {
+      "types": "./dist/table/index.d.ts",
+      "import": "./dist/table/index.js"
+    },
+    "./three-scene": {
+      "types": "./dist/three-scene/index.d.ts",
+      "import": "./dist/three-scene/index.js"
+    },
+    "./tree-table": {
+      "types": "./dist/tree-table/index.d.ts",
+      "import": "./dist/tree-table/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js"
+    },
+    "./validators": {
+      "types": "./dist/validators/index.d.ts",
+      "import": "./dist/validators/index.js"
+    },
+    "./virtualizer": {
+      "types": "./dist/virtualizer/index.d.ts",
+      "import": "./dist/virtualizer/index.js"
+    },
+    "./xml": {
+      "types": "./dist/xml/index.d.ts",
+      "import": "./dist/xml/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "array": [
+        "dist/array/index.d.ts"
+      ],
+      "binary": [
+        "dist/binary/index.d.ts"
+      ],
+      "bounded-copy-stack": [
+        "dist/bounded-copy-stack/index.d.ts"
+      ],
+      "context-menu": [
+        "dist/context-menu/index.d.ts"
+      ],
+      "copy": [
+        "dist/copy/index.d.ts"
+      ],
+      "crypto": [
+        "dist/crypto/index.d.ts"
+      ],
+      "currency": [
+        "dist/currency/index.d.ts"
+      ],
+      "date-segments": [
+        "dist/date-segments/index.d.ts"
+      ],
+      "dom": [
+        "dist/dom/index.d.ts"
+      ],
+      "error": [
+        "dist/error/index.d.ts"
+      ],
+      "error-report": [
+        "dist/error-report/index.d.ts"
+      ],
+      "excel": [
+        "dist/excel/index.d.ts"
+      ],
+      "file": [
+        "dist/file/index.d.ts"
+      ],
+      "form": [
+        "dist/form/index.d.ts"
+      ],
+      "formatters": [
+        "dist/formatters/index.d.ts"
+      ],
+      "formulas": [
+        "dist/formulas/index.d.ts"
+      ],
+      "hooks": [
+        "dist/hooks/index.d.ts"
+      ],
+      "http": [
+        "dist/http/index.d.ts"
+      ],
+      "media": [
+        "dist/media/index.d.ts"
+      ],
+      "notifications": [
+        "dist/notifications/index.d.ts"
+      ],
+      "number-scale": [
+        "dist/number-scale/index.d.ts"
+      ],
+      "odata": [
+        "dist/odata/index.d.ts"
+      ],
+      "odata-service": [
+        "dist/odata-service/index.d.ts"
+      ],
+      "presets": [
+        "dist/presets/index.d.ts"
+      ],
+      "pwa": [
+        "dist/pwa/index.d.ts"
+      ],
+      "query-client": [
+        "dist/query-client/index.d.ts"
+      ],
+      "range-output": [
+        "dist/range-output/index.d.ts"
+      ],
+      "seo": [
+        "dist/seo/index.d.ts"
+      ],
+      "session-storage": [
+        "dist/session-storage/index.d.ts"
+      ],
+      "string-comparison": [
+        "dist/string-comparison/index.d.ts"
+      ],
+      "table": [
+        "dist/table/index.d.ts"
+      ],
+      "three-scene": [
+        "dist/three-scene/index.d.ts"
+      ],
+      "tree-table": [
+        "dist/tree-table/index.d.ts"
+      ],
+      "types": [
+        "dist/types/index.d.ts"
+      ],
+      "utils": [
+        "dist/utils/index.d.ts"
+      ],
+      "validators": [
+        "dist/validators/index.d.ts"
+      ],
+      "virtualizer": [
+        "dist/virtualizer/index.d.ts"
+      ],
+      "xml": [
+        "dist/xml/index.d.ts"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@fingerprintjs/fingerprintjs": "^5.2.0",
+    "@floating-ui/react": "^0.27.19",
+    "@tanstack/query-broadcast-client-experimental": "^5.101.1",
+    "@tanstack/query-persist-client-core": "^5.101.1",
+    "@tanstack/react-query": "^5.101.1",
+    "@tanstack/react-router": "^1.170.16",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.4",
+    "immer": "^11.1.8",
+    "react": "^19.2.7",
+    "write-excel-file": "^4.1.1",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@fingerprintjs/fingerprintjs": "^5.2.0",
+    "@floating-ui/react": "^0.27.19",
+    "@tanstack/query-broadcast-client-experimental": "^5.101.1",
+    "@tanstack/query-persist-client-core": "^5.101.1",
+    "@tanstack/react-query": "^5.101.1",
+    "@tanstack/react-router": "^1.170.16",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.4",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "fake-indexeddb": "^6.2.5",
+    "immer": "^11.1.8",
+    "jsdom": "^29.1.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9",
+    "write-excel-file": "^4.1.1",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "peerDependenciesMeta": {
+    "@dnd-kit/core": {
+      "optional": true
+    },
+    "@dnd-kit/sortable": {
+      "optional": true
+    },
+    "@fingerprintjs/fingerprintjs": {
+      "optional": true
+    },
+    "@floating-ui/react": {
+      "optional": true
+    },
+    "@tanstack/query-broadcast-client-experimental": {
+      "optional": true
+    },
+    "@tanstack/query-persist-client-core": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    },
+    "@tanstack/react-router": {
+      "optional": true
+    },
+    "@tanstack/react-table": {
+      "optional": true
+    },
+    "@tanstack/react-virtual": {
+      "optional": true
+    },
+    "immer": {
+      "optional": true
+    },
+    "write-excel-file": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    },
+    "zustand": {
+      "optional": true
+    }
+  }
+}

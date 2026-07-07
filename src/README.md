@@ -1,0 +1,687 @@
+# Путеводитель по `src/shared/lib`
+
+Этот документ нужен, чтобы новый разработчик сначала искал готовую утилиту, а не писал локальный `helpers.ts`.
+`shared/lib` — нижний слой проекта: здесь лежат чистые технические функции, общие React/browser hooks и сериализуемые runtime-контракты без знания конкретных features, widgets, pages или apps.
+
+## Содержание
+
+- [Как пользоваться](#как-пользоваться)
+- [Быстрый выбор модуля](#быстрый-выбор-модуля)
+- [Форматирование и значения](#форматирование-и-значения)
+- [OData, таблицы и экспорт](#odata-таблицы-и-экспорт)
+- [Browser, React hooks и UI-поведение](#browser-react-hooks-и-ui-поведение)
+- [Runtime, state и инфраструктура](#runtime-state-и-инфраструктура)
+- [Низкоуровневые helpers](#низкоуровневые-helpers)
+- [Deprecated и не использовать](#deprecated-и-не-использовать)
+
+## Как пользоваться
+
+Импортируй публичные API из [`@/shared/lib`](./index.ts), если модуль уже реэкспортирован. Ссылки ниже ведут в исходники и тесты, чтобы можно было быстро проверить поведение.
+
+Перед созданием новой функции проверь:
+
+1. Есть ли готовая утилита в этом README.
+2. Есть ли локальный README у модуля.
+3. Есть ли тест рядом с модулем. Тесты часто лучше всего показывают пограничные случаи.
+4. Не относится ли логика к `shared/api`, `shared/ui`, `entities`, `features` или конкретному приложению.
+
+Если функция нужна только одному slice, не тащи ее в `shared/lib`. Если функция общая, имя должно быть точным: не `utils`, не `prepare`, не `process`.
+
+## Быстрый выбор модуля
+
+| Нужно                                                  | Идти сюда                                                                                                                                                                                                           |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Даты, диапазоны, ABAP/OData date literals              | [`formatters/date`](./formatters/date/index.ts), тесты: [`formatDate.test.ts`](./formatters/date/formatDate.test.ts), [`dateRange.test.ts`](./formatters/date/dateRange.test.ts)                                    |
+| Числа, проценты, валютные числа, compact axis labels   | [`formatters/number`](./formatters/number/index.ts), тесты: [`formatNumber.test.ts`](./formatters/number/formatNumber.test.ts), [`parseNumber.test.ts`](./formatters/number/parseNumber.test.ts)                    |
+| Строки, ФИО, телефон, leading zeros, SAP boolean       | [`formatters`](./formatters/index.ts), тесты: [`common.test.ts`](./formatters/common.test.ts), [`boolean.test.ts`](./formatters/boolean/boolean.test.ts), [`strings.test.ts`](./formatters/strings/strings.test.ts) |
+| Runtime-форматирование ячеек таблицы                   | [`formatters/pipeline`](./formatters/pipeline/index.ts), тесты в [`formatters/pipeline`](./formatters/pipeline)                                                                                                     |
+| OData metadata, filters, sorts, path, values           | [`odata-service`](./odata-service/index.ts), тесты в [`odata-service`](./odata-service)                                                                                                                             |
+| Справочные code/text пары OData collections            | [`odata`](./odata/index.ts), тест: [`odata.test.ts`](./odata/odata.test.ts)                                                                                                                                         |
+| TanStack Table helpers                                 | [`table`](./table/index.ts), тесты в [`table`](./table)                                                                                                                                                             |
+| Tree table преобразования                              | [`tree-table`](./tree-table/index.ts), тесты в [`tree-table`](./tree-table)                                                                                                                                         |
+| Excel export                                           | [`excel`](./excel/index.ts), тесты: [`excel.test.ts`](./excel/excel.test.ts), [`tableExport.test.ts`](./excel/tableExport.test.ts)                                                                                  |
+| FileReader, изображения, base64 Blob                   | [`file`](./file/index.ts), [`binary`](./binary/index.ts)                                                                                                                                                            |
+| DOM overlay, portal, focus, download                   | [`dom`](./dom/index.ts), тест: [`dom.test.tsx`](./dom/dom.test.tsx)                                                                                                                                                 |
+| Debounce/throttle, DnD sensors, search params, listbox | [`hooks`](./hooks/index.ts), [`utils/keyboard.ts`](./utils/keyboard.ts)                                                                                                                                             |
+| QueryClient, persistence, broadcast                    | [`query-client`](./query-client/index.ts), README: [`query-client/README.md`](./query-client/README.md)                                                                                                             |
+| PWA service worker update и `x-sw-cache` policy        | [`pwa`](./pwa/index.ts), README: [`pwa/README.md`](./pwa/README.md)                                                                                                                                                 |
+| Подстановки открытых границ диапазона                  | [`range-output`](./range-output/index.ts), тест: [`rangeOutput.test.ts`](./range-output/rangeOutput.test.ts)                                                                                                        |
+| Runtime extensions и business rules                    | [`../contracts/runtime-extension`](../contracts/runtime-extension/index.ts), [`../contracts/business-rule`](../contracts/business-rule/index.ts)                                                                    |
+| Unknown guards, className, stable stringify, clone     | [`validators`](./validators/index.ts), [`utils`](./utils/index.ts)                                                                                                                                                  |
+
+## Форматирование и значения
+
+### `formatters/date`
+
+Файлы: [`formatters/date/index.ts`](./formatters/date/index.ts), подробный README: [`formatters/date/README.md`](./formatters/date/README.md).
+
+Главная идея: модуль работает в плавающей календарной семантике. ISO/OData строки с timezone не пересчитываются в timezone клиента, а сохраняют видимые компоненты даты и времени.
+
+Основной API:
+
+| API                                                                                                                               | Когда использовать                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `formatDate`, `formatDateRange`                                                                                                   | Универсальное форматирование значения или диапазона по preset/object preset. |
+| `formatDateAsDate`, `formatDateAsDateTime`, `formatDateAsTime`, `formatDateAsTimeSeconds`                                         | Быстрые обертки для типовых UI-форматов.                                     |
+| `formatDateAsAbapDate`, `formatDateAsAbapDatetime`, `formatDateAsODataDate`, `formatDateAsODataDatetime`, `formatDateAsODataTime` | Машинные форматы для SAP/OData.                                              |
+| `parseDateValue`, `parseDate`, `parseDateByPattern`, `parseDateByFormat`                                                          | Парсинг `unknown` в календарную дату или detailed parse result.              |
+| `normalizeDateRange`, `requireDateRange`, `countCalendarDaysInDateRange`                                                          | UI-диапазоны: одиночная дата, частично заполненный range, порядок границ.    |
+| `createCalendarDate`, `getStartOfDay`, `getEndOfDay`, `getStartOfWeek`, `addCalendarDays`, `isSameCalendarDay`                    | Календарная арифметика без timezone-сдвига.                                  |
+| `registerDatePreset`, `getDatePreset`, `resolveDateFormatPreset`, `resetDatePresets`                                              | Реестр date presets.                                                         |
+| `resolveMonthStartToYesterdayRange`, `resolveTodayRange`, `resolveYesterdayRange`, `resolveMonthAgoRange`                         | Относительные диапазоны для фильтров.                                        |
+
+Поведение из тестов:
+
+- пустые и невалидные значения дают fallback, по умолчанию пустую строку;
+- `Date`, ISO, OData ticks/literals, ABAP compact `YYYYMMDD`, dotted/slash dates и ISO duration поддержаны;
+- `normalizeDateRange` упорядочивает даты и по умолчанию расширяет до границ дня;
+- `timeZone` и `timeZoneName` в `Intl`-preset намеренно игнорируются.
+
+Тесты: [`formatDate.test.ts`](./formatters/date/formatDate.test.ts), [`parseDate.test.ts`](./formatters/date/parseDate.test.ts), [`dateRange.test.ts`](./formatters/date/dateRange.test.ts), [`calendarDate.test.ts`](./formatters/date/calendarDate.test.ts), [`relativeRanges.test.ts`](./formatters/date/relativeRanges.test.ts).
+
+### `formatters/number`
+
+Файлы: [`formatters/number/index.ts`](./formatters/number/index.ts), README: [`formatters/number/README.md`](./formatters/number/README.md).
+
+Модуль форматирует числа через presets и кеширует `Intl.NumberFormat`. Это стандартный путь для таблиц, графиков и SAP-like строк.
+
+Основной API:
+
+| API                                                                                                                                                  | Когда использовать                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `formatNumber(value, presetOrName)`                                                                                                                  | Универсальный formatter по имени preset или объекту preset. |
+| `formatNumberAsInteger`, `formatNumberAsDecimal*`, `formatNumberAsCurrency`, `formatNumberAsPercent`, `formatNumberAsPrice`, `formatNumberAsTonnage` | Типовые UI-форматы.                                         |
+| `formatNumberAs*OrEmpty`                                                                                                                             | То же, но semantic zero отображается пустой строкой.        |
+| `formatCompactNumber`, `formatNumberAsChartAxis`, `formatNumberAsChartTooltip`, `formatNumberAsCurrencyChartAxis`                                    | Compact-формат для осей и tooltip графиков.                 |
+| `parseNumber`, `toFiniteNumber`, `toPositiveInteger`, `isPositiveValue`, `isZeroValue`                                                               | Чтение SAP-like чисел из `unknown`.                         |
+| `registerNumberPreset`, `getNumberPreset`, `getNumberPresetNames`, `resetNumberPresets`, `clearFormatCache`                                          | Реестр presets и кеш formatter-ов.                          |
+
+Поведение из тестов:
+
+- строки с пробелами/NBSP/NNBSP, апострофами и запятой как decimal separator парсятся корректно;
+- пустая строка в `formatNumber` становится `"0"`;
+- invalid number форматируется как `"0"`;
+- compact формат умеет `тыс`, `млн`, `млрд`, `трлн`, разные rounding modes и min threshold;
+- `OrEmpty` скрывает только значения, которые реально парсятся как ноль.
+
+Тесты: [`formatNumber.test.ts`](./formatters/number/formatNumber.test.ts), [`parseNumber.test.ts`](./formatters/number/parseNumber.test.ts).
+
+### `formatters/strings`
+
+Файлы: [`formatters/strings/index.ts`](./formatters/strings/index.ts).
+
+| API                                                  | Поведение                                                       |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| `normalizeText`                                      | Возвращает trimmed непустую строку или `undefined`.             |
+| `normalizeTextWithFallback`, `normalizeRequiredText` | То же, но с fallback, по умолчанию `""`.                        |
+| `normalizeTextToLower`                               | Trim + lowercase, пустое значение превращает в `""`.            |
+| `toSafeString`                                       | `null`/`undefined` превращает в `""`, остальное через `String`. |
+| `normalizeTextSpaces`                                | Схлопывает обычные пробелы, NBSP и narrow NBSP в один пробел.   |
+| `stripInnerSpaces`                                   | Удаляет внутренние пробелы/NBSP/NNBSP, полезно для чисел.       |
+| `stripLeadingZeros`                                  | Удаляет ведущие нули у целой строки-числа, сохраняя знак.       |
+| `startsWithIgnoringZeros`                            | Сравнение prefix без учета ведущих нулей и регистра.            |
+| `truncateText`                                       | Trim + обрезка с `...`; пустой ввод дает `undefined`.           |
+
+Тесты: [`strings.test.ts`](./formatters/strings/strings.test.ts), [`normalizeText.test.ts`](./formatters/strings/normalizeText.test.ts).
+
+### Общие форматтеры
+
+Файл: [`formatters/index.ts`](./formatters/index.ts), тест: [`common.test.ts`](./formatters/common.test.ts).
+
+| API                                 | Поведение                                                                                                                          |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `formatFullName`, `formatShortName` | Нормализуют ФИО: полная форма или `Фамилия И.О.`.                                                                                  |
+| `formatPhone`, `clearPhone`         | Приводят российский номер к `+7` и форматируют только полный номер.                                                                |
+| `normalizeLeadingZeros`             | Для числового значения добавляет leading zeros целой части при `fixed > 0`; invalid input возвращает как есть.                     |
+| `normalizeLeadingZerosStrict`       | SAP-like вариант: понимает пробелы группировки и запятую, умеет удалять нули при `fixed < 0`, сохраняет `number` для number-входа. |
+
+### `formatters/boolean`
+
+Файлы: [`formatters/boolean/index.ts`](./formatters/boolean/index.ts), тест: [`boolean.test.ts`](./formatters/boolean/boolean.test.ts).
+
+| API                | Поведение                                                     |
+| ------------------ | ------------------------------------------------------------- |
+| `parseAbapBoolean` | Только точное `"X"` считается `true`; все остальное `false`.  |
+| `parseBoolean`     | Читает `true`, `x`, `1`, primitives; пустые значения `false`. |
+| `toAbapBoolean`    | Возвращает `"X"` или `" "`; строка `"0"` считается false.     |
+
+### `formatters/valueState`
+
+Файлы: [`formatters/valueState/index.ts`](./formatters/valueState/index.ts), README: [`formatters/valueState/README.md`](./formatters/valueState/README.md).
+
+Модуль вычисляет визуальный `State` (`none`, `information`, `success`, `warning`, `error`) по значению.
+
+| API                                                                                                  | Когда использовать                    |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `createThresholdResolver`, `registerThresholdResolver`                                               | Числовые диапазоны по порогам.        |
+| `createFixedResolver`, `registerFixedResolver`                                                       | Точное совпадение строковых значений. |
+| `resolveValueState`, `getValueStateResolver`, `getValueStateResolverIds`, `resetValueStateResolvers` | Единый реестр resolver-ов.            |
+| `resolveValueStateClassName`                                                                         | CSS-класс по состоянию.               |
+| `DEFAULT_VALUE_STATES`, `VALUE_STATE_COLOR_TOKENS`                                                   | Presentation constants.               |
+
+Поведение из тестов: threshold требует `states.length === thresholds.length + 1`, fixed resolver приводит значение к строке, unknown resolver дает `none`, className строится централизованно.
+
+Тесты: [`thresholdValueStateResolver.test.ts`](./formatters/valueState/thresholdValueStateResolver.test.ts), [`fixedValueStateResolver.test.ts`](./formatters/valueState/fixedValueStateResolver.test.ts), [`className.test.ts`](./formatters/valueState/className.test.ts).
+
+### `formatters/pipeline`
+
+Файлы: [`formatters/pipeline/index.ts`](./formatters/pipeline/index.ts).
+
+Pipeline — runtime форматирования ячейки. Он принимает сериализуемый `FormattersPipelineConfig` версии `1`, валидирует `plan` или строит линейный plan из `graph`, компилирует executor и возвращает display-result.
+
+Поддержанные шаги:
+
+| Шаг                     | Что делает                                                |
+| ----------------------- | --------------------------------------------------------- |
+| `normalizeLeadingZeros` | Прогоняет значение через `normalizeLeadingZeros`.         |
+| `rowBasedOverride`      | Подменяет значение из поля строки или формулы `rowBased`. |
+| `resolveValueState`     | Вычисляет state и опциональную иконку.                    |
+| `typedValueFormat`      | Форматирует по OData type/role через date/number/string.  |
+
+Основной API:
+
+| API                                                                                                     | Когда использовать                                                  |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `normalizeFormattersPipelineConfig`                                                                     | Принять `unknown` конфиг и получить валидный clone или `undefined`. |
+| `validateFormattersPipelineConfig`, `validateFormattersPipelinePlan`, `validateFormattersPipelineGraph` | Проверить config и получить errors/warnings/plan.                   |
+| `compileFormattersPipelineExecutor`                                                                     | Скомпилировать executor конкретной колонки.                         |
+| `compileFormattersPipelineRuntime`, `compileFormattersPipelineRuntimeFields`                            | Подготовить runtime-поля на construction-stage.                     |
+| `formatPipelineDisplayValue`                                                                            | Получить финальное display-value без знания о конкретной таблице.   |
+| `formatTypedCellValue`                                                                                  | Форматировать одиночное значение по `role/type`.                    |
+| `collectFormattersPipelineDependencyIds`, `collectRuntimeFieldDependencyIds`                            | Собрать поля, которые надо добавить в query для renderer/pipeline.  |
+| `cloneFormattersPipelineConfig`, `cloneFormatterPipelinePlanStep`, `rekey*`                             | Безопасно копировать и переименовывать сериализуемые configs.       |
+
+Поведение из тестов:
+
+- `plan` имеет приоритет над `graph`; если plan невалиден, есть попытка построить plan из graph;
+- graph должен быть строго линейным `source -> ... -> sink`, без циклов и disconnected nodes;
+- каждый шаг может встречаться не больше одного раза;
+- `typedValueFormat` не может идти до `resolveValueState`;
+- `rowBasedOverride` не применяется к totals-строкам в field-режиме, formula-режим для totals разрешен;
+- для formula dependencies есть проверки out-of-range, unused dependencies и runtime warnings.
+
+Тесты: [`validate.test.ts`](./formatters/pipeline/validate.test.ts), [`execute.test.ts`](./formatters/pipeline/execute.test.ts), [`runtime.test.ts`](./formatters/pipeline/runtime.test.ts), [`dependencies.test.ts`](./formatters/pipeline/dependencies.test.ts), [`clone.test.ts`](./formatters/pipeline/clone.test.ts), [`rekey.test.ts`](./formatters/pipeline/rekey.test.ts), [`normalize.test.ts`](./formatters/pipeline/normalize.test.ts).
+
+### `formatters/rowBased`
+
+Файлы: [`formatters/rowBased/index.ts`](./formatters/rowBased/index.ts), тест: [`rowBased.test.ts`](./formatters/rowBased/rowBased.test.ts).
+
+Это маленький реестр формул для row-based override внутри pipeline.
+
+| API                                                    | Поведение                                                                                               |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `createRowBasedFormatterContext`                       | Дает формуле `ctx.key(index)`, `ctx.value(index)`, `ctx.num(index)`, `rawValue`, `rowData`, `columnId`. |
+| `createRowBasedFormatterRegistry`                      | Нормализует definitions, запрещает пустой и дублирующийся `id`.                                         |
+| `getRowBasedFormatterList`, `getRowBasedFormatterById` | Чтение глобального реестра.                                                                             |
+
+Встроенные формулы лежат в [`definitions`](./formatters/rowBased/definitions): `divideWhenAgFormatter`, `valueWhenFieldOrNull`, `divideWhenFieldOrNull`.
+
+### `formulas`
+
+Файлы: [`formulas/index.ts`](./formulas/index.ts), README: [`formulas/README.md`](./formulas/README.md).
+
+Глобальный реестр клиентских формул таблицы для calculated/clientOnly measure-колонок.
+
+| API                                          | Поведение                                                                                |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `createTableFormulaContext`                  | Контекст `key/value/num(index)` по dependency keys.                                      |
+| `compileTableFormula`                        | Компилирует formulaId + keys в executor; не кидает runtime errors наружу.                |
+| `executeTableFormula`                        | Разовый запуск формулы.                                                                  |
+| `createTableFormulaRegistry`                 | Нормализует definitions и запрещает дубли.                                               |
+| `getTableFormulaList`, `getTableFormulaById` | Доступ к реестру.                                                                        |
+| `validateTableFormulaDependencies`           | Проверяет наличие formula, доступность dependencies, out-of-range и unused dependencies. |
+
+Поведение из тестов: невалидный результат формулы дает `invalid_result`, runtime exception дает `runtime_error`, отсутствующая формула дает `formula_not_found`.
+
+Тесты: [`execute.test.ts`](./formulas/execute.test.ts), [`validate.test.ts`](./formulas/validate.test.ts), [`dublicates.test.ts`](./formulas/dublicates.test.ts), [`perf.runtime.test.ts`](./formulas/perf.runtime.test.ts).
+
+### `date-segments`
+
+Файл: [`date-segments/index.ts`](./date-segments/index.ts), тест: [`mask.test.ts`](./date-segments/mask.test.ts).
+
+Утилиты для segmented date input.
+
+| API                          | Поведение                                                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| `parseDateSegmentMask`       | Разбирает маску в editable/literal сегменты.                                                        |
+| `isEditableDateSegment`      | Type guard editable-сегмента.                                                                       |
+| `dateToIndexedSegmentValues` | Преобразует `Date` в `Map<index, value>` по сегментам.                                              |
+| `areAllDateSegmentsEmpty`    | Проверяет пустой ввод.                                                                              |
+| `indexedSegmentsToDate`      | Строго собирает `Date`; отклоняет невозможные даты и время, умеет `defaultDate` для масок без даты. |
+
+### `number-scale`
+
+Файлы: [`number-scale/index.ts`](./number-scale/index.ts), тест: [`numberScale.test.ts`](./number-scale/numberScale.test.ts).
+
+Математика числовых слайдеров и шкал.
+
+| API                                                                                          | Поведение                                                                    |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `resolveNumberScaleBounds`                                                                   | Возвращает finite min/max, меняет местами если min > max, fallback `0..100`. |
+| `clampNumberScaleValue`                                                                      | Ограничивает значение границами.                                             |
+| `normalizeNumberScaleStep`                                                                   | Некорректный/нулевой/отрицательный step заменяет на `1`.                     |
+| `prepareNumberScaleMarks`                                                                    | Фильтрует finite marks в границах, сортирует и дедуплицирует.                |
+| `snapNumberScaleValueToStep`, `snapNumberScaleValueToMarks`, `snapNumberScaleValue`          | Привязка к step или marks.                                                   |
+| `valueToNumberScalePercent`, `percentToNumberScaleValue`, `percentToSnappedNumberScaleValue` | Перевод value <-> percent с учетом marks.                                    |
+| `getNumberScaleMarkPercent`, `findClosestNumberScaleMarkByPercent`, `offsetNumberScaleValue` | Позиционирование marks и keyboard offset.                                    |
+
+### `currency`
+
+Файл: [`currency/currency.ts`](./currency/currency.ts), тест: [`currency.test.ts`](./currency/currency.test.ts).
+
+| API                                      | Поведение                                                                                                      |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `resolveCurrencyModeFromODataParameters` | Читает общий параметр `p_curr`: `false -> internal`, `true -> rub`, иначе `null`.                              |
+| `resolveCurrencyAwareLabel`              | Добавляет к подписи валютный суффикс из пары labels; если суффикс начинается с запятой, пробел не добавляется. |
+
+Это не formatter денежных чисел. Для чисел используй `formatters/number`.
+
+## OData, таблицы и экспорт
+
+### `odata-service`
+
+Файл: [`odata-service/index.ts`](./odata-service/index.ts). Это чистый слой metadata/value/filter helpers. Transport и fetch лежат в `src/shared/api/odata`.
+
+#### Metadata и path
+
+| API                                                                    | Поведение                                                                                         |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `parseServiceMetadata`                                                 | Парсит OData V2 XML metadata в `ServiceMetadata`: entities, FunctionImports, columns, parameters. |
+| `resolveMetadataColumnLabel`                                           | Label с fallback на id.                                                                           |
+| `isForcedCodeTextId`, `isForcedCodeTextFamilyId`                       | Проектные исключения code/text пар.                                                               |
+| `buildParameterEntries`                                                | Форматирует параметры по metadata, проверяет mandatory и maxLength.                               |
+| `buildEntityParameters`, `buildEntityPath`, `buildEntityOperationPath` | Строят entity path с metadata-aware params и result navigation.                                   |
+| `buildFunctionImportParameters`, `buildFunctionImportPath`             | Строят FunctionImport query string через `URLSearchParams`.                                       |
+| `collectFilterableColumns`, `collectFilterableColumnsIds`              | Выбор filterable колонок из metadata.                                                             |
+
+Тесты: [`parser.test.ts`](./odata-service/parser.test.ts), [`builder.test.ts`](./odata-service/builder.test.ts).
+
+#### Значения и типы
+
+| API                                                                                                                  | Поведение                                                              |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `odataFormatValue`                                                                                                   | Сериализует OData primitive с escaping, suffix-ами и date literals.    |
+| `odataParseValue`, `odataParseValueByMetadata`                                                                       | Парсит number/boolean/date/string, учитывает `abapBooleanLike`.        |
+| `odataTypeSchemas`, `isStringSafe`, `isNumberSafe`, `isBooleanSafe`, `isDateSafe`                                    | Zod-схемы и guards для OData primitives.                               |
+| `defaultODataTypeValue`, `defaultControlTypeValue`                                                                   | Default value по OData/UI base type.                                   |
+| `getBaseTypeFromODataType`                                                                                           | OData type -> `string/number/boolean/date`.                            |
+| `createFormatter`, `createBooleanFormatter`, `createStringFormatter`, `createNumberFormatter`, `createDateFormatter` | Zod-validated formatter factories.                                     |
+| `getFormattersFor`, `getFormattersForBaseType`, `getFormatter`, `getFormatterForBaseType`                            | Описания formatter-ов для UI.                                          |
+| `isODataBooleanType`, `isODataNumericType`, `isODataIntegerType`, `isODataDateType`                                  | Type guards OData groups.                                              |
+| `wrapODataParams`, `unwrapODataParams`                                                                               | Переход между flat params и `{ value }` shape; unwrap сортирует ключи. |
+| `normalizeRangeValue`, `normalizeBaseValue`, `isBaseValue`                                                           | Нормализация UI input values.                                          |
+| `unwrapODataQueryResult`                                                                                             | Снятие OData result wrapper.                                           |
+
+Тесты: [`formatters.test.ts`](./odata-service/formatters.test.ts), [`typesValidation.test.ts`](./odata-service/typesValidation.test.ts), [`common.test.ts`](./odata-service/common.test.ts).
+
+#### Фильтры и сортировки
+
+| API                                                                                                                                 | Поведение                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `buildODataFilter`, `buildODataFilterRecursive`                                                                                     | Сериализуют `FilterExpression` в `$filter`.                           |
+| `createFilter`, `createFilterEqual`, `createFilterEqualFalsy`, `createFilterContains`, `createFilterBetween`                        | Фабрики условий; массивы значений собираются через `or`.              |
+| `mergeFilterExpressions`                                                                                                            | Объединяет непустые expressions через `and`.                          |
+| `toggleSort`, `buildODataOrder`, `buildODataOrderBy`, `resolveEffectiveSorts`, `getSortIndicator`                                   | Sorting state и `$orderby`, с fallback на grouping.                   |
+| `sanitizeFilterConditionGroup`, `sanitizeFilterBinding`, `sanitizeFilterDefinitions`, `sanitizeFilterValue`, `sanitizeFilterValues` | Нормализация сохраненных filter configs/values.                       |
+| `normalizeDictionaryCodeKey`, `mergeFilterValuePatch`                                                                               | Нормализация dictionary key и точечное изменение значения фильтра.    |
+| `resolveODataFilterDefinitionColumnIds`, `resolveODataFilterDefinitionActiveColumnIds`                                              | Какие физические колонки затрагивает filter definition.               |
+| `compileFiltersToExpression`                                                                                                        | Compiled filter definitions + values -> `FilterExpression`.           |
+| `flattenFilterValuesToODataDependencies`                                                                                            | Segment/tree filters -> dependencies для связанных справочников.      |
+| `collapseChainedODataSegmentFilterValues`                                                                                           | В цепочке OData-сегментов оставляет самый глубокий выбранный segment. |
+| `isSqlFilterScalarValue`, `assertSqlFilterFieldId`, `buildSqlFilter`, `createSqlFilterEqual`, `createSqlFilterIn`                   | Legacy SQL-like WHERE payload, не OData `$filter`.                    |
+
+Важно: `buildSqlFilter` специально запрещает опасные field id и требует заранее форматировать `Date`. Не используй его для Gateway URL.
+
+Тесты: [`filters.test.ts`](./odata-service/filters.test.ts), [`filterDefinitions.test.ts`](./odata-service/filterDefinitions.test.ts), [`sorts.ts`](./odata-service/sorts.ts), [`sqlFilters.test.ts`](./odata-service/sqlFilters.test.ts).
+
+### `range-output`
+
+Файлы: [`range-output/index.ts`](./range-output/index.ts), тест: [`rangeOutput.test.ts`](./range-output/rangeOutput.test.ts).
+
+| API                            | Поведение                                                                                                |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `readRangeOutputValueFallback` | Читает сериализуемые подстановки `start/end` из объекта с `outputValueFallback` через переданный парсер. |
+| `resolveRangeOutputValue`      | Заменяет `null` в открытых границах диапазона на заданные подстановочные значения для внешней передачи.  |
+
+### `odata`
+
+Файлы: [`odata/index.ts`](./odata/index.ts), тест: [`odata.test.ts`](./odata/odata.test.ts).
+
+| API                                                | Поведение                                                                                         |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `buildSeparatedArrays`                             | Из одной коллекции строит отдельные массивы code/text для каждой пары, дедуплицирует и сортирует. |
+| `findCollectionPairs`                              | Ищет пары `code` + `*_txt/_text/_t`, поддерживает custom suffixes.                                |
+| `ODataDateFormat`                                  | Форматирует `Date` в `datetime'...'`, `datetimeoffset'...'`, `time'...'`.                         |
+| `useODataCollectionStore`, `odataCollectionConfig` | Zustand-store настроек коллекции: pagination, search, selected, dependent filters.                |
+
+### `table`
+
+Файлы: [`table/index.ts`](./table/index.ts), тесты в [`table`](./table).
+
+| API                                                                                                          | Поведение                                                                      |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `resolveTableColumnOrder`                                                                                    | Сначала сохраненный order, потом новые ids; дубли и неизвестные ids удаляются. |
+| `buildTableColumnLayout`                                                                                     | Делает `{ id, width }`, ширина привязана к id, не позиции.                     |
+| `normalizeTableColumnOrder`                                                                                  | Удаляет пустые и повторяющиеся column id.                                      |
+| `reorderTableHeaderColumns`, `resolveReorderedTableHeaderColumns`                                            | Drag reorder только top-level header columns; locked/pinned не двигаются.      |
+| `normalizeTableColumnWidth`, `normalizeTableColumnSizing`, `patchTableColumnWidth`, `removeTableColumnWidth` | Column sizing с min width, default `60`.                                       |
+| `pruneTableRowSelection`, `toggleTableRowSelection`                                                          | `none`, `single`, `multi`; single не снимается повторным кликом.               |
+| `useTableRowSelection`                                                                                       | Hook поверх selection helpers.                                                 |
+| `resolveTableColumnFormattingContextFromODataColumn`                                                         | OData column -> pipeline context; numeric types force measure.                 |
+| `createTableColumnVisibilityFromODataMetadata`                                                               | Стартовая visibility; code скрывается, если есть text-пара.                    |
+| `createTableColumnsFromODataMetadata`                                                                        | Генерация TanStack columns из metadata.                                        |
+| `enrichTableColumnsWithODataFormatting`                                                                      | Рекурсивно дозаполняет leaf columns formatting metadata.                       |
+| `resolveStableColumnId`                                                                                      | `id` или строковый `accessorKey`.                                              |
+| `getTableColumnMeta`, `getTableColumnFormattingMeta`, `resolveTableLength`, `isTableInteractiveElement`      | Маленькие runtime helpers для таблиц.                                          |
+
+Тесты: [`columnLayout.test.ts`](./table/columnLayout.test.ts), [`columnOrder.test.ts`](./table/columnOrder.test.ts), [`columnSizing.test.ts`](./table/columnSizing.test.ts), [`selection.test.ts`](./table/selection.test.ts), [`odataAdapter.test.ts`](./table/odataAdapter.test.ts), [`utils.test.ts`](./table/utils.test.ts).
+
+### `tree-table`
+
+Файлы: [`tree-table/index.ts`](./tree-table/index.ts).
+
+| API                                 | Поведение                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `buildTreeTableRows`                | Строит дерево из flat rows, поднимает сирот/самоссылки в root, не зацикливается, дубли id игнорирует после первого. |
+| `transposeFlatRowsToTreeTableRows`  | Создает synthetic group rows из backend-колонок уровней и оставляет backend rows листьями.                          |
+| `TREE_TABLE_TRANSPOSED_*` constants | Служебные поля transposed rows.                                                                                     |
+
+Тесты: [`buildTreeTableRows.test.ts`](./tree-table/buildTreeTableRows.test.ts), [`transposeFlatRowsToTreeTableRows.test.ts`](./tree-table/transposeFlatRowsToTreeTableRows.test.ts).
+
+### `excel`
+
+Файлы: [`excel/index.ts`](./excel/index.ts).
+
+| API                              | Поведение                                                             |
+| -------------------------------- | --------------------------------------------------------------------- |
+| `resolveExcelCellStyleFromState` | Проектный `State` -> text color для Excel.                            |
+| `buildExcelAutoFilterRef`        | Диапазон `A1:C10`; пустая сетка дает `undefined`.                     |
+| `buildExcelSheetData`            | Header bold + border, значения приводятся к типу Excel-ячейки.        |
+| `downloadExcelFile`              | Формирует `.xlsx` через `write-excel-file`, умеет autoFilter feature. |
+| `resolveTableExcelColumnType`    | OData type/role/clientOnly -> Excel constructor type.                 |
+| `createTableExcelColumn`         | Column descriptor -> Excel column + number/date format.               |
+| `downloadResolvedExcelTable`     | Скачивает уже подготовленную таблицу и прокидывает cell styles.       |
+
+Тесты: [`excel.test.ts`](./excel/excel.test.ts), [`tableExport.test.ts`](./excel/tableExport.test.ts).
+
+### `file` и `binary`
+
+Файлы: [`file/index.ts`](./file/index.ts), README: [`file/README.md`](./file/README.md); [`binary/index.ts`](./binary/index.ts), README: [`binary/README.md`](./binary/README.md).
+
+`file`:
+
+| API                                                                                           | Поведение                                                                                                  |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `readFile`                                                                                    | FileReader wrapper: `data-url` или `array-buffer`, `allowedMime`, `maxBytes`, `AbortSignal`, typed result. |
+| `buildMeta`, `attachAbort`, `assertValidAllowedMime`, `assertValidAccept`, `assertNotAborted` | Низкоуровневые helpers чтения файла; обычно нужны тестам или расширению `readFile`.                        |
+| `ReadFileError`                                                                               | Ошибки чтения/валидации файла с code.                                                                      |
+| `readImageFile`                                                                               | Надстройка для изображений: `image/*`, typed `allowedMime`, dimensions в data-url режиме.                  |
+| `ReadImageError`                                                                              | Ошибки чтения изображения.                                                                                 |
+
+`binary`:
+
+| API              | Поведение                                                                      |
+| ---------------- | ------------------------------------------------------------------------------ |
+| `binaryToBlob`   | Base64/data URL/raw binary string -> `Blob`; валидирует пустые и битые данные. |
+| `detectMimeType` | MIME по filename, data URL, byte signature, fallback `application/pdf`.        |
+| `useBinaryFile`  | Hook: base64 string -> `{ blob, mime }` или error; object URL не создает.      |
+
+Тест: [`binaryToBlob.test.ts`](./binary/binaryToBlob.test.ts).
+
+### `xml`
+
+Файл: [`xml/xml.ts`](./xml/xml.ts), тест: [`xml.test.ts`](./xml/xml.test.ts).
+
+| API              | Поведение                                             |
+| ---------------- | ----------------------------------------------------- |
+| `escapeXmlValue` | Экранирует `& < > " '`, `null/undefined` -> `""`.     |
+| `buildXmlFields` | Собирает компактные XML tags без переносов.           |
+| `getXmlTagText`  | DOMParser + trimmed text первого tag или `undefined`. |
+
+## Browser, React hooks и UI-поведение
+
+### `dom`
+
+Файлы: [`dom/index.ts`](./dom/index.ts), тест: [`dom.test.tsx`](./dom/dom.test.tsx).
+
+| API                                                                         | Поведение                                                                                      |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `getOrCreatePortalRoot`                                                     | Создает portal root один раз и переиспользует HTMLElement.                                     |
+| `downloadFileFromObjectURL`, `downloadFileFromBlob`, `downloadFileFromJson` | Скачивание через `<a download>`, object URL освобождается после click.                         |
+| `useClickOutside`                                                           | Mousedown outside одного или нескольких refs.                                                  |
+| `useEscapeDismiss`                                                          | Escape закрывает только активный overlay; если задан `containerRef`, фокус должен быть внутри. |
+| `useOverlayFocus`                                                           | Initial focus, optional focus trap, restore focus.                                             |
+| `useFocusTrap`                                                              | Совместимый wrapper поверх `useOverlayFocus`.                                                  |
+| `useElementHeightObserver`                                                  | Height через `ResizeObserver`.                                                                 |
+| `useIntersectionObserver`                                                   | Boolean пересечения элемента.                                                                  |
+| `useIsTouchDevice`                                                          | Coarse pointer / touch / `maxTouchPoints`, обновление на resize.                               |
+
+### `hooks`
+
+Файлы: [`hooks/index.ts`](./hooks/index.ts).
+
+| API                     | Поведение                                                                                    |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| `useDebounce`           | Debounced value через timeout.                                                               |
+| `useDebouncedCallback`  | Last-write-wins callback, `call/flush/cancel`, optional `flushOnUnmount`.                    |
+| `useThrottledCallback`  | Leading + trailing throttle, last-write-wins, `call/flush/cancel`.                           |
+| `useDndSortableSensors` | Общие PointerSensor + KeyboardSensor для sortable DnD, default distance `6`.                 |
+| `useFloatingListbox`    | Floating UI listbox: open/close, active index, keyboard navigation, aria ids, focus restore. |
+| `useSearchParams`       | Wrapper над TanStack Router `useSearch/useNavigate`, `replace: true`, allowed keys filter.   |
+| `useSearchLink`         | Строит ссылку с измененными search params без ручного `window.location.search`.              |
+| `useLazyComponent`      | Hook-обертка lazy component, если используется рядом с `createLazyComponent`.                |
+| `useReferenceTrace`     | Диагностика изменения ссылок.                                                                |
+| `useBlockBrowserZoom`   | Блокирует `ctrl+wheel` при enabled.                                                          |
+
+### `copy`
+
+Файлы: [`copy/index.ts`](./copy/index.ts).
+
+| API                              | Поведение                                                                               |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| `useCopyText`                    | Clipboard API в secure context, fallback через `execCommand`; пустой текст не копирует. |
+| `useElementText`                 | Trimmed `textContent` ref.                                                              |
+| `useCopyElementText`             | Копирует текст из ref.                                                                  |
+| `useCopyFeedback`                | `isCopied` на 2 секунды.                                                                |
+| `useCopyElementTextWithFeedback` | Копирование элемента + feedback.                                                        |
+
+### `media`
+
+Файлы: [`media/index.ts`](./media/index.ts), тест: [`media.test.ts`](./media/media.test.ts).
+
+| API                                                              | Поведение                                                                          |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `BREAKPOINTS_EM`, `Breakpoint`, `MediaMatches`                   | Проектные брейкпоинты в `em`: mobile/tablet/laptop.                                |
+| `useMatchMedia`                                                  | Singleton external store на `useSyncExternalStore`; учитывает изменение root `em`. |
+| `ResponsiveValue`, `resolveResponsiveValue`, `resolveProps`      | Responsive props с fallback по брейкпоинтам.                                       |
+| `getCurrentFontSize`, `getCurrentLineHeight`, `getControlHeight` | DOM font metrics с safe defaults.                                                  |
+| `pxToEm`                                                         | px -> em строка.                                                                   |
+
+### `context-menu`
+
+Файлы: [`context-menu/index.ts`](./context-menu/index.ts), тесты: [`anchor.test.ts`](./context-menu/anchor.test.ts), [`state.test.ts`](./context-menu/state.test.ts).
+
+| API                                                       | Поведение                                                                          |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `getMenuPointFromEvent`                                   | `clientX/clientY` -> point.                                                        |
+| `getMenuPointFromRect`                                    | Center point rect.                                                                 |
+| `createVirtualAnchor`                                     | Virtual element для Floating UI.                                                   |
+| `initialMenuState`, `openMenu`, `closeMenu`, `toggleMenu` | Immutable state helpers; `closeMenu` возвращает исходный объект, если уже закрыто. |
+
+### `notifications`
+
+Файлы: [`notifications/index.ts`](./notifications/index.ts), тест: [`store.test.ts`](./notifications/store.test.ts).
+
+| API                        | Поведение                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `createNotificationsStore` | Zustand vanilla store, максимум 6 уведомлений, TTL timers, `push/update/upsert/dismiss/clear`.    |
+| `bindNotifications`        | Привязка store к imperative `notify`.                                                             |
+| `notify`                   | `push/upsert/update/dismiss/clear`, short methods `success/info/warning/error`, progress pattern. |
+
+`notify` требует bound store; без provider будет ошибка.
+
+### `pwa` и `virtualizer`
+
+Файлы: [`pwa/index.ts`](./pwa/index.ts), README: [`pwa/README.md`](./pwa/README.md); [`virtualizer/index.ts`](./virtualizer/index.ts).
+
+`pwa`:
+
+| API                                                                                                        | Поведение                                                             |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `parseSwCachePolicy`, `buildSwCachePolicyValue`, `resolveSwCacheCacheNameByPolicy`, `normalizeSwCacheName` | Разбор `x-sw-cache`: `off`, `ttl=24h`, `bust=forever`, `max`, `name`. |
+| `useServiceWorkerUpdate`                                                                                   | UI hook для service worker update flow.                               |
+
+Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./pwa/serviceWorker.ts) и используются shell-слоем: registration, waiting worker, reload-chain guard, invalidate cache profile.
+
+`virtualizer`:
+
+| API                      | Поведение                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| `useFetchNextPageEffect` | Общий эффект дозагрузки следующей страницы для virtualizer/infinite query сценариев. |
+
+## Runtime, state и инфраструктура
+
+### `query-client`
+
+Файлы: [`query-client/index.ts`](./query-client/index.ts), README: [`query-client/README.md`](./query-client/README.md), optimistic guide: [`OPTIMISTIC_UPDATE.md`](./query-client/OPTIMISTIC_UPDATE.md).
+
+| API                                                                                                    | Поведение                                                                            |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `createQueryClient`                                                                                    | Singleton QueryClient defaults: stale/gc, retry, error handlers, optional persister. |
+| `persistedQueryMeta`, `shouldPersistQuery`, `createReactQueryPersister`, `createIndexedDbQueryStorage` | Opt-in persistence справочников в IndexedDB.                                         |
+| `installReactQueryBroadcast`, `broadcastCacheEvent`, `setBroadcastFn`                                  | Sync query cache и cache events между вкладками.                                     |
+| `onMutateOptimistic`, `onErrorOptimistic`, `onSuccessOptimistic`, `onSettledOptimistic`                | Helpers для точечного optimistic update.                                             |
+
+Поведение из тестов: persistence сохраняет только `meta.persist === true`, broadcast игнорирует невалидные сообщения и не зацикливает remote events, `onSettledOptimistic` по умолчанию invalidates с `refetchType: "none"`.
+
+Тесты: [`queryClient.test.ts`](./query-client/queryClient.test.ts), [`persistence.test.ts`](./query-client/persistence.test.ts), [`broadcast.test.ts`](./query-client/broadcast.test.ts), [`broadcast.integration.test.ts`](./query-client/broadcast.integration.test.ts).
+
+### `error` и `error-report`
+
+Файлы: [`error/index.ts`](./error/index.ts), [`error-report/index.ts`](./error-report/index.ts), docs: [`docs/error-report.md`](../../../docs/error-report.md).
+
+`error`:
+
+| API                                                             | Поведение                                              |
+| --------------------------------------------------------------- | ------------------------------------------------------ |
+| `createMissingContextErrorMessage`, `createMissingContextError` | Единый текст ошибки для hooks, вызванных вне provider. |
+
+`error-report`:
+
+| API                                                                                                                                                                                           | Поведение                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `addErrorReportBreadcrumb`, `getErrorReportBreadcrumbs`, `clearErrorReportBreadcrumbs`, `installErrorReportBrowserBreadcrumbs`                                                                | Breadcrumb trail.                                             |
+| `captureQueryErrorReport`, `captureMutationErrorReport`, `captureRuntimeErrorReport`                                                                                                          | Создание report payload.                                      |
+| `collectQueryDiagnostics`, `collectMutationDiagnostics`, `collectQueryClientDiagnostics`, `collectPersistedQueryDiagnostics`                                                                  | Диагностика без тяжелых query data.                           |
+| `createDiagnosticValue`, `createDataShape`, `sanitizeDetail`                                                                                                                                  | Safe JSON-compatible формы с отсечением секретов и глубины.   |
+| `getErrorReportDraft`, `updateErrorReportDraft`, `getErrorReportDrafts`, `captureErrorReportDraft`                                                                                            | Draft-хранилище отчетов.                                      |
+| `setErrorReportingDeliveryMode`, `getErrorReportingDeliveryMode`, `isErrorReportingEnabled`, `getErrorReportEnvironment`                                                                      | Environment/delivery config.                                  |
+| `createErrorInfo`                                                                                                                                                                             | Нормализация unknown error в безопасный `message/name/stack`. |
+| `setErrorReportRuntimeErrorReporter`, `reportRuntimeError`, `setErrorReportTransportErrorReporter`, `isTransportErrorReportScheduled`, `suppressTransportErrorReport`, `reportTransportError` | Интеграционные точки runtime/transport reporting.             |
+
+Тесты: [`missingContextError.test.ts`](./error/missingContextError.test.ts), [`errorReport.test.ts`](./error-report/errorReport.test.ts), [`breadcrumbs.test.ts`](./error-report/breadcrumbs.test.ts).
+
+### Contract-level API
+
+Business-rule, runtime-extension и serializable control contracts находятся в [`../contracts`](../contracts).
+`shared/lib` не экспортирует эти API, чтобы слой чистых технических утилит не становился владельцем cross-layer контрактов.
+
+## Низкоуровневые helpers
+
+### `array`
+
+Файлы: [`array/index.ts`](./array/index.ts), тесты: [`array.test.ts`](./array/array.test.ts), [`reorder.test.ts`](./array/reorder.test.ts).
+
+| API                                                 | Поведение                                                                  |
+| --------------------------------------------------- | -------------------------------------------------------------------------- |
+| `arrayGroupBy`, `arrayGroupByToArray`               | Группировка по ключу, порядок элементов внутри группы сохраняется.         |
+| `arrayToMap`                                        | Map-object по первому встреченному значению ключа.                         |
+| `arrayUniqueBy`                                     | Дедупликация по ключу без перестановки первого значения.                   |
+| `filterAndDeduplicateIds`                           | Оставляет только allowed ids, убирает пустые и дубли.                      |
+| `appendMissingIds`                                  | Добавляет отсутствующие ids в конец базового списка.                       |
+| `pickExistingMapValues`                             | Значения `Map` в порядке keys, отсутствующие ключи пропускаются.           |
+| `arraysEqual`                                       | Строго по длине, порядку и ссылочным значениям.                            |
+| `moveItem`, `moveArrayItem`, `moveArrayItemByIndex` | Immutable reorder; некорректные индексы возвращают копию без перестановки. |
+| `normalizeObjects`                                  | Trim key, отсекает пустые/дубли, по умолчанию shallow copy.                |
+| `normalizeStringArray`, `addUnique`                 | Нормализация string ids.                                                   |
+
+### `utils`
+
+Файлы: [`utils/index.ts`](./utils/index.ts), тесты: [`utils.test.ts`](./utils/utils.test.ts), [`keyboard.test.ts`](./utils/keyboard.test.ts), [`createLazyComponent.test.tsx`](./utils/createLazyComponent.test.tsx).
+
+| API                                                                             | Поведение                                                                                                 |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `cn`                                                                            | Сборка className из строк и conditional object. Новый код использует `cn`.                                |
+| `stableStringify`                                                               | JSON с сортировкой object keys; подходит для cache keys/сравнений.                                        |
+| `childrenCount`                                                                 | Считает React children, раскрывая fragments.                                                              |
+| `createLazyComponent`                                                           | Кеширует lazy component по import function/componentName или explicit `cacheKey`.                         |
+| `deepCopyWithoutFunctions`                                                      | Для plain config: удаляет функции, копирует Date/arrays/plain objects, unsupported objects кидают ошибку. |
+| `deepCloneWithoutFunctions`                                                     | Более общий clone: Date, RegExp, Map, Set, cycles, sparse arrays, descriptors, optional prototype.        |
+| `keyboardActivationKeys`, `isKeyboardActivationKey`, `handleKeyboardActivation` | Enter/Space activation для custom controls.                                                               |
+| `getRovingFocusTargetIndex`                                                     | Home/End/Arrow navigation для roving focus.                                                               |
+| `findFirstEnabledIndex`, `findLastEnabledIndex`, `findNextEnabledIndex`         | Navigation по listbox/select options с disabled и optional wrap.                                          |
+| `deepCopyNodes`, `deepCopyTree`                                                 | Копирование tree nodes, custom children field.                                                            |
+| `toBase64`, `encodeBase64`                                                      | Unicode-safe base64.                                                                                      |
+| `logError`                                                                      | Косвенный `console.error`, который terser не удаляет.                                                     |
+
+### `validators` и `types`
+
+Файлы: [`validators/index.ts`](./validators/index.ts), [`types/index.ts`](./types/index.ts), тест: [`validators.test.ts`](./validators/validators.test.ts).
+
+| API                                                                                                     | Поведение                                                   |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `isSafe`                                                                                                | Type guard от `null/undefined`.                             |
+| `isObject`, `isRecord`, `asRecord`, `isPlainObject`                                                     | Guards для object-like values; массивы не считаются record. |
+| `IMAGE_EXTENSIONS`, `isImageExtension`                                                                  | Проверка image extension без учета регистра.                |
+| `isDomReference`                                                                                        | Floating UI reference -> DOM `Element`.                     |
+| `State`, `AbapBoolean`, `Primitive`, `BaseType`, `InputType`, `RangeType`, `ChangeHandler`, `RowRecord` | Общие технические типы.                                     |
+
+### `string-comparison`
+
+Файл: [`string-comparison/compareStrings.ts`](./string-comparison/compareStrings.ts), тест: [`compareStrings.test.ts`](./string-comparison/compareStrings.test.ts).
+
+`compareStrings` использует фиксированный `Intl.Collator("ru-RU", { numeric: true, sensitivity: "base" })` и UTF-16 fallback. Используй для справочников и UI-списков вместо ad hoc `localeCompare`.
+
+### `crypto` и `session-storage`
+
+Файлы: [`crypto/index.ts`](./crypto/index.ts), [`session-storage/index.ts`](./session-storage/index.ts).
+
+| API                                                            | Поведение                                                                           |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `hashString`                                                   | Компактный FNV-1a-like 32-bit hash base36.                                          |
+| `hashString128`, `hashString128Base64Url`, `stringToElementId` | Стабильные длинные hash/id для DOM/cache-like ключей.                               |
+| `uuidv4`                                                       | Native `crypto.randomUUID` или fallback через `getRandomValues`.                    |
+| `getSessionStorageId`                                          | Стабильный id вкладочной сессии; fallback при недоступном/ошибочном sessionStorage. |
+
+Тесты: [`crypto.test.ts`](./crypto/crypto.test.ts), [`sessionId.test.ts`](./session-storage/sessionId.test.ts).
+
+### `presets`
+
+Файл: [`presets/presets.ts`](./presets/presets.ts), тест: [`presets.test.ts`](./presets/presets.test.ts).
+
+| API                         | Поведение                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `normalizePresetIds`        | Unknown saved ids -> валидные ids через доменный type guard, fallback если вход не массив. |
+| `resolvePresetOptionsByIds` | Options по ids с сохранением порядка и удалением дублей.                                   |
+| `getPresetOption`           | Поиск option по id или `null`.                                                             |
+
+### `bounded-copy-stack`
+
+Файл: [`bounded-copy-stack/boundedCopyStack.ts`](./bounded-copy-stack/boundedCopyStack.ts), тест: [`boundedCopyStack.test.ts`](./bounded-copy-stack/boundedCopyStack.test.ts).
+
+| API                               | Поведение                                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------- |
+| `pushBoundedCopyStackItem`        | Добавляет item в начало, поднимает существующий fingerprint без дубля, ограничивает size. |
+| `getBoundedCopyStackCandidates`   | Фильтрует элементы стека predicate-ом.                                                    |
+| `DEFAULT_BOUNDED_COPY_STACK_SIZE` | Default size `3`.                                                                         |
+
+## Deprecated и не использовать
+
+Эти API есть в коде, но не должны использоваться в новом коде:
+
+| API                                                             | Почему                            | Замена     |
+| --------------------------------------------------------------- | --------------------------------- | ---------- |
+| `classNames` из [`utils/index.ts`](./utils/index.ts)            | Старый alias.                     | `cn`.      |
+| `FormattersPipelineExecutionContext.isGroupRow` и `isTotalsRow` | Совместимые поля для legacy-кода. | `rowKind`. |
+
+Если кажется, что нужна новая утилита, сначала добавь тест на поведение рядом с подходящим модулем. Тест должен объяснять пограничный случай так же ясно, как существующие тесты в `shared/lib`.

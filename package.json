@@ -1,6 +1,6 @@
 {
   "name": "@ryuzaki13/react-foundation-lib",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reusable React and TypeScript foundation utilities, hooks, and primitives.",
   "license": "MIT",
   "author": "Ryuzaki13",
@@ -309,7 +309,7 @@
     "test": "vitest run",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "validate": "npm run typecheck && npm run test && npm run build",
+    "validate": "npm run lint:fix && npm run typecheck && npm run test && npm run build",
     "pack:dry-run": "npm run validate && npm pack --dry-run",
     "prepublishOnly": "npm run validate"
   },

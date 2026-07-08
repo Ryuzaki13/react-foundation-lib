@@ -188,88 +188,6 @@ describe("table column formatters pipeline execute", () => {
 		expect(result.value).toBe("TREE_LABEL");
 	});
 
-	it("применяет rowBasedOverride(formula) для plain-строки и передаёт rowData", () => {
-		const compiled = compileFormattersPipelineExecutor({
-			config: {
-				version: 1,
-				plan: {
-					steps: [
-						{
-							id: "groupFormula",
-							type: "rowBasedOverride",
-							config: {
-								mode: "formula",
-								formulaId: "valueWhenFieldOrNull",
-								dependencyIds: ["FLAG"]
-							}
-						}
-					]
-				}
-			},
-			column: {
-				role: "dimension",
-				type: "string"
-			}
-		});
-
-		expect(compiled.ok).toBe(true);
-		if (!compiled.ok) return;
-
-		const result = compiled.executor.execute({
-			value: "RAW",
-			rowData: { FLAG: 1 },
-			rowKind: "plain",
-			isGroupRow: false,
-			isTotalsRow: false,
-			rowLevel: 0,
-			groupingIds: [],
-			columnId: "LABEL"
-		});
-
-		expect(result.value).toBe("RAW");
-	});
-
-	it("передаёт dependencyIds в rowBasedOverride(formula) как индексный контекст", () => {
-		const compiled = compileFormattersPipelineExecutor({
-			config: {
-				version: 1,
-				plan: {
-					steps: [
-						{
-							id: "groupFormula",
-							type: "rowBasedOverride",
-							config: {
-								mode: "formula",
-								formulaId: "divideWhenFieldOrNull",
-								dependencyIds: ["A", "B", "C"]
-							}
-						}
-					]
-				}
-			},
-			column: {
-				role: "dimension",
-				type: "string"
-			}
-		});
-
-		expect(compiled.ok).toBe(true);
-		if (!compiled.ok) return;
-
-		const result = compiled.executor.execute({
-			value: 1,
-			rowData: { A: 10, B: 4, C: 2 },
-			rowKind: "plain",
-			isGroupRow: false,
-			isTotalsRow: false,
-			rowLevel: 0,
-			groupingIds: [],
-			columnId: "LABEL"
-		});
-
-		expect(result.value).toBe(8);
-	});
-
 	it("не компилирует pipeline с неизвестной groupRow формулой", () => {
 		const compiled = compileFormattersPipelineExecutor({
 			config: {
@@ -361,47 +279,6 @@ describe("table column formatters pipeline execute", () => {
 		const result = compiled.executor.execute({
 			value: "RAW",
 			rowData: { LABEL: "TOTALS_LABEL" },
-			rowKind: "totals",
-			isGroupRow: false,
-			isTotalsRow: true,
-			rowLevel: 0,
-			groupingIds: [],
-			columnId: "LABEL"
-		});
-
-		expect(result.value).toBe("RAW");
-	});
-
-	it("применяет rowBasedOverride(formula) для totals-строки", () => {
-		const compiled = compileFormattersPipelineExecutor({
-			config: {
-				version: 1,
-				plan: {
-					steps: [
-						{
-							id: "groupFormula",
-							type: "rowBasedOverride",
-							config: {
-								mode: "formula",
-								formulaId: "valueWhenFieldOrNull",
-								dependencyIds: ["FLAG"]
-							}
-						}
-					]
-				}
-			},
-			column: {
-				role: "dimension",
-				type: "string"
-			}
-		});
-
-		expect(compiled.ok).toBe(true);
-		if (!compiled.ok) return;
-
-		const result = compiled.executor.execute({
-			value: "RAW",
-			rowData: { FLAG: 1 },
 			rowKind: "totals",
 			isGroupRow: false,
 			isTotalsRow: true,

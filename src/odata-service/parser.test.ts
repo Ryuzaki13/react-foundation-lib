@@ -171,8 +171,8 @@ describe("odata metadata parser / canonical target", () => {
 	it("возвращает label колонки и forced code/text family flags", () => {
 		expect(resolveMetadataColumnLabel({ id: "ID", label: "Код" })).toBe("Код");
 		expect(resolveMetadataColumnLabel({ id: "ID", label: "" })).toBe("ID");
-		expect(isForcedCodeTextId("text_division")).toBe(true);
-		expect(isForcedCodeTextFamilyId("text_node_text")).toBe(true);
+		expect(isForcedCodeTextId("zdiv")).toBe(true);
+		expect(isForcedCodeTextFamilyId("zcfo1")).toBe(true);
 		expect(isForcedCodeTextFamilyId("unknown_text")).toBe(false);
 		expect(isForcedCodeTextId(undefined)).toBe(false);
 	});

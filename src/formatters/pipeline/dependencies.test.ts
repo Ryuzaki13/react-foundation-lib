@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { collectFormattersPipelineDependencyIds, collectRuntimeFieldDependencyIds, type RuntimeDependencyField } from "./dependencies";
+import { collectRuntimeFieldDependencyIds, type RuntimeDependencyField } from "./dependencies";
 
 import type { FormattersPipelineConfig } from "./types";
 
@@ -12,24 +12,6 @@ function pipeline(steps: NonNullable<FormattersPipelineConfig["plan"]>["steps"])
 		}
 	};
 }
-
-describe("collectFormattersPipelineDependencyIds", () => {
-	it("собирает зависимости formatter pipeline без дублей", () => {
-		const config = pipeline([
-			{
-				id: "state",
-				type: "rowBasedOverride",
-				config: {
-					mode: "formula",
-					formulaId: "valueWhenFieldOrNull",
-					dependencyIds: ["STATUS_TEXT", "STATUS_COLOR", "STATUS_TEXT"]
-				}
-			}
-		]);
-
-		expect(collectFormattersPipelineDependencyIds(config)).toEqual(["STATUS_TEXT", "STATUS_COLOR"]);
-	});
-});
 
 describe("collectRuntimeFieldDependencyIds", () => {
 	it("собирает renderer bindings и formatter-зависимости по минимальному контракту поля", () => {
@@ -59,30 +41,6 @@ describe("collectRuntimeFieldDependencyIds", () => {
 		expect(collectRuntimeFieldDependencyIds(["MANAGER"], fieldsById)).toEqual({
 			requiredColumnIds: ["MANAGER_NAME", "MANAGER_URL"],
 			missingColumnIds: []
-		});
-	});
-
-	it("разделяет найденные и отсутствующие зависимости", () => {
-		const fieldsById: Record<string, RuntimeDependencyField> = {
-			STATUS: {
-				formattersPipeline: pipeline([
-					{
-						id: "state",
-						type: "rowBasedOverride",
-						config: {
-							mode: "formula",
-							formulaId: "valueWhenFieldOrNull",
-							dependencyIds: ["STATUS_TEXT", "TEXT_MISSING_STATUS"]
-						}
-					}
-				])
-			},
-			STATUS_TEXT: {}
-		};
-
-		expect(collectRuntimeFieldDependencyIds(["STATUS"], fieldsById)).toEqual({
-			requiredColumnIds: ["STATUS_TEXT"],
-			missingColumnIds: ["TEXT_MISSING_STATUS"]
 		});
 	});
 

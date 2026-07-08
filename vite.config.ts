@@ -25,14 +25,22 @@ function isExternalPackage(id: string): boolean {
 	return externalPackages.some((packageName) => id === packageName || id.startsWith(`${packageName}/`));
 }
 
-export default defineConfig((configEnv) => ({
-	define: {
+function createDefine(configEnv: { mode: string }): Record<string, string> {
+	if (configEnv.mode !== "test" && process.env.VITEST !== "true") {
+		return {};
+	}
+
+	return {
 		__APP_BUILD_ID__: "undefined",
-		__APP_ID__: JSON.stringify("react-foundation-lib"),
-		__DEV__: JSON.stringify(configEnv.mode !== "production"),
+		__APP_ID__: JSON.stringify("react-foundation-lib-test"),
+		__DEV__: "true",
 		__PREVIEW__: "false",
-		__REACT_QUERY_PERSISTENCE_BUSTER__: JSON.stringify("react-foundation-lib-query-v1")
-	},
+		__REACT_QUERY_PERSISTENCE_BUSTER__: JSON.stringify("react-foundation-lib-query-test")
+	};
+}
+
+export default defineConfig((configEnv) => ({
+	define: createDefine(configEnv),
 	build: {
 		target: "es2022",
 		sourcemap: true,

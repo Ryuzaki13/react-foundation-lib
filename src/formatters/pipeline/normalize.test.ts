@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { normalizeFormattersPipelineConfig } from "./normalize";
-
 import { type FormattersPipelineConfig } from "./types";
 
 describe("normalizeFormattersPipelineConfig", () => {

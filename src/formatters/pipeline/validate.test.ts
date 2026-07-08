@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { FormattersPipelineConfig, FormattersPipelineGraph, FormattersPipelineStep } from "./types";
 import { validateFormattersPipelineConfig } from "./validate";
+
+import type { FormattersPipelineConfig, FormattersPipelineGraph, FormattersPipelineStep } from "./types";
 
 type ValidationCode = ReturnType<typeof validateFormattersPipelineConfig>["errors"][number]["code"];
 

@@ -652,7 +652,9 @@ describe("compileFiltersToExpression", () => {
 			}
 		];
 
-		expect(buildODataFilter(compileFiltersToExpression(definitions, { TEXT_VALUE: ["B", "A"] }))).toBe("(STATUS eq 'A' or STATUS eq 'B')");
+		expect(buildODataFilter(compileFiltersToExpression(definitions, { TEXT_VALUE: ["B", "A"] }))).toBe(
+			"(STATUS eq 'A' or STATUS eq 'B')"
+		);
 		expect(compileFiltersToExpression(definitions, { TEXT_VALUE: { STATUS: ["A"] } })).toBeUndefined();
 	});
 

@@ -43,6 +43,8 @@ describe("buildSqlFilter", () => {
 			"Некорректное имя поля SQL-фильтра: FIELD;DELETE"
 		);
 		expect(() => buildSqlFilter([createSqlFilterEqual("t~field", "X")])).toThrow("Некорректное имя поля SQL-фильтра: t~field");
-		expect(() => buildSqlFilter([createSqlFilterEqual("/TEXT/INVALID_FIELD", "X")])).toThrow("Некорректное имя поля SQL-фильтра: /TEXT/INVALID_FIELD");
+		expect(() => buildSqlFilter([createSqlFilterEqual("/TEXT/INVALID_FIELD", "X")])).toThrow(
+			"Некорректное имя поля SQL-фильтра: /TEXT/INVALID_FIELD"
+		);
 	});
 });

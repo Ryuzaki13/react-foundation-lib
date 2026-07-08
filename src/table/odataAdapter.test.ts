@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { EntityColumnProperty } from "@/shared/lib/odata-service";
-
 import {
 	createTableColumnVisibilityFromODataMetadata,
 	createTableColumnsFromODataMetadata,
@@ -9,6 +7,7 @@ import {
 	resolveTableColumnFormattingContextFromODataColumn
 } from "./odataAdapter";
 
+import type { EntityColumnProperty } from "../odata-service";
 import type { TableColumnDef } from "./types";
 
 type DemoRow = {

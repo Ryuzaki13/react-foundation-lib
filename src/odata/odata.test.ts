@@ -4,6 +4,7 @@ import { buildSeparatedArrays } from "./buildSeparatedArrays";
 import { ODataDateFormat } from "./dateUtils";
 import { findCollectionPairs } from "./findCollectionPairs";
 import { useODataCollectionStore } from "./store";
+
 import type { CollectionItem, CollectionPair } from "./types";
 
 describe("buildSeparatedArrays", () => {

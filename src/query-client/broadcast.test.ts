@@ -1,8 +1,7 @@
+import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { broadcastCacheEvent, installReactQueryBroadcast, setBroadcastFn } from "./broadcast";
-
-import { QueryClient } from "@tanstack/react-query";
 
 const { broadcastQueryClientMock } = vi.hoisted(() => ({
 	broadcastQueryClientMock: vi.fn()

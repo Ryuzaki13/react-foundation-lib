@@ -9,10 +9,10 @@ import {
 	formatNumberAsCurrencyChartAxis,
 	formatNumberAsCurrencyChartTooltip
 } from "./formatCompactNumber";
+import { truncateNumber } from "./formatNumber";
 
 import type { NumberFormatPreset } from "./types";
 
-import { truncateNumber } from "./formatNumber";
 import {
 	clearFormatCache,
 	formatNumber,

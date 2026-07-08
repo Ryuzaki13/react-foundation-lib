@@ -1,13 +1,14 @@
-import type { UseQueryResult } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 
 import { collectFilterableColumns, collectFilterableColumnsIds } from "./columns";
 import { isBooleanSafe, isDateSafe, isNumberSafe, isStringSafe, odataTypeSchemas } from "./schema";
 import { buildODataOrder, buildODataOrderBy, getSortIndicator, resolveEffectiveSorts, toggleSort } from "./sorts";
-import type { EntityColumnProperty } from "./types";
 import { unwrapODataQueryResult } from "./unwrapODataQueryResult";
 import { isBaseValue, normalizeBaseValue, normalizeRangeValue } from "./utils";
 import { unwrapODataParams, wrapODataParams } from "./wrapParams";
+
+import type { EntityColumnProperty } from "./types";
+import type { UseQueryResult } from "@tanstack/react-query";
 
 type QueryEnvelope<T> = {
 	data: T;

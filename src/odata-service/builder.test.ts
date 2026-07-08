@@ -72,7 +72,9 @@ describe("odata-service builder", () => {
 			"/TEXT_DEMO_SRV/TextEntitySet(p_code='AB',p_flag='X')/Results"
 		);
 		expect(buildEntityOperationPath(entityMetadata, config, params, "create")).toBe("/TEXT_DEMO_SRV/TextEntitySet");
-		expect(buildEntityOperationPath(entityMetadata, config, params, "update")).toBe("/TEXT_DEMO_SRV/TextEntitySet(p_code='AB',p_flag='X')");
+		expect(buildEntityOperationPath(entityMetadata, config, params, "update")).toBe(
+			"/TEXT_DEMO_SRV/TextEntitySet(p_code='AB',p_flag='X')"
+		);
 	});
 
 	it("игнорирует query params для непараметризованного EntitySet и предупреждает в dev", () => {
@@ -99,6 +101,8 @@ describe("odata-service builder", () => {
 	});
 
 	it("возвращает base path для FunctionImport без параметров", () => {
-		expect(buildFunctionImportPath({ ...functionImportMetadata, parameters: undefined }, config, {})).toBe("/TEXT_DEMO_SRV/TextEntitySet");
+		expect(buildFunctionImportPath({ ...functionImportMetadata, parameters: undefined }, config, {})).toBe(
+			"/TEXT_DEMO_SRV/TextEntitySet"
+		);
 	});
 });

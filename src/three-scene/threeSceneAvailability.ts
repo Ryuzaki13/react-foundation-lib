@@ -20,7 +20,7 @@ const webGLContextNames: Record<ThreeSceneWebGLVersion, readonly string[]> = {
 	webgl2: ["webgl2"]
 };
 
-export const threeSceneDefaultDisabledStorageKey = "ktk:three-scene:disabled";
+export const threeSceneDefaultDisabledStorageKey = `${__APP_ID__}:three-scene:disabled`;
 
 export function isThreeSceneDisabledForSession(storageKey = threeSceneDefaultDisabledStorageKey): boolean {
 	if (typeof window === "undefined") {

@@ -32,6 +32,7 @@ export function createQueryClient({ onQueryError, onMutationError }: QueryBroadc
 		queryCache: new QueryCache({ onError: onQueryError }),
 		mutationCache: new MutationCache({ onError: onMutationError }),
 		defaultOptions: {
+			// TODO: Vite env
 			queries: {
 				staleTime: 10 * 60 * 1000,
 				gcTime: 30 * 60 * 1000,

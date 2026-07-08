@@ -5,7 +5,7 @@ const SW_BASE = __PREVIEW__ ? "/" : "/arm/";
 const SW_URL = `${SW_BASE}sw.js`;
 const SW_ACTIVATED_BY_CLIENT_MESSAGE_TYPE = "SW_ACTIVATED_BY_CLIENT";
 // TODO: Vite env
-const SW_UPDATE_RELOAD_COUNT_KEY = "arm.service-worker.update-reload-count.v1";
+const SW_UPDATE_RELOAD_COUNT_KEY = `${__APP_ID__}.service-worker.update-reload-count.v1`;
 // TODO: Vite env
 const MAX_SW_AUTO_UPDATE_RELOADS = 5;
 

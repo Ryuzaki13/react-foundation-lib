@@ -83,6 +83,10 @@
 			"types": "./dist/file/index.d.ts",
 			"import": "./dist/file/index.js"
 		},
+		"./fingerprint": {
+			"types": "./dist/fingerprint/index.d.ts",
+			"import": "./dist/fingerprint/index.js"
+		},
 		"./form": {
 			"types": "./dist/form/index.d.ts",
 			"import": "./dist/form/index.js"
@@ -229,6 +233,9 @@
 			],
 			"file": [
 				"dist/file/index.d.ts"
+			],
+			"fingerprint": [
+				"dist/fingerprint/index.d.ts"
 			],
 			"form": [
 				"dist/form/index.d.ts"

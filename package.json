@@ -131,6 +131,10 @@
 			"types": "./dist/pwa/index.d.ts",
 			"import": "./dist/pwa/index.js"
 		},
+		"./pwa/sw-cache-policy": {
+			"types": "./dist/pwa/swCachePolicy.d.ts",
+			"import": "./dist/pwa/sw-cache-policy.js"
+		},
 		"./query-client": {
 			"types": "./dist/query-client/index.d.ts",
 			"import": "./dist/query-client/index.js"
@@ -261,6 +265,9 @@
 			],
 			"pwa": [
 				"dist/pwa/index.d.ts"
+			],
+			"pwa/sw-cache-policy": [
+				"dist/pwa/swCachePolicy.d.ts"
 			],
 			"query-client": [
 				"dist/query-client/index.d.ts"

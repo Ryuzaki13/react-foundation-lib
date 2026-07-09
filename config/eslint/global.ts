@@ -66,35 +66,6 @@ const globalConfig: Linter.Config = {
 				alphabetize: { order: "asc", caseInsensitive: true }
 			}
 		],
-		"no-restricted-imports": [
-			"error",
-			{
-				paths: [
-					{
-						name: "@/shared/api",
-						message: "Импортируй из public API конкретного shared/api-модуля, например @/shared/api/async."
-					},
-					{
-						name: "@/shared/config",
-						message: "Импортируй из public API конкретного shared/config-модуля, например @/shared/config/theme."
-					},
-					{
-						name: "@/shared/lib",
-						message: "Импортируй из public API конкретного shared/lib-модуля, например @/shared/lib/formatters."
-					},
-					{
-						name: "@/shared/ui",
-						message: "Импортируй из public API конкретного shared/ui-модуля, например @/shared/ui/button."
-					}
-				],
-				patterns: [
-					{
-						group: ["**/entities/*/*", "**/features/*/*", "**/widgets/*/*"],
-						message: "Импортируй только из public API (index.ts) соседнего среза."
-					}
-				]
-			}
-		],
 
 		"@typescript-eslint/naming-convention": [
 			"warn",

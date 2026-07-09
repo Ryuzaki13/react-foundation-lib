@@ -1,13 +1,11 @@
 import { logError } from "../utils";
 import { isRecord } from "../validators";
 
-const SW_BASE = __PREVIEW__ ? "/" : "/arm/";
-const SW_URL = `${SW_BASE}sw.js`;
+const SW_SCOPE = __SERVICE_WORKER_SCOPE__;
+const SW_URL = __SERVICE_WORKER_URL__;
 const SW_ACTIVATED_BY_CLIENT_MESSAGE_TYPE = "SW_ACTIVATED_BY_CLIENT";
-// TODO: Vite env
-const SW_UPDATE_RELOAD_COUNT_KEY = `${__APP_ID__}.service-worker.update-reload-count.v1`;
-// TODO: Vite env
-const MAX_SW_AUTO_UPDATE_RELOADS = 5;
+const SW_UPDATE_RELOAD_COUNT_KEY = __SERVICE_WORKER_UPDATE_RELOAD_COUNT_KEY__;
+const MAX_SW_AUTO_UPDATE_RELOADS = __SERVICE_WORKER_MAX_AUTO_UPDATE_RELOADS__;
 
 type SWUpdateHandler = (reg: ServiceWorkerRegistration) => void;
 
@@ -153,7 +151,7 @@ export async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegis
 	if (!("serviceWorker" in navigator)) return null;
 
 	try {
-		const reg = latestRegistration ?? (await navigator.serviceWorker.getRegistration(SW_BASE));
+		const reg = latestRegistration ?? (await navigator.serviceWorker.getRegistration(SW_SCOPE));
 
 		if (!reg) return null;
 
@@ -175,12 +173,12 @@ export async function registerServiceWorker(options: RegisterSWOptions = {}) {
 	}
 
 	try {
-		const existingRegistration = latestRegistration ?? (await navigator.serviceWorker.getRegistration(SW_BASE));
+		const existingRegistration = latestRegistration ?? (await navigator.serviceWorker.getRegistration(SW_SCOPE));
 
 		const reg =
 			existingRegistration ??
 			(await navigator.serviceWorker.register(SW_URL, {
-				scope: SW_BASE,
+				scope: SW_SCOPE,
 				updateViaCache: "none"
 			}));
 
@@ -227,7 +225,7 @@ export async function checkServiceWorkerUpdate() {
 	if (!("serviceWorker" in navigator)) return null;
 
 	try {
-		const reg = latestRegistration ?? (await navigator.serviceWorker.getRegistration(SW_BASE));
+		const reg = latestRegistration ?? (await navigator.serviceWorker.getRegistration(SW_SCOPE));
 		if (!reg) return null;
 
 		latestRegistration = reg;

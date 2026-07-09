@@ -612,7 +612,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 | `isObject`, `isRecord`, `asRecord`, `isPlainObject`                                                     | Guards для object-like values; массивы не считаются record. |
 | `IMAGE_EXTENSIONS`, `isImageExtension`                                                                  | Проверка image extension без учета регистра.                |
 | `isDomReference`                                                                                        | Floating UI reference -> DOM `Element`.                     |
-| `State`, `AbapBoolean`, `Primitive`, `BaseType`, `InputType`, `RangeType`, `ChangeHandler`, `RowRecord` | Общие технические типы.                                     |
+| `State`, `AbapBoolean`, `Primitive`, `BaseType`, `InputType`, `RangeType`, `RowRecord` | Общие технические типы.                                     |
 
 ### `string-comparison`
 

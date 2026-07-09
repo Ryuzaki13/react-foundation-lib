@@ -19,7 +19,4 @@ export type InputType = BaseType | ArrayType | ObjectType;
 
 export type RangeType = readonly [BaseType | null, BaseType | null];
 
-// Тип для обработчиков изменений
-export type ChangeHandler<T extends InputType> = (value: T) => void;
-
 export type RowRecord = Record<string, unknown>;

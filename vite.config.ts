@@ -35,7 +35,11 @@ function createDefine(configEnv: { mode: string }): Record<string, string> {
 		__APP_ID__: JSON.stringify("react-foundation-lib-test"),
 		__DEV__: "true",
 		__PREVIEW__: "false",
-		__REACT_QUERY_PERSISTENCE_BUSTER__: JSON.stringify("react-foundation-lib-query-test")
+		__REACT_QUERY_PERSISTENCE_BUSTER__: JSON.stringify("react-foundation-lib-query-test"),
+		__SERVICE_WORKER_SCOPE__: JSON.stringify("/arm/"),
+		__SERVICE_WORKER_URL__: JSON.stringify("/arm/sw.js"),
+		__SERVICE_WORKER_UPDATE_RELOAD_COUNT_KEY__: JSON.stringify("react-foundation-lib-test.service-worker.update-reload-count.v1"),
+		__SERVICE_WORKER_MAX_AUTO_UPDATE_RELOADS__: "5"
 	};
 }
 
@@ -73,6 +77,7 @@ export default defineConfig((configEnv) => ({
 					"odata-service/index": resolve("src/odata-service/index.ts"),
 					"presets/index": resolve("src/presets/index.ts"),
 					"pwa/index": resolve("src/pwa/index.ts"),
+					"pwa/sw-cache-policy": resolve("src/pwa/swCachePolicy.ts"),
 					"query-client/index": resolve("src/query-client/index.ts"),
 					"range-output/index": resolve("src/range-output/index.ts"),
 					"seo/index": resolve("src/seo/index.ts"),

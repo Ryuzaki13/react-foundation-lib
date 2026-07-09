@@ -2,8 +2,69 @@
 
 Библиотечный пакет нижнего технического слоя: здесь лежат чистые функции, общие React/browser hooks и сериализуемые runtime-контракты без знания конкретных features, widgets, pages или apps.
 
+Пакет публикуется в npm как публичная библиотека, но его основная задача практическая: вынести повторно используемый `shared/lib` слой из собственных проектов автора и подключать его одинаково в нескольких host-приложениях. Это не универсальный набор утилит на все случаи жизни; контракты и состав модулей в первую очередь оптимизируются под семейство проектов, где поверх этого слоя используются `@ryuzaki13/react-foundation-api` и `@ryuzaki13/react-foundation-ui`.
+
+`react-foundation-lib` является нижним пакетом в этой цепочке. Он не должен зависеть от `api` или `ui`; наоборот, `api` и `ui` используют его как общий технический фундамент.
+
+## Установка
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+Пакет распространяется как ESM и не открывает корневой импорт. Используйте только точечные entrypoints из `exports`:
+
+```ts
+import { formatDateAsDate } from "@ryuzaki13/react-foundation-lib/formatters";
+import { createQueryClient } from "@ryuzaki13/react-foundation-lib/query-client";
+import { buildODataFilter } from "@ryuzaki13/react-foundation-lib/odata-service";
+import type { RowRecord } from "@ryuzaki13/react-foundation-lib/types";
+```
+
+Импорт вида `@ryuzaki13/react-foundation-lib` намеренно недоступен. Так consumer явно выбирает нужный модуль, а сборщик host-проекта не получает общий barrel со всем пакетом. Типы экспортируются теми же subpath entrypoints через `exports.types`.
+
+## Peer-зависимости
+
+Большинство внешних пакетов объявлены как optional peers. Это означает только то, что их не нужно ставить для каждого сценария. Если host использует entrypoint, который импортирует внешний пакет, совместимая peer-зависимость должна быть установлена в host-проекте.
+
+| Entry point                                 | Что может потребоваться в host-проекте                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `formatters`, `array`, `utils`, `validators` | Обычно не требуют дополнительных runtime-зависимостей.                                                   |
+| `hooks`, `dom`, `copy`, `media`, `pwa`       | `react`, если используются React hooks.                                                                 |
+| `query-client`, `error-report`              | `@tanstack/react-query`, `@tanstack/query-persist-client-core`, `@tanstack/query-broadcast-client-experimental`. |
+| `odata-service`                             | `zod`; отдельные helpers типизируются вокруг `@tanstack/react-query`.                                    |
+| `odata`, `notifications`                    | `zustand`, для отдельных store-helpers также `immer`.                                                    |
+| `table`                                     | `@tanstack/react-table` и `react` для selection hooks.                                                   |
+| `virtualizer`                               | `@tanstack/react-virtual` и `react`.                                                                    |
+| `hooks` search helpers                      | `@tanstack/react-router`.                                                                               |
+| `hooks` DnD helpers                         | `@dnd-kit/core`, `@dnd-kit/sortable`.                                                                   |
+| `hooks` floating/listbox и DOM references   | `@floating-ui/react`.                                                                                   |
+| `excel`                                     | `write-excel-file`.                                                                                     |
+
+Такая схема оставляет пакет библиотечным: зависимости не зашиваются в bundle, а host-приложение контролирует версии React, TanStack, Zod и других runtime-библиотек.
+
+## Проверка пакета
+
+Основные команды разработки:
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Перед публикацией можно проверить полный npm-артефакт:
+
+```bash
+npm run pack:dry-run
+```
+
 ## Содержание
 
+- [Установка](#установка)
+- [Peer-зависимости](#peer-зависимости)
+- [Проверка пакета](#проверка-пакета)
 - [Быстрый выбор модуля](#быстрый-выбор-модуля)
 - [Форматирование и значения](#форматирование-и-значения)
 - [OData, таблицы и экспорт](#odata-таблицы-и-экспорт)

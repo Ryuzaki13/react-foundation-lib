@@ -3,8 +3,9 @@ import { QueryClient, type Query, type QueryFunctionContext, type QueryState } f
 import { indexedDB } from "fake-indexeddb";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createIndexedDbQueryStorage, persistedQueryMeta, REACT_QUERY_PERSISTENCE_BUSTER, shouldPersistQuery } from "./persistence";
+import { createIndexedDbQueryStorage, REACT_QUERY_PERSISTENCE_BUSTER, shouldPersistQuery } from "./persistence";
 import { createQueryClient } from "./queryClient";
+import { persistedQueryMeta, sessionScopedQueryMeta } from "./queryMeta";
 
 function createQueryMock(hash: string, meta: Query["meta"]): Query {
 	return {
@@ -62,6 +63,8 @@ describe("query-client/persistence", () => {
 		expect(shouldPersistQuery(createQueryMock("enabled", persistedQueryMeta))).toBe(true);
 		expect(shouldPersistQuery(createQueryMock("disabled", undefined))).toBe(false);
 		expect(shouldPersistQuery(createQueryMock("disabled-meta", { persist: false }))).toBe(false);
+		expect(shouldPersistQuery(createQueryMock("session", sessionScopedQueryMeta))).toBe(false);
+		expect(shouldPersistQuery(createQueryMock("conflicting", { persist: true, sessionScoped: true }))).toBe(false);
 	});
 
 	it("per-query persister записывает в IndexedDB только opt-in query", async () => {

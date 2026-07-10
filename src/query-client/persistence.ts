@@ -1,25 +1,12 @@
 import { experimental_createQueryPersister, type AsyncStorage, type PersistedQuery } from "@tanstack/query-persist-client-core";
+import { type Query } from "@tanstack/react-query";
 
 import { getQueryPersistenceProjectAdapter } from "./queryPersistenceAdapter";
-
-import type { Query, QueryMeta } from "@tanstack/react-query";
-
-export type AppQueryMeta = {
-	persist?: boolean;
-} & Record<string, unknown>;
-
-declare module "@tanstack/react-query" {
-	interface Register {
-		queryMeta: AppQueryMeta;
-	}
-}
 
 const STORE_NAME = "queries";
 
 export const REACT_QUERY_PERSISTENCE_BUSTER = __REACT_QUERY_PERSISTENCE_BUSTER__;
 export const REACT_QUERY_PERSISTENCE_MAX_AGE = 90 * 24 * 60 * 60 * 1000;
-
-export const persistedQueryMeta = { persist: true } as const satisfies QueryMeta;
 
 type IndexedDbQueryStorageOptions = {
 	dbName?: string;
@@ -58,7 +45,7 @@ function getPersistencePrefix() {
 }
 
 export function shouldPersistQuery(query: Pick<Query, "meta">) {
-	return query.meta?.persist === true;
+	return query.meta?.persist === true && query.meta.sessionScoped !== true;
 }
 
 export function createIndexedDbQueryStorage<TStorageValue = unknown>(

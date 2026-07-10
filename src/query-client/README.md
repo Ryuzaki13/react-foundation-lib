@@ -4,7 +4,8 @@
 
 - создание singleton `QueryClient`;
 - opt-in сохранение справочных query в IndexedDB;
-- синхронизацию кэша и прикладных cache-событий между вкладками.
+- синхронизацию кэша и прикладных cache-событий между вкладками;
+- безопасный сброс auth-зависимых query при смене серверной сессии.
 
 Полная схема кеширования OData metadata, version-check и справочников описана в [docs/odata-reference-cache.md](/docs/odata-reference-cache.md).
 
@@ -69,7 +70,7 @@ export const persistedQueryMeta = { persist: true } as const;
 
 ```ts
 export function shouldPersistQuery(query: Pick<Query, "meta">) {
-	return query.meta?.persist === true;
+	return query.meta?.persist === true && query.meta.sessionScoped !== true;
 }
 ```
 
@@ -78,6 +79,34 @@ export function shouldPersistQuery(query: Pick<Query, "meta">) {
 - transient UI-запросы не попадают в IndexedDB;
 - пользовательские или чувствительные данные не начинают сохраняться случайно;
 - размер persistent cache растёт только там, где это осознанно включили.
+
+## Session-scoped query
+
+Если содержимое query или право на её чтение зависит от текущей серверной
+сессии, query нужно пометить отдельно:
+
+```ts
+meta: sessionScopedQueryMeta;
+```
+
+После входа, выхода, обновления сессии или потери авторизации приложение вызывает:
+
+```ts
+await resetSessionScopedQueries(queryClient);
+```
+
+Механизм отменяет незавершённые запросы прежней сессии, очищает только query с
+`meta.sessionScoped = true` и повторно запрашивает их активные экземпляры.
+Публичный кеш при этом не затрагивается.
+
+Для синхронизации нескольких вкладок приложение один раз подключает служебный
+канал через `installSessionScopedQueryReset`. Канал передаёт только команду
+сброса, но не данные query, auth payload или токены. Это принципиально отличает
+его от полной межвкладочной синхронизации Query cache.
+
+`persistedQueryMeta` и `sessionScopedQueryMeta` нельзя совмещать. Даже если оба
+признака ошибочно указаны вручную, фильтр persistence не сохранит session-scoped
+query в IndexedDB.
 
 ### Что сохраняется сейчас
 

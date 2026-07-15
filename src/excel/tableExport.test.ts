@@ -1,21 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { downloadExcelFile } from "./excel";
-import { createTableExcelColumn, downloadResolvedExcelTable } from "./tableExport";
+import { downloadExcelFile, downloadExcelWorkbook } from "./excel";
+import { createTableExcelColumn, downloadResolvedExcelTable, downloadResolvedExcelWorkbook } from "./tableExport";
 
 vi.mock("./excel", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("./excel")>();
 
 	return {
 		...actual,
-		downloadExcelFile: vi.fn()
+		downloadExcelFile: vi.fn(),
+		downloadExcelWorkbook: vi.fn()
 	};
 });
 
 const mockedDownloadExcelFile = vi.mocked(downloadExcelFile);
+const mockedDownloadExcelWorkbook = vi.mocked(downloadExcelWorkbook);
 
 beforeEach(() => {
 	mockedDownloadExcelFile.mockReset();
+	mockedDownloadExcelWorkbook.mockReset();
 });
 
 describe("shared/lib/excel/tableExport", () => {
@@ -211,5 +214,45 @@ describe("shared/lib/excel/tableExport", () => {
 		const args = mockedDownloadExcelFile.mock.calls[0]?.[0];
 
 		expect(args?.getCellStyle?.({ row: rows[1], column: columns[0], rowIndex: 1, columnIndex: 0 })).toEqual({ textColor: "#C50F1F" });
+	});
+
+	it("пробрасывает несколько подготовленных таблиц в workbook writer", async () => {
+		const firstTable = {
+			columns: [{ id: "DATE", header: "Дата", type: Date }],
+			rows: [{ DATE: "2026-01-01" }]
+		};
+		const secondTable = {
+			columns: [{ id: "VALUE", header: "Значение", type: Number }],
+			rows: [{ VALUE: 10 }],
+			cellStyles: [{ VALUE: { textColor: "#107C10" } }]
+		};
+
+		await downloadResolvedExcelWorkbook({
+			fileName: "charts.xlsx",
+			sheets: [
+				{ name: "Первый", table: firstTable },
+				{ name: "Второй", table: secondTable, autoFilter: false }
+			]
+		});
+
+		expect(mockedDownloadExcelWorkbook).toHaveBeenCalledWith(
+			expect.objectContaining({
+				fileName: "charts.xlsx",
+				sheets: [
+					expect.objectContaining({ name: "Первый", columns: firstTable.columns, rows: firstTable.rows, autoFilter: true }),
+					expect.objectContaining({ name: "Второй", columns: secondTable.columns, rows: secondTable.rows, autoFilter: false })
+				]
+			})
+		);
+
+		const secondSheet = mockedDownloadExcelWorkbook.mock.calls[0]?.[0].sheets[1];
+		expect(
+			secondSheet?.getCellStyle?.({
+				row: secondTable.rows[0],
+				column: secondTable.columns[0],
+				rowIndex: 0,
+				columnIndex: 0
+			})
+		).toEqual({ textColor: "#107C10" });
 	});
 });

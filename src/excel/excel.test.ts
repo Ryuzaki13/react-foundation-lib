@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildExcelAutoFilterRef, buildExcelSheetData, downloadExcelFile } from "./excel";
+import { buildExcelAutoFilterRef, buildExcelSheetData, downloadExcelFile, downloadExcelWorkbook, resolveExcelSheetNames } from "./excel";
 
 const toFileMock = vi.hoisted(() => vi.fn());
 const writeXlsxFileMock = vi.hoisted(() =>
@@ -45,6 +45,15 @@ describe("shared/lib/excel", () => {
 		expect(buildExcelAutoFilterRef(28, 10)).toBe("A1:AB10");
 	});
 
+	it("нормализует ограничения и конфликты имён листов", () => {
+		expect(resolveExcelSheetNames(["Продажи/Россия", "продажи россия", "", "Очень длинное название отчёта за период 2026"])).toEqual([
+			"Продажи Россия",
+			"продажи россия (2)",
+			"Лист 3",
+			"Очень длинное название отчёта з"
+		]);
+	});
+
 	it("преобразует строковые OData-даты для Date-колонок", () => {
 		const sheetData = buildExcelSheetData({
 			columns: [{ id: "CREATED_AT", header: "Дата", type: Date, format: "dd.mm.yyyy" }],
@@ -75,7 +84,7 @@ describe("shared/lib/excel", () => {
 			rows: [{ A: "1", B: "2" }]
 		});
 
-		const options = (writeXlsxFileMock.mock.calls[0] as unknown[] | undefined)?.[2] as
+		const options = (writeXlsxFileMock.mock.calls[0] as unknown[] | undefined)?.[1] as
 			| {
 					features?: Array<{
 						files?: {
@@ -91,5 +100,55 @@ describe("shared/lib/excel", () => {
 			'<autoFilter ref="A1:B2"/>'
 		);
 		expect(toFileMock).toHaveBeenCalledWith("export.xlsx");
+	});
+
+	it("формирует отдельные листы и диапазоны autoFilter одной книги", async () => {
+		await downloadExcelWorkbook({
+			fileName: "charts.xlsx",
+			sheets: [
+				{
+					name: "График/1",
+					columns: [{ id: "DATE", header: "Дата" }],
+					rows: [{ DATE: "2026-01-01" }],
+					autoFilter: true
+				},
+				{
+					name: "График 2",
+					columns: [
+						{ id: "DATE", header: "Дата" },
+						{ id: "VALUE", header: "Значение", type: Number }
+					],
+					rows: [
+						{ DATE: "2026-01-01", VALUE: 10 },
+						{ DATE: "2026-01-02", VALUE: 20 }
+					],
+					autoFilter: true
+				}
+			]
+		});
+
+		const sheets = (writeXlsxFileMock.mock.calls[0] as unknown[] | undefined)?.[0] as
+			Array<{ sheet?: string; data?: unknown[]; columns?: Array<{ width?: number }> }> | undefined;
+		expect(sheets?.map((sheet) => sheet.sheet)).toEqual(["График 1", "График 2"]);
+		expect(sheets?.map((sheet) => sheet.data?.length)).toEqual([2, 3]);
+
+		const options = (writeXlsxFileMock.mock.calls[0] as unknown[] | undefined)?.[1] as
+			| {
+					features?: Array<{
+						files?: {
+							transform?: Record<
+								string,
+								{ transform?: (content: string, options: unknown, properties: { sheetIndex: number }) => string }
+							>;
+						};
+					}>;
+			  }
+			| undefined;
+		const transform = options?.features?.[0]?.files?.transform?.["xl/worksheets/sheet{id}.xml"]?.transform;
+		const content = "<worksheet><sheetData></sheetData></worksheet>";
+
+		expect(transform?.(content, {}, { sheetIndex: 0 })).toContain('<autoFilter ref="A1:A2"/>');
+		expect(transform?.(content, {}, { sheetIndex: 1 })).toContain('<autoFilter ref="A1:B3"/>');
+		expect(toFileMock).toHaveBeenCalledWith("charts.xlsx");
 	});
 });

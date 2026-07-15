@@ -1,4 +1,4 @@
-import writeXlsxFile, { type Cell, type CellObject, type Feature, type SheetData } from "write-excel-file/browser";
+import writeXlsxFile, { type Cell, type CellObject, type Feature, type Sheet, type SheetData } from "write-excel-file/browser";
 
 import { parseDate } from "../formatters/date";
 import { type State } from "../types";
@@ -23,6 +23,20 @@ export type DownloadExcelFileArgs = {
 	getCellStyle?: (args: { row: ExcelRow; column: ExcelColumn; rowIndex: number; columnIndex: number }) => ExcelCellStyle | undefined;
 };
 
+/** Описание одного табличного листа внутри Excel-книги. */
+export type ExcelWorkbookSheet = Omit<DownloadExcelFileArgs, "fileName"> & {
+	/** Желаемое имя листа; writer нормализует ограничения формата и конфликты имён. */
+	name: string;
+};
+
+/** Аргументы формирования Excel-книги с одним или несколькими табличными листами. */
+export type DownloadExcelWorkbookArgs = {
+	/** Имя скачиваемого `.xlsx` файла. */
+	fileName: string;
+	/** Листы книги в порядке отображения в Excel. */
+	sheets: ExcelWorkbookSheet[];
+};
+
 type BrowserExcelFileContent = File | Blob | ArrayBuffer;
 
 const VALUE_STATE_TEXT_COLORS: Partial<Record<State, string>> = {
@@ -37,6 +51,11 @@ const HEADER_CELL_STYLE = {
 	bottomBorderStyle: "thin",
 	bottomBorderColor: "#D9D9D9"
 } satisfies ExcelCellStyle;
+
+const EXCEL_SHEET_NAME_MAX_LENGTH = 31;
+const EXCEL_SHEET_NAME_INVALID_CHARACTERS = /[\u0000-\u001f[\]/\\:*?]+/g;
+const EXCEL_SHEET_NAME_EDGE_APOSTROPHES = /^'+|'+$/g;
+const EXCEL_SHEET_NAME_WHITESPACE = /\s+/g;
 
 /**
  * Приводит общий value-state проекта к базовому Excel-стилю.
@@ -85,18 +104,57 @@ export function buildExcelAutoFilterRef(columnCount: number, rowCount: number): 
  * Библиотека умеет трансформировать XML листа, но не имеет высокоуровневого
  * параметра `autoFilter`, поэтому здесь изолирован низкоуровневый OpenXML-хук.
  */
-function createAutoFilterFeature<FileContent>(ref: string | undefined): Feature<FileContent> | undefined {
-	if (!ref) return undefined;
+function createAutoFilterFeature<FileContent>(refs: readonly (string | undefined)[]): Feature<FileContent> | undefined {
+	if (!refs.some(Boolean)) return undefined;
 
 	return {
 		files: {
 			transform: {
 				"xl/worksheets/sheet{id}.xml": {
-					transform: (content) => content.replace("</sheetData>", `</sheetData><autoFilter ref="${ref}"/>`)
+					transform: (content, _options, properties) => {
+						const ref = refs[properties.sheetIndex];
+						return ref ? content.replace("</sheetData>", `</sheetData><autoFilter ref="${ref}"/>`) : content;
+					}
 				}
 			}
 		}
 	};
+}
+
+/**
+ * Нормализует имена листов по ограничениям Excel и делает их уникальными.
+ *
+ * Runtime-заголовки могут содержать запрещённые символы, превышать 31 знак или
+ * совпадать между несколькими представлениями одной конфигурации. Нормализация
+ * выполняется централизованно, чтобы все consumers получали открываемую книгу.
+ */
+export function resolveExcelSheetNames(names: readonly string[]): string[] {
+	const usedNames = new Set<string>();
+	const resolvedNames: string[] = [];
+
+	for (let index = 0; index < names.length; index += 1) {
+		const fallbackName = `Лист ${index + 1}`;
+		const normalizedName = names[index]
+			?.replace(EXCEL_SHEET_NAME_INVALID_CHARACTERS, " ")
+			.replace(EXCEL_SHEET_NAME_WHITESPACE, " ")
+			.trim()
+			.replace(EXCEL_SHEET_NAME_EDGE_APOSTROPHES, "")
+			.trim();
+		const baseName = normalizedName || fallbackName;
+		let resolvedName = baseName.slice(0, EXCEL_SHEET_NAME_MAX_LENGTH);
+		let duplicateIndex = 2;
+
+		while (usedNames.has(resolvedName.toLocaleLowerCase())) {
+			const suffix = ` (${duplicateIndex})`;
+			resolvedName = `${baseName.slice(0, EXCEL_SHEET_NAME_MAX_LENGTH - suffix.length)}${suffix}`;
+			duplicateIndex += 1;
+		}
+
+		usedNames.add(resolvedName.toLocaleLowerCase());
+		resolvedNames.push(resolvedName);
+	}
+
+	return resolvedNames;
 }
 
 /**
@@ -159,25 +217,54 @@ export function buildExcelSheetData(args: Omit<DownloadExcelFileArgs, "fileName"
 }
 
 /**
+ * Формирует и скачивает Excel-книгу с независимыми табличными листами.
+ *
+ * Каждый лист получает собственные ширины колонок, стили ячеек и диапазон
+ * автофильтра. Доменная подготовка колонок и строк остаётся у вызывающей стороны.
+ */
+export async function downloadExcelWorkbook(args: DownloadExcelWorkbookArgs): Promise<void> {
+	if (args.sheets.length === 0) {
+		throw new Error("Для формирования Excel-книги нужен минимум один лист");
+	}
+
+	const sheetNames = resolveExcelSheetNames(args.sheets.map((sheet) => sheet.name));
+	const autoFilterRefs: Array<string | undefined> = [];
+	const sheets: Sheet<BrowserExcelFileContent>[] = args.sheets.map((sheet, index) => {
+		const data = buildExcelSheetData(sheet);
+		autoFilterRefs.push(sheet.autoFilter ? buildExcelAutoFilterRef(sheet.columns.length, data.length) : undefined);
+
+		return {
+			data,
+			sheet: sheetNames[index],
+			columns: sheet.columns.map((column) => ({
+				width: column.width
+			}))
+		};
+	});
+	const autoFilterFeature = createAutoFilterFeature<BrowserExcelFileContent>(autoFilterRefs);
+
+	await writeXlsxFile(sheets, {
+		features: autoFilterFeature ? [autoFilterFeature] : undefined
+	}).toFile(args.fileName);
+}
+
+/**
  * Формирует и скачивает `.xlsx` в браузере.
  *
  * Это публичная generic-точка shared-слоя: она отвечает только за Excel-файл,
  * а подготовка доменных данных остаётся на вызывающей стороне.
  */
 export async function downloadExcelFile(args: DownloadExcelFileArgs): Promise<void> {
-	const sheetData = buildExcelSheetData(args);
-	const autoFilterRef = args.autoFilter ? buildExcelAutoFilterRef(args.columns.length, sheetData.length) : undefined;
-	const autoFilterFeature = createAutoFilterFeature<BrowserExcelFileContent>(autoFilterRef);
-
-	await writeXlsxFile(
-		sheetData,
-		{
-			columns: args.columns.map((column) => ({
-				width: column.width
-			}))
-		},
-		{
-			features: autoFilterFeature ? [autoFilterFeature] : undefined
-		}
-	).toFile(args.fileName);
+	await downloadExcelWorkbook({
+		fileName: args.fileName,
+		sheets: [
+			{
+				name: "Sheet1",
+				columns: args.columns,
+				rows: args.rows,
+				autoFilter: args.autoFilter,
+				getCellStyle: args.getCellStyle
+			}
+		]
+	});
 }

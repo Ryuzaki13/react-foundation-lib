@@ -14,7 +14,7 @@ import {
 	type ODataMetaType
 } from "../odata-service";
 
-import { downloadExcelFile, type ExcelCellStyle, type ExcelColumn, type ExcelRow } from "./excel";
+import { downloadExcelFile, downloadExcelWorkbook, type ExcelCellStyle, type ExcelColumn, type ExcelRow } from "./excel";
 
 export type TableExcelColumnDescriptor = {
 	id: string;
@@ -36,6 +36,24 @@ export type DownloadResolvedExcelTableArgs = {
 	fileName: string;
 	table: ResolvedExcelTable;
 	autoFilter?: boolean;
+};
+
+/** Один подготовленный табличный лист generic Excel-книги. */
+export type ResolvedExcelWorkbookSheet = {
+	/** Желаемое имя листа. */
+	name: string;
+	/** Подготовленные колонки, строки и optional стили ячеек. */
+	table: ResolvedExcelTable;
+	/** Включить автофильтр для этого листа. По умолчанию включён. */
+	autoFilter?: boolean;
+};
+
+/** Аргументы скачивания книги из нескольких подготовленных таблиц. */
+export type DownloadResolvedExcelWorkbookArgs = {
+	/** Имя скачиваемого `.xlsx` файла. */
+	fileName: string;
+	/** Табличные листы в порядке отображения в книге. */
+	sheets: ResolvedExcelWorkbookSheet[];
 };
 
 const INTEGER_EXCEL_FORMAT = "#,##0";
@@ -164,5 +182,19 @@ export async function downloadResolvedExcelTable({ fileName, table, autoFilter =
 		rows: table.rows,
 		autoFilter,
 		getCellStyle: ({ rowIndex, column }) => table.cellStyles?.[rowIndex]?.[column.id]
+	});
+}
+
+/** Скачивает многолистовую книгу из таблиц, уже подготовленных доменными consumers. */
+export async function downloadResolvedExcelWorkbook({ fileName, sheets }: DownloadResolvedExcelWorkbookArgs): Promise<void> {
+	await downloadExcelWorkbook({
+		fileName,
+		sheets: sheets.map(({ name, table, autoFilter = true }) => ({
+			name,
+			columns: table.columns,
+			rows: table.rows,
+			autoFilter,
+			getCellStyle: ({ rowIndex, column }) => table.cellStyles?.[rowIndex]?.[column.id]
+		}))
 	});
 }

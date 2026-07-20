@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
+	autoPlacement,
 	autoUpdate,
 	flip,
-	size as floatingSize,
 	offset,
 	Placement,
 	shift,
+	size as floatingSize,
 	useDismiss,
 	useFloating,
 	useInteractions,
@@ -40,6 +41,9 @@ export type FloatingListboxSizeStyle = {
 
 export type FloatingListboxSizeResolver = (context: FloatingListboxSizeContext) => FloatingListboxSizeStyle;
 
+/** Стратегия выбора стороны для floating-элемента относительно reference. */
+export type FloatingListboxPlacementStrategy = "flip" | "auto";
+
 type FloatingListboxStandardSizeProperty = "width" | "minWidth" | "maxWidth" | "maxHeight";
 
 type FloatingListboxAppliedSizeState = {
@@ -50,6 +54,21 @@ type FloatingListboxAppliedSizeState = {
 /** Хранит свойства и их исходные значения до императивного применения resolver. */
 const floatingListboxAppliedSizeState = new WeakMap<HTMLElement, FloatingListboxAppliedSizeState>();
 
+/** Хранит актуальный resolver отдельно от callback, который Floating UI может переиспользовать. */
+const floatingListboxSizeResolvers = new WeakMap<object, FloatingListboxSizeResolver>();
+
+/** Полный набор выровненных сторон для поиска наиболее просторного положения. */
+const FLOATING_LISTBOX_AUTO_PLACEMENTS: Placement[] = [
+	"bottom-start",
+	"bottom-end",
+	"top-start",
+	"top-end",
+	"left-start",
+	"left-end",
+	"right-start",
+	"right-end"
+];
+
 interface UseFloatingListboxParams<T> {
 	options: readonly T[];
 	selectedIndex: number;
@@ -59,6 +78,8 @@ interface UseFloatingListboxParams<T> {
 	onSelect?: (option: T) => void;
 	disabled?: boolean;
 	placement?: Placement;
+	/** `auto` сравнивает свободное место сверху, снизу, слева и справа. */
+	placementStrategy?: FloatingListboxPlacementStrategy;
 	closeOnSelect?: boolean;
 	focusFloatingOnOpen?: boolean;
 	allowOpenWithoutOptions?: boolean;
@@ -75,6 +96,7 @@ export function useFloatingListbox<T>({
 	onSelect,
 	disabled,
 	placement = "bottom-start",
+	placementStrategy = "flip",
 	closeOnSelect = true,
 	focusFloatingOnOpen = true,
 	allowOpenWithoutOptions = false,
@@ -88,6 +110,7 @@ export function useFloatingListbox<T>({
 	const [currentActiveIndex, setActiveIndex] = useState(
 		selectedIndex >= 0 ? selectedIndex : findFirstEnabledIndex(options, getOptionDisabled)
 	);
+	const [floatingSizeResolverOwner] = useState<object>(() => ({}));
 
 	/**
 	 * Поддерживает активный индекс в валидном состоянии при изменении набора опций
@@ -110,8 +133,21 @@ export function useFloatingListbox<T>({
 		return findFirstEnabledIndex(options, getOptionDisabled);
 	};
 	const activeIndex = resolveActiveIndex(currentActiveIndex);
+	const placementMiddleware =
+		placementStrategy === "auto"
+			? autoPlacement({
+					allowedPlacements: FLOATING_LISTBOX_AUTO_PLACEMENTS,
+					/*
+					 * Свободную сторону сравниваем по main axis. Варианты start/end при
+					 * этом всё равно исключаются autoPlacement, если не помещаются по
+					 * cross axis.
+					 */
+					crossAxis: false,
+					padding: 8
+				})
+			: flip({ padding: 8 });
 
-	const { refs, floatingStyles, context } = useFloating({
+	const { refs, floatingStyles, context, update } = useFloating({
 		open: resolvedOpen,
 		onOpenChange: setResolvedOpen,
 		placement,
@@ -119,14 +155,14 @@ export function useFloatingListbox<T>({
 		strategy: "fixed",
 		middleware: [
 			offset(4),
-			flip({ padding: 8 }),
+			placementMiddleware,
 			shift({ padding: 8 }),
 			floatingSize({
 				padding: 8,
 				apply({ availableWidth, availableHeight, rects, elements }) {
 					const viewport = elements.floating.ownerDocument.documentElement;
 					const floatingStyle = elements.floating.style;
-					const resolvedSize = resolveFloatingSize?.({
+					const resolvedSize = floatingListboxSizeResolvers.get(floatingSizeResolverOwner)?.({
 						availableWidth,
 						availableHeight,
 						viewportWidth: viewport.clientWidth,
@@ -178,6 +214,37 @@ export function useFloatingListbox<T>({
 		],
 		whileElementsMounted: autoUpdate
 	});
+	const hasFloatingSizeResolver = resolveFloatingSize !== undefined;
+
+	/*
+	 * Floating UI сравнивает middleware структурно и может сохранить первый
+	 * size.apply. WeakMap позволяет этому callback читать актуальный resolver после
+	 * загрузки OData-узлов, не пересоздавая конкурирующие middleware.
+	 */
+	useLayoutEffect(() => {
+		if (resolveFloatingSize) {
+			floatingListboxSizeResolvers.set(floatingSizeResolverOwner, resolveFloatingSize);
+		} else {
+			floatingListboxSizeResolvers.delete(floatingSizeResolverOwner);
+		}
+
+		return () => {
+			floatingListboxSizeResolvers.delete(floatingSizeResolverOwner);
+		};
+	}, [floatingSizeResolverOwner, resolveFloatingSize]);
+
+	/**
+	 * Асинхронно загруженные или отфильтрованные опции могут не изменить внешний
+	 * rect popup: grid с прежним числом строк остаётся того же размера. Явный
+	 * update повторно запускает placement и size middleware после commit списка.
+	 */
+	useLayoutEffect(() => {
+		if (!resolvedOpen || !hasFloatingSizeResolver) {
+			return;
+		}
+
+		void update();
+	}, [hasFloatingSizeResolver, options.length, resolvedOpen, update]);
 
 	const dismiss = useDismiss(context);
 	const role = useRole(context, { role: "listbox" });

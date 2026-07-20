@@ -167,30 +167,57 @@ describe("sanitize filter definitions", () => {
 	});
 
 	it("нормализует legacy kind/componentId из сохранённых конфигов", () => {
-		const legacySegment: ODataCompiledFilterDefinition = {
+		const legacySegment = Object.freeze({
 			id: "SEG",
 			ownerColumnId: "TEXT_SEGMENT",
-			columnIds: ["TEXT_SEGMENT"],
-			kind: "segment",
+			columnIds: Object.freeze(["TEXT_SEGMENT"]),
+			kind: "odata-segment",
 			componentId: "multi-select",
 			controlType: "string"
-		};
-		const legacyTree: ODataCompiledFilterDefinition = {
+		}) as unknown as ODataCompiledFilterDefinition;
+		const legacyTree = Object.freeze({
 			id: "TREE",
 			ownerColumnId: "TEXT_ROOT",
-			columnIds: ["TEXT_ROOT", "TEXT_CHILD"],
-			kind: "tree",
-			componentId: "tree-multi-select",
+			columnIds: Object.freeze(["TEXT_ROOT", "TEXT_CHILD"]),
+			kind: "odata-tree",
+			componentId: "treeSelect",
 			controlType: "string"
-		};
-		Object.defineProperty(legacySegment, "kind", { value: "odata-segment", writable: true });
-		Object.defineProperty(legacyTree, "kind", { value: "odata-tree", writable: true });
-		Object.defineProperty(legacyTree, "componentId", { value: "treeSelect", writable: true });
+		}) as unknown as ODataCompiledFilterDefinition;
 
 		expect(sanitizeFilterDefinitions([legacySegment, legacyTree])).toMatchObject([
 			{ id: "SEG", kind: "segment", componentId: "multi-select" },
 			{ id: "TREE", kind: "tree", componentId: "tree-select" }
 		]);
+		expect(legacySegment.kind as string).toBe("odata-segment");
+		expect(legacyTree).toMatchObject({ kind: "odata-tree", componentId: "treeSelect" });
+	});
+
+	it("не мутирует замороженный актуальный tree-фильтр", () => {
+		const definition = Object.freeze({
+			id: " TREE ",
+			ownerColumnId: " TEXT_ROOT ",
+			columnIds: Object.freeze([" TEXT_ROOT ", "TEXT_CHILD"]),
+			kind: "tree",
+			componentId: "tree-select",
+			controlType: "string"
+		}) as unknown as ODataCompiledFilterDefinition;
+
+		expect(sanitizeFilterDefinitions([definition])).toEqual([
+			{
+				id: "TREE",
+				ownerColumnId: "TEXT_ROOT",
+				columnIds: ["TEXT_ROOT", "TEXT_CHILD"],
+				kind: "tree",
+				componentId: "tree-select",
+				controlType: "string"
+			}
+		]);
+		expect(definition).toMatchObject({
+			id: " TREE ",
+			ownerColumnId: " TEXT_ROOT ",
+			columnIds: [" TEXT_ROOT ", "TEXT_CHILD"],
+			componentId: "tree-select"
+		});
 	});
 
 	it("санитизирует значения фильтров, dedupe и patch-обновления", () => {

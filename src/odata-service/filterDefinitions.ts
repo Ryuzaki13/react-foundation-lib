@@ -382,51 +382,59 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 		const id = definition.id.trim();
 		const ownerColumnId = definition.ownerColumnId.trim();
 		if (!id || !ownerColumnId) continue;
+		/*
+		 * Sanitizer может получать readonly snapshot из Zustand/Immer. Legacy-поля
+		 * нормализуем только на локальной копии, чтобы чтение конфигурации никогда
+		 * не изменяло и не пыталось разморозить входной объект.
+		 */
+		const normalizedDefinition = { ...definition };
 
 		// HACK: на период пересохранения всех конфигов
-		if ((definition.kind as string) === "odata-segment") {
-			definition.kind = "segment";
+		if ((normalizedDefinition.kind as string) === "odata-segment") {
+			normalizedDefinition.kind = "segment";
 		}
-		if ((definition.kind as string) === "odata-tree") {
-			definition.kind = "tree";
+		if ((normalizedDefinition.kind as string) === "odata-tree") {
+			normalizedDefinition.kind = "tree";
 		}
 
-		switch (definition.kind) {
+		switch (normalizedDefinition.kind) {
 			case "segment": {
 				normalized.push({
-					...definition,
+					...normalizedDefinition,
 					id,
 					ownerColumnId,
 					columnIds: [ownerColumnId],
-					componentId: definition.componentId === "select" ? "select" : "multi-select",
-					dictionaryCodeKey: normalizeDictionaryCodeKey(definition.dictionaryCodeKey, ownerColumnId)
+					componentId: normalizedDefinition.componentId === "select" ? "select" : "multi-select",
+					dictionaryCodeKey: normalizeDictionaryCodeKey(normalizedDefinition.dictionaryCodeKey, ownerColumnId)
 				});
 				break;
 			}
 
 			case "tree": {
-				const columnIds = [...new Set(definition.columnIds.map((columnId) => columnId.trim()).filter(Boolean))];
+				const columnIds = [...new Set(normalizedDefinition.columnIds.map((columnId) => columnId.trim()).filter(Boolean))];
 				if (columnIds.length < 2) break;
 
 				// HACK: на период пересохранения всех конфигов
-				definition.componentId = (definition.componentId as string) === "treeSelect" ? "tree-select" : "tree-multi-select";
+				const rawComponentId = normalizedDefinition.componentId as string;
+				const componentId =
+					rawComponentId === "treeSelect" || rawComponentId === "tree-select" ? "tree-select" : "tree-multi-select";
 
 				normalized.push({
-					...definition,
+					...normalizedDefinition,
 					id,
 					ownerColumnId: columnIds.includes(ownerColumnId) ? ownerColumnId : columnIds[0],
 					columnIds,
-					componentId: definition.componentId === "tree-select" ? "tree-select" : "tree-multi-select"
+					componentId
 				});
 				break;
 			}
 
 			case "local": {
-				const binding = sanitizeFilterBinding(definition.binding);
+				const binding = sanitizeFilterBinding(normalizedDefinition.binding);
 				if (!binding) break;
 
 				normalized.push({
-					...definition,
+					...normalizedDefinition,
 					id,
 					ownerColumnId,
 					// Для local-фильтров список колонок является производным от conditions.
@@ -440,7 +448,7 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 
 			case "advanced": {
 				normalized.push({
-					...definition,
+					...normalizedDefinition,
 					id,
 					ownerColumnId
 				});
@@ -449,7 +457,7 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 
 			case "column": {
 				normalized.push({
-					...definition,
+					...normalizedDefinition,
 					id,
 					ownerColumnId
 				});
@@ -457,7 +465,7 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 			}
 
 			default: {
-				const _checker: never = definition;
+				const _checker: never = normalizedDefinition;
 				void _checker;
 			}
 		}

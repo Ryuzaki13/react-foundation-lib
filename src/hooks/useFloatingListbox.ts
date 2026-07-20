@@ -15,6 +15,41 @@ import {
 
 import { findFirstEnabledIndex, findLastEnabledIndex, findNextEnabledIndex, handleKeyboardActivation } from "../utils";
 
+/** Геометрия, которую Floating UI вычислил для доступной стороны listbox. */
+export type FloatingListboxSizeContext = {
+	availableWidth: number;
+	availableHeight: number;
+	viewportWidth: number;
+	viewportHeight: number;
+	referenceWidth: number;
+	referenceHeight: number;
+};
+
+/**
+ * Размеры floating-элемента и CSS custom properties, которые специализированный
+ * picker может вычислить из доступного viewport без собственного middleware.
+ */
+export type FloatingListboxSizeStyle = {
+	width?: string;
+	minWidth?: string;
+	maxWidth?: string;
+	maxHeight?: string;
+} & {
+	[customProperty: `--${string}`]: string | undefined;
+};
+
+export type FloatingListboxSizeResolver = (context: FloatingListboxSizeContext) => FloatingListboxSizeStyle;
+
+type FloatingListboxStandardSizeProperty = "width" | "minWidth" | "maxWidth" | "maxHeight";
+
+type FloatingListboxAppliedSizeState = {
+	customProperties: Set<`--${string}`>;
+	standardProperties: Map<FloatingListboxStandardSizeProperty, string>;
+};
+
+/** Хранит свойства и их исходные значения до императивного применения resolver. */
+const floatingListboxAppliedSizeState = new WeakMap<HTMLElement, FloatingListboxAppliedSizeState>();
+
 interface UseFloatingListboxParams<T> {
 	options: readonly T[];
 	selectedIndex: number;
@@ -28,6 +63,7 @@ interface UseFloatingListboxParams<T> {
 	focusFloatingOnOpen?: boolean;
 	allowOpenWithoutOptions?: boolean;
 	restoreFocusOnClose?: boolean;
+	resolveFloatingSize?: FloatingListboxSizeResolver;
 }
 
 export function useFloatingListbox<T>({
@@ -42,7 +78,8 @@ export function useFloatingListbox<T>({
 	closeOnSelect = true,
 	focusFloatingOnOpen = true,
 	allowOpenWithoutOptions = false,
-	restoreFocusOnClose = true
+	restoreFocusOnClose = true,
+	resolveFloatingSize
 }: UseFloatingListboxParams<T>) {
 	const optionRefs = useRef<Array<HTMLElement | null>>([]);
 	const [internalOpen, setInternalOpen] = useState(false);
@@ -86,10 +123,55 @@ export function useFloatingListbox<T>({
 			shift({ padding: 8 }),
 			floatingSize({
 				padding: 8,
-				apply({ availableHeight, rects, elements }) {
-					Object.assign(elements.floating.style, {
-						minWidth: `${rects.reference.width}px`,
-						maxHeight: `${Math.max(availableHeight, 120)}px`
+				apply({ availableWidth, availableHeight, rects, elements }) {
+					const viewport = elements.floating.ownerDocument.documentElement;
+					const floatingStyle = elements.floating.style;
+					const resolvedSize = resolveFloatingSize?.({
+						availableWidth,
+						availableHeight,
+						viewportWidth: viewport.clientWidth,
+						viewportHeight: viewport.clientHeight,
+						referenceWidth: rects.reference.width,
+						referenceHeight: rects.reference.height
+					});
+
+					/*
+					 * Сначала сбрасываем размеры предыдущего resolver: Floating UI сохраняет
+					 * один DOM-узел между режимами, поэтому старые width и CSS-переменные
+					 * иначе продолжат влиять на следующий вариант отображения.
+					 */
+					const previousAppliedState = floatingListboxAppliedSizeState.get(elements.floating);
+					for (const property of previousAppliedState?.customProperties ?? []) {
+						floatingStyle.removeProperty(property);
+					}
+					for (const [property, previousValue] of previousAppliedState?.standardProperties ?? []) {
+						floatingStyle[property] = previousValue;
+					}
+
+					floatingStyle.minWidth = `${rects.reference.width}px`;
+					floatingStyle.maxHeight = `${Math.max(availableHeight, 120)}px`;
+
+					const nextCustomProperties = new Set<`--${string}`>();
+					const nextStandardProperties = new Map<FloatingListboxStandardSizeProperty, string>();
+					for (const [property, value] of Object.entries(resolvedSize ?? {})) {
+						if (property.startsWith("--")) {
+							const customProperty = property as `--${string}`;
+							if (value !== undefined) {
+								floatingStyle.setProperty(customProperty, value);
+								nextCustomProperties.add(customProperty);
+							}
+							continue;
+						}
+
+						if (value !== undefined) {
+							const standardProperty = property as FloatingListboxStandardSizeProperty;
+							nextStandardProperties.set(standardProperty, floatingStyle[standardProperty]);
+							floatingStyle[standardProperty] = value;
+						}
+					}
+					floatingListboxAppliedSizeState.set(elements.floating, {
+						customProperties: nextCustomProperties,
+						standardProperties: nextStandardProperties
 					});
 				}
 			})
@@ -241,6 +323,15 @@ export function useFloatingListbox<T>({
 	};
 
 	const handleFloatingKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+		if (event.target !== event.currentTarget) {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				close();
+			}
+
+			return;
+		}
+
 		if (event.key === "ArrowDown") {
 			event.preventDefault();
 			setActiveIndex((currentIndex) => findNextEnabledIndex(options, resolveActiveIndex(currentIndex), 1, getOptionDisabled));

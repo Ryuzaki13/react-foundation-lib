@@ -1,4 +1,4 @@
-import type { BaseType, InputType } from "../types";
+import { type BaseType, type InputType } from "../types";
 
 /**
  * Базовые типы с которыми работают UI компоненты.
@@ -36,7 +36,16 @@ export type ODataFormatterDescription = {
 /**
  * Базовое представление значения входящего одного odata параметра
  */
-export type ODataValue<T extends BaseType = BaseType> = {
+export type ODataParameterValue = BaseType | BaseType[];
+
+/**
+ * Значение одного OData-параметра до финального форматирования.
+ *
+ * Массив допустим только как вход custom formatter-а: сам OData-параметр
+ * остаётся scalar и formatter обязан преобразовать весь массив в строковый
+ * литерал, который понимают OData и конкретный SAP Gateway endpoint.
+ */
+export type ODataValue<T extends ODataParameterValue = BaseType> = {
 	value: T;
 	formatter?: ODataFormatterFn;
 };
@@ -56,7 +65,7 @@ export type InputValue<T extends InputType = InputType> = {
  *   p_dokar: string;
  * }
  */
-export type UnwrappedODataParameters = Record<string, BaseType>;
+export type UnwrappedODataParameters = Record<string, ODataParameterValue>;
 export type UnwrappedInputParameters = Record<string, InputType>;
 
 /**
@@ -66,7 +75,7 @@ export type UnwrappedInputParameters = Record<string, InputType>;
  *   p_dokar: { value: string };
  * }
  */
-export type WrappedODataParameters = Record<string, ODataValue>;
+export type WrappedODataParameters = Record<string, ODataValue<ODataParameterValue>>;
 export type WrappedInputParameters = Record<string, InputValue>;
 
 /**

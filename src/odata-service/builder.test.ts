@@ -9,7 +9,7 @@ import {
 	buildParameterEntries
 } from "./builder";
 
-import type { EntityMetadata, FunctionImportMetadata, ODataServiceConfig } from "./types";
+import { type EntityMetadata, type FunctionImportMetadata, type ODataServiceConfig } from "./types";
 
 const config: ODataServiceConfig = {
 	service: "TEXT_DEMO_SRV",
@@ -56,6 +56,23 @@ describe("odata-service builder", () => {
 				p_code: { value: "AB", formatter: (value) => `'${String(value).toLowerCase()}'` }
 			})
 		).toEqual([["p_code", "'ab'"]]);
+	});
+
+	it("передаёт весь массив одному custom formatter параметра", () => {
+		const formatter = vi.fn((value: unknown) => `'${(value as string[]).join("|")}'`);
+
+		expect(
+			buildParameterEntries(entityMetadata, {
+				p_code: { value: ["A", "C"], formatter }
+			})
+		).toEqual([["p_code", "'A|C'"]]);
+		expect(formatter).toHaveBeenCalledWith(["A", "C"]);
+	});
+
+	it("отклоняет массив OData-параметра без custom formatter", () => {
+		expect(() => buildParameterEntries(entityMetadata, { p_code: { value: ["A", "C"] } })).toThrow(
+			"Массив значений OData-параметра требует custom formatter"
+		);
 	});
 
 	it("валидирует mandatory и maxLength параметров", () => {

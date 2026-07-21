@@ -4,13 +4,14 @@
 
 import { odataFormatValue } from "./formatters";
 import {
-	EntityMetadata,
-	EntityParameterProperty,
-	FunctionImportMetadata,
-	ODataOperationMethod,
-	ODataServiceConfig,
-	ODataValue,
-	WrappedODataParameters
+	type EntityMetadata,
+	type EntityParameterProperty,
+	type FunctionImportMetadata,
+	type ODataOperationMethod,
+	type ODataParameterValue,
+	type ODataServiceConfig,
+	type ODataValue,
+	type WrappedODataParameters
 } from "./types";
 
 type ParameterizedMetadata = {
@@ -51,7 +52,7 @@ export function buildParameterEntries(metadata: ParameterizedMetadata, params: W
 	const parts = metadata.parameters.map<[string, string] | null>((param) => {
 		const { id, type, maxLength, mandatory } = param;
 
-		const odataValue = (params[id] ?? {}) as ODataValue;
+		const odataValue = (params[id] ?? {}) as ODataValue<ODataParameterValue>;
 		const value = odataValue.value;
 		const formatter = odataValue.formatter;
 
@@ -63,6 +64,10 @@ export function buildParameterEntries(metadata: ParameterizedMetadata, params: W
 		if (value === undefined || value === null) return null;
 
 		try {
+			if (Array.isArray(value) && !formatter) {
+				throw new Error("Массив значений OData-параметра требует custom formatter");
+			}
+
 			const formattedValue = formatter ? formatter(value) : odataFormatValue(type, value);
 
 			validateFormattedLength(formattedValue, maxLength);

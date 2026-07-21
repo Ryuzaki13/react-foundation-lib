@@ -134,6 +134,87 @@ describe("sanitize filter definitions", () => {
 		]);
 	});
 
+	it("нормализует registered definition без искусственной owner-колонки", () => {
+		const definitions: ODataCompiledFilterDefinition[] = [
+			{
+				id: " SHIPMENT_STATUS ",
+				kind: "registered",
+				componentId: " shipment-status ",
+				controlType: "string",
+				valueMode: "multiple",
+				columnIds: ["IGNORED"],
+				binding: {
+					kind: "list",
+					and: false,
+					options: [
+						{
+							key: " ",
+							label: "Не обработан",
+							filter: {
+								conditions: [{ columnId: " ZBESTK ", operation: "eq", valueSource: "static", value: "" }]
+							}
+						},
+						{
+							key: " C ",
+							label: "Отгружен",
+							filter: {
+								conditions: [{ columnId: "ZBESTK", operation: "eq", valueSource: "static", value: "C" }]
+							}
+						}
+					]
+				}
+			},
+			{
+				id: "PARAMETER_ONLY",
+				kind: "registered",
+				componentId: "period-control",
+				controlType: "string",
+				valueMode: "single",
+				columnIds: []
+			}
+		];
+
+		expect(sanitizeFilterDefinitions(definitions)).toEqual([
+			{
+				id: "SHIPMENT_STATUS",
+				kind: "registered",
+				componentId: "shipment-status",
+				controlType: "string",
+				valueMode: "multiple",
+				columnIds: ["ZBESTK"],
+				binding: {
+					kind: "list",
+					and: false,
+					options: [
+						{
+							key: "",
+							label: "Не обработан",
+							filter: {
+								conditions: [{ columnId: "ZBESTK", operation: "eq", valueSource: "static", value: "" }]
+							}
+						},
+						{
+							key: "C",
+							label: "Отгружен",
+							filter: {
+								conditions: [{ columnId: "ZBESTK", operation: "eq", valueSource: "static", value: "C" }]
+							}
+						}
+					]
+				}
+			},
+			{
+				id: "PARAMETER_ONLY",
+				kind: "registered",
+				componentId: "period-control",
+				controlType: "string",
+				valueMode: "single",
+				columnIds: [],
+				binding: undefined
+			}
+		]);
+	});
+
 	it("отбрасывает definitions без обязательных полей или валидного binding", () => {
 		const definitions: ODataCompiledFilterDefinition[] = [
 			{
@@ -575,6 +656,59 @@ describe("compileFiltersToExpression", () => {
 		});
 
 		expect(buildODataFilter(expression)).toBe("(PAG_CFO eq 'X' or PAG_COMP eq 'X')");
+	});
+
+	it("компилирует registered multi-value binding с пустым значением и явной связкой options", () => {
+		const createDefinition = (and: boolean): ODataCompiledFilterDefinition => ({
+			id: "SHIPMENT_STATUS",
+			kind: "registered",
+			componentId: "shipment-status",
+			controlType: "string",
+			valueMode: "multiple",
+			columnIds: ["ZBESTK"],
+			binding: {
+				kind: "list",
+				and,
+				options: [
+					{
+						key: "",
+						label: "Не обработан",
+						filter: {
+							conditions: [{ columnId: "ZBESTK", operation: "eq", valueSource: "static", value: "" }]
+						}
+					},
+					{
+						key: "C",
+						label: "Отгружен",
+						filter: {
+							conditions: [{ columnId: "ZBESTK", operation: "eq", valueSource: "static", value: "C" }]
+						}
+					}
+				]
+			}
+		});
+
+		expect(buildODataFilter(compileFiltersToExpression([createDefinition(false)], { SHIPMENT_STATUS: ["", "C"] }))).toBe(
+			"(ZBESTK eq '' or ZBESTK eq 'C')"
+		);
+		expect(buildODataFilter(compileFiltersToExpression([createDefinition(true)], { SHIPMENT_STATUS: ["", "C"] }))).toBe(
+			"(ZBESTK eq '' and ZBESTK eq 'C')"
+		);
+	});
+
+	it("не формирует OData filter для parameter-only registered definition", () => {
+		const definition: ODataCompiledFilterDefinition = {
+			id: "PERIOD",
+			kind: "registered",
+			componentId: "period-control",
+			controlType: "string",
+			valueMode: "single",
+			columnIds: []
+		};
+
+		expect(resolveODataFilterDefinitionColumnIds(definition)).toEqual([]);
+		expect(resolveODataFilterDefinitionActiveColumnIds(definition, "CURRENT")).toEqual([]);
+		expect(compileFiltersToExpression([definition], { PERIOD: "CURRENT" })).toBeUndefined();
 	});
 
 	it("tree value map компилирует условия по нескольким columnIds", () => {

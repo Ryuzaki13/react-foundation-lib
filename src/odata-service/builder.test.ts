@@ -8,7 +8,6 @@ import {
 	buildFunctionImportPath,
 	buildParameterEntries
 } from "./builder";
-
 import { type EntityMetadata, type FunctionImportMetadata, type ODataServiceConfig } from "./types";
 
 const config: ODataServiceConfig = {

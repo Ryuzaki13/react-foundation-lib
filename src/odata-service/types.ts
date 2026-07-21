@@ -45,7 +45,7 @@ export type ODataParameterValue = BaseType | BaseType[];
  * остаётся scalar и formatter обязан преобразовать весь массив в строковый
  * литерал, который понимают OData и конкретный SAP Gateway endpoint.
  */
-export type ODataValue<T extends ODataParameterValue = BaseType> = {
+export type ODataValue<T extends ODataParameterValue = ODataParameterValue> = {
 	value: T;
 	formatter?: ODataFormatterFn;
 };

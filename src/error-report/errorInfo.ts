@@ -2,6 +2,16 @@ import { normalizeText } from "../formatters";
 
 import type { ErrorReportErrorInfo } from "./types";
 
+const DEFAULT_ERROR_MESSAGE = "Неизвестная ошибка";
+
+/**
+ * Гарантирует непустое диагностическое сообщение, сохраняя исходный текст ошибки.
+ * Fallback нужен для Error без message и для брошенных пустых строк.
+ */
+function resolveErrorMessage(message: string) {
+	return normalizeText(message) ? message : DEFAULT_ERROR_MESSAGE;
+}
+
 function readStatus(value: Record<string, unknown>) {
 	const status = value.status ?? value.statusCode ?? value.httpStatus;
 	return typeof status === "number" && Number.isFinite(status) ? status : undefined;
@@ -45,7 +55,7 @@ export function createErrorInfo(error: unknown): ErrorReportErrorInfo {
 	if (error instanceof Error) {
 		return {
 			name: error.name || "Error",
-			message: error.message,
+			message: resolveErrorMessage(error.message),
 			stackTrace: error.stack
 		};
 	}
@@ -54,7 +64,7 @@ export function createErrorInfo(error: unknown): ErrorReportErrorInfo {
 		const record = error as Record<string, unknown>;
 		return {
 			name: typeof record.name === "string" ? record.name : "Error",
-			message: typeof record.message === "string" ? record.message : String(error),
+			message: resolveErrorMessage(typeof record.message === "string" ? record.message : String(error)),
 			stackTrace: typeof record.stack === "string" ? record.stack : undefined,
 			httpStatus: readStatus(record)
 		};
@@ -62,6 +72,6 @@ export function createErrorInfo(error: unknown): ErrorReportErrorInfo {
 
 	return {
 		name: "Error",
-		message: typeof error === "string" ? error : String(error ?? "Неизвестная ошибка")
+		message: resolveErrorMessage(typeof error === "string" ? error : String(error ?? DEFAULT_ERROR_MESSAGE))
 	};
 }

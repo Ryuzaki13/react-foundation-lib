@@ -87,6 +87,12 @@ describe("error-report", () => {
 		});
 	});
 
+	it("подставляет сообщение по умолчанию для ошибки без текста", () => {
+		expect(createErrorInfo(new Error()).message).toBe("Неизвестная ошибка");
+		expect(createErrorInfo("").message).toBe("Неизвестная ошибка");
+		expect(createErrorInfo("   ").message).toBe("Неизвестная ошибка");
+	});
+
 	it("читает serverFn appError transport как отдельный класс ошибки", () => {
 		expect(
 			createErrorInfo({

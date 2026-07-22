@@ -1,6 +1,38 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { compileTableFormula, createTableFormulaContext, executeTableFormula } from "./execute";
+import { configureTableFormulaRegistry, createTableFormulaRegistry } from "./registry";
+
+beforeEach(() => {
+	configureTableFormulaRegistry(
+		createTableFormulaRegistry([
+			{
+				id: "sum",
+				name: "Сумма",
+				description: "Складывает два значения.",
+				fn: (context) => context.num(0) + context.num(1)
+			},
+			{
+				id: "ratio",
+				name: "Отношение",
+				description: "Делит первое значение на второе.",
+				fn: (context) => {
+					const divisor = context.num(1);
+					return divisor === 0 ? 0 : context.num(0) / divisor;
+				}
+			},
+			{ id: "invalid", name: "Невалидный результат", description: "Возвращает бесконечность.", fn: () => Infinity },
+			{
+				id: "runtime-error",
+				name: "Ошибка выполнения",
+				description: "Имитирует исключение пользовательской формулы.",
+				fn: () => {
+					throw new Error("Ошибка тестовой формулы");
+				}
+			}
+		])
+	);
+});
 
 describe("createTableFormulaV2Context", () => {
 	it("формирует ctx на основе rowData и keys", () => {
@@ -30,76 +62,25 @@ describe("createTableFormulaV2Context", () => {
 	});
 });
 
-describe("executeTableFormulaV2", () => {
-	it("выполняет базовые арифметические формулы и защищает деление на ноль", () => {
-		expect(executeTableFormula({ formulaId: "add", rowData: { A: 10, B: 5 }, keys: ["A", "B"] })).toEqual({
+describe("executeTableFormula", () => {
+	it("выполняет формулы активного реестра и защищает деление на ноль", () => {
+		expect(executeTableFormula({ formulaId: "sum", rowData: { A: 10, B: 5 }, keys: ["A", "B"] })).toEqual({
 			ok: true,
 			value: 15
 		});
-		expect(executeTableFormula({ formulaId: "substract", rowData: { A: 10, B: 5 }, keys: ["A", "B"] })).toEqual({
-			ok: true,
-			value: 5
-		});
-		expect(executeTableFormula({ formulaId: "multiply", rowData: { A: 10, B: 5 }, keys: ["A", "B"] })).toEqual({
-			ok: true,
-			value: 50
-		});
-		expect(executeTableFormula({ formulaId: "divide", rowData: { A: 10, B: 5 }, keys: ["A", "B"] })).toEqual({
+		expect(executeTableFormula({ formulaId: "ratio", rowData: { A: 10, B: 5 }, keys: ["A", "B"] })).toEqual({
 			ok: true,
 			value: 2
 		});
-		expect(executeTableFormula({ formulaId: "divide", rowData: { A: 10, B: 0 }, keys: ["A", "B"] })).toEqual({
-			ok: true,
-			value: 0
-		});
-		expect(executeTableFormula({ formulaId: "percent", rowData: { A: 0, B: 5 }, keys: ["A", "B"] })).toEqual({
+		expect(executeTableFormula({ formulaId: "ratio", rowData: { A: 10, B: 0 }, keys: ["A", "B"] })).toEqual({
 			ok: true,
 			value: 0
 		});
 	});
 
-	it("выполняет формулу v2 из реестра", () => {
-		const result = executeTableFormula({
-			formulaId: "markup",
-			rowData: { MP_BC: 100, NETWR: 160 },
-			keys: ["MP_BC", "NETWR"]
-		});
-
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.value).toBeCloseTo(166.6666, 3);
-	});
-
-	it("выполняет sales-формулы и возвращает invalid_result для бесконечности", () => {
-		const markupSsc = executeTableFormula({
-			formulaId: "markup_ssc",
-			rowData: { A: 120, B: 20, C: 50 },
-			keys: ["A", "B", "C"]
-		});
-		const growth = executeTableFormula({
-			formulaId: "growth_percent",
-			rowData: { A: 120, B: 100 },
-			keys: ["A", "B"]
-		});
-		const sscPerTon = executeTableFormula({
-			formulaId: "ssc_per_ton",
-			rowData: { A: 100, B: 20, C: 10 },
-			keys: ["A", "B", "C"]
-		});
-		const invalid = executeTableFormula({
-			formulaId: "plan_deviation_percent",
-			rowData: { FACT: 100, PLAN: 0 },
-			keys: ["FACT", "PLAN"]
-		});
-
-		expect(markupSsc).toEqual({ ok: true, value: 2 });
-		expect(growth).toEqual({ ok: true, value: 20 });
-		expect(executeTableFormula({ formulaId: "growth_percent", rowData: { A: 120, B: 0 }, keys: ["A", "B"] })).toEqual({
-			ok: true,
-			value: 0
-		});
-		expect(sscPerTon).toEqual({ ok: true, value: 200 });
-		expect(invalid).toEqual({ ok: false, reason: "invalid_result" });
+	it("преобразует невалидный результат и исключение формулы в безопасные ошибки", () => {
+		expect(executeTableFormula({ formulaId: "invalid", rowData: {} })).toEqual({ ok: false, reason: "invalid_result" });
+		expect(executeTableFormula({ formulaId: "runtime-error", rowData: {} })).toEqual({ ok: false, reason: "runtime_error" });
 	});
 
 	it("возвращает ошибку, если формула не найдена", () => {
@@ -116,30 +97,30 @@ describe("executeTableFormulaV2", () => {
 	});
 });
 
-describe("compileTableFormulaV2", () => {
+describe("compileTableFormula", () => {
 	it("компилирует формулу и переиспользует контекст между вызовами", () => {
 		const compiled = compileTableFormula({
-			formulaId: "markup",
-			keys: ["MP_BC", "NETWR"]
+			formulaId: "ratio",
+			keys: ["LEFT", "RIGHT"]
 		});
 
 		expect(compiled.ok).toBe(true);
 		if (!compiled.ok) return;
 
-		const first = compiled.execute({ MP_BC: 100, NETWR: 160 });
-		const second = compiled.execute({ MP_BC: 120, NETWR: 200 });
+		const first = compiled.execute({ LEFT: 100, RIGHT: 20 });
+		const second = compiled.execute({ LEFT: 120, RIGHT: 40 });
 
 		expect(first.ok).toBe(true);
 		expect(second.ok).toBe(true);
 		if (!first.ok || !second.ok) return;
 
-		expect(first.value).toBeCloseTo(166.6666, 3);
-		expect(second.value).toBeCloseTo(150, 3);
+		expect(first.value).toBe(5);
+		expect(second.value).toBe(3);
 	});
 
 	it("компилирует формулу без ключей как безопасное выполнение с нулями", () => {
 		const compiled = compileTableFormula({
-			formulaId: "add"
+			formulaId: "sum"
 		});
 
 		expect(compiled.ok).toBe(true);

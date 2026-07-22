@@ -1,13 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { configureTableFormulaRegistry, createTableFormulaRegistry } from "./registry";
 import { validateTableFormulaDependencies } from "./validate";
 
-describe("validateTableFormulaDependenciesV2", () => {
-	it("возвращает ok для корректной конфигурации markup", () => {
+beforeEach(() => {
+	configureTableFormulaRegistry(
+		createTableFormulaRegistry([
+			{
+				id: "pair-sum",
+				name: "Сумма пары",
+				description: "Складывает два значения.",
+				fn: (context) => context.num(0) + context.num(1)
+			}
+		])
+	);
+});
+
+describe("validateTableFormulaDependencies", () => {
+	it("возвращает ok для корректной конфигурации", () => {
 		const result = validateTableFormulaDependencies({
-			formulaId: "markup",
-			dependencies: ["MP_BC", "NETWR"],
-			availableColumnIds: ["MP_BC", "NETWR", "QTY"]
+			formulaId: "pair-sum",
+			dependencies: ["LEFT", "RIGHT"],
+			availableColumnIds: ["LEFT", "RIGHT", "EXTRA"]
 		});
 
 		expect(result.ok).toBe(true);
@@ -17,9 +31,9 @@ describe("validateTableFormulaDependenciesV2", () => {
 
 	it("возвращает ошибку, если зависимостей меньше, чем запрашивает формула", () => {
 		const result = validateTableFormulaDependencies({
-			formulaId: "markup",
-			dependencies: ["MP_BC"],
-			availableColumnIds: ["MP_BC", "NETWR"]
+			formulaId: "pair-sum",
+			dependencies: ["LEFT"],
+			availableColumnIds: ["LEFT", "RIGHT"]
 		});
 
 		expect(result.ok).toBe(false);
@@ -28,9 +42,9 @@ describe("validateTableFormulaDependenciesV2", () => {
 
 	it("возвращает warning для неиспользуемых зависимостей", () => {
 		const result = validateTableFormulaDependencies({
-			formulaId: "markup",
-			dependencies: ["MP_BC", "NETWR", "QTY"],
-			availableColumnIds: ["MP_BC", "NETWR", "QTY"]
+			formulaId: "pair-sum",
+			dependencies: ["LEFT", "RIGHT", "EXTRA"],
+			availableColumnIds: ["LEFT", "RIGHT", "EXTRA"]
 		});
 
 		expect(result.ok).toBe(true);
@@ -39,9 +53,9 @@ describe("validateTableFormulaDependenciesV2", () => {
 
 	it("возвращает ошибку, если зависимость не входит в доступные колонки", () => {
 		const result = validateTableFormulaDependencies({
-			formulaId: "markup",
-			dependencies: ["MP_BC", "TEXT_MISSING_FIELD"],
-			availableColumnIds: ["MP_BC", "NETWR"]
+			formulaId: "pair-sum",
+			dependencies: ["LEFT", "MISSING"],
+			availableColumnIds: ["LEFT", "RIGHT"]
 		});
 
 		expect(result.ok).toBe(false);

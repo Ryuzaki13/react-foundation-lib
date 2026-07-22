@@ -1,11 +1,9 @@
-import { tableFormulaDefinitions } from "./definitions";
-
 import type { TableFormulaDefinition } from "./types";
 
-type TableFormulaRegistry = {
+export type TableFormulaRegistry = Readonly<{
 	list: readonly TableFormulaDefinition[];
 	byId: ReadonlyMap<string, TableFormulaDefinition>;
-};
+}>;
 
 export function createTableFormulaRegistry(definitions: readonly TableFormulaDefinition[]): TableFormulaRegistry {
 	const byId = new Map<string, TableFormulaDefinition>();
@@ -14,11 +12,11 @@ export function createTableFormulaRegistry(definitions: readonly TableFormulaDef
 	for (const definition of definitions) {
 		const normalizedId = definition.id.trim();
 		if (!normalizedId) {
-			throw new Error("Formula v2 id не может быть пустым");
+			throw new Error("Formula id не может быть пустым");
 		}
 
 		if (byId.has(normalizedId)) {
-			throw new Error(`Найден дублирующийся formulaId в v2: ${normalizedId}`);
+			throw new Error(`Найден дублирующийся formulaId: ${normalizedId}`);
 		}
 
 		const normalizedDefinition: TableFormulaDefinition = Object.freeze({
@@ -26,20 +24,30 @@ export function createTableFormulaRegistry(definitions: readonly TableFormulaDef
 			id: normalizedId,
 			name: definition.name.trim(),
 			description: definition.description.trim(),
-			examples: definition.keywords ? [...definition.keywords] : undefined
+			keywords: definition.keywords ? [...definition.keywords] : undefined
 		});
 
 		byId.set(normalizedId, normalizedDefinition);
 		list.push(normalizedDefinition);
 	}
 
-	return {
+	return Object.freeze({
 		list: Object.freeze(list),
 		byId
-	};
+	});
 }
 
-const tableFormulaRegistry = createTableFormulaRegistry(tableFormulaDefinitions);
+let tableFormulaRegistry = createTableFormulaRegistry([]);
+
+/**
+ * Устанавливает реестр формул host-приложения для всех formula runtime API.
+ *
+ * Конфигурация выполняется composition root до первого чтения, валидации или
+ * компиляции формулы. Библиотека намеренно не содержит прикладной каталог.
+ */
+export function configureTableFormulaRegistry(registry: TableFormulaRegistry): void {
+	tableFormulaRegistry = registry;
+}
 
 export function getTableFormulaList(): readonly TableFormulaDefinition[] {
 	return tableFormulaRegistry.list;

@@ -1,9 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { configureTableFormulaRegistry, createTableFormulaRegistry } from "../../formulas";
 
 import { formatTypedCellValue } from "./execute";
 import { compileFormattersPipelineRuntime, compileFormattersPipelineRuntimeFields, formatPipelineDisplayValue } from "./runtime";
 
 import type { FormattersPipelineRuntimeField } from "./types";
+
+beforeEach(() => {
+	configureTableFormulaRegistry(
+		createTableFormulaRegistry([
+			{
+				id: "sum",
+				name: "Сумма",
+				description: "Складывает два значения.",
+				fn: (context) => context.num(0) + context.num(1)
+			}
+		])
+	);
+});
 
 function measureField(id: string, overrides?: Partial<FormattersPipelineRuntimeField>): FormattersPipelineRuntimeField {
 	return {
@@ -26,7 +41,7 @@ function dimensionField(id: string, overrides?: Partial<FormattersPipelineRuntim
 describe("compileFormattersPipelineRuntime", () => {
 	it("компилирует formula runtime для поля с валидной формулой и сохраняет identity", () => {
 		const field = measureField("MARKUP", {
-			formulaId: "markup",
+			formulaId: "sum",
 			formulaDependencies: ["MP_BC", "NETWR"]
 		});
 		const compiled = compileFormattersPipelineRuntime(field);
@@ -76,7 +91,7 @@ describe("compileFormattersPipelineRuntime", () => {
 	it("компилирует runtime один раз на снимок полей и переиспользует executors при форматировании", () => {
 		const runtime = compileFormattersPipelineRuntimeFields({
 			MARKUP: measureField("MARKUP", {
-				formulaId: "markup",
+				formulaId: "sum",
 				formulaDependencies: ["MP_BC", "NETWR"]
 			})
 		});

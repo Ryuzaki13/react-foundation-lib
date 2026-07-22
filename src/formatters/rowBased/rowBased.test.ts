@@ -1,7 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createRowBasedFormatterContext } from "./context";
-import { createRowBasedFormatterRegistry } from "./registry";
+import {
+	configureRowBasedFormatterRegistry,
+	createRowBasedFormatterRegistry,
+	getRowBasedFormatterById,
+	getRowBasedFormatterList
+} from "./registry";
+
+afterEach(() => {
+	configureRowBasedFormatterRegistry(createRowBasedFormatterRegistry([]));
+});
 
 describe("rowBased formatter context", () => {
 	it("читает ключи, raw values и числовые значения по индексу", () => {
@@ -60,12 +69,21 @@ describe("rowBased formatter registry", () => {
 		).toThrow("дублирующийся");
 	});
 
-	// it("читает глобальный registry по trimmed id", () => {
-	// 	expect(getRowBasedFormatterList().length).toBeGreaterThan(0);
-	// 	const first = getRowBasedFormatterList()[0];
+	it("переключает активный registry для pipeline runtime", () => {
+		const registry = createRowBasedFormatterRegistry([
+			{
+				id: " value-or-raw ",
+				name: " Значение или исходное ",
+				description: " Возвращает зависимость либо исходное значение. ",
+				fn: (context) => context.value(0) ?? context.rawValue
+			}
+		]);
 
-	// 	expect(getRowBasedFormatterById(` ${first?.id} `)).toBe(first);
-	// 	expect(getRowBasedFormatterById(" ")).toBeUndefined();
-	// 	expect(getRowBasedFormatterById(undefined)).toBeUndefined();
-	// });
+		configureRowBasedFormatterRegistry(registry);
+
+		expect(getRowBasedFormatterList()).toBe(registry.list);
+		expect(getRowBasedFormatterById(" value-or-raw ")).toBe(registry.list[0]);
+		expect(getRowBasedFormatterById(" ")).toBeUndefined();
+		expect(getRowBasedFormatterById(undefined)).toBeUndefined();
+	});
 });

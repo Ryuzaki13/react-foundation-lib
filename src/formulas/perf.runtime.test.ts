@@ -1,6 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { runTableFormulaV2PrecompilePerf } from "./perf.runtime";
+import { configureTableFormulaRegistry, createTableFormulaRegistry } from "./registry";
+
+beforeEach(() => {
+	configureTableFormulaRegistry(
+		createTableFormulaRegistry([
+			{
+				id: "benchmark",
+				name: "Бенчмарк",
+				description: "Формула для сравнения режимов выполнения.",
+				fn: (context) => {
+					const left = context.num(0);
+					const right = context.num(1);
+					return right === left ? 0 : left / (right - left);
+				}
+			}
+		])
+	);
+});
 
 describe("table formula runtime perf", () => {
 	it("сравнивает v2 runtime до/после предкомпиляции и печатает метрики", () => {

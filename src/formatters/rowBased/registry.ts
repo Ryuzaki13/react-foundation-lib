@@ -1,11 +1,9 @@
-import { rowBasedFormatterDefinitions } from "./definitions";
-
 import type { RowBasedFormatterDefinition } from "./types";
 
-type RowBasedFormatterRegistry = {
+export type RowBasedFormatterRegistry = Readonly<{
 	list: readonly RowBasedFormatterDefinition[];
 	byId: ReadonlyMap<string, RowBasedFormatterDefinition>;
-};
+}>;
 
 /**
  * Создаёт реестр формул для подмены значения в групповой строке.
@@ -35,13 +33,23 @@ export function createRowBasedFormatterRegistry(definitions: readonly RowBasedFo
 		list.push(normalizedDefinition);
 	}
 
-	return {
+	return Object.freeze({
 		list: Object.freeze(list),
 		byId
-	};
+	});
 }
 
-const rowBasedFormatterRegistry = createRowBasedFormatterRegistry(rowBasedFormatterDefinitions);
+let rowBasedFormatterRegistry = createRowBasedFormatterRegistry([]);
+
+/**
+ * Устанавливает реестр row-based форматтеров host-приложения.
+ *
+ * Pipeline использует этот реестр при валидации и компиляции formula-режима,
+ * поэтому конфигурация должна завершиться до первого построения runtime.
+ */
+export function configureRowBasedFormatterRegistry(registry: RowBasedFormatterRegistry): void {
+	rowBasedFormatterRegistry = registry;
+}
 
 /**
  * Возвращает список доступных формул для групповой подмены.

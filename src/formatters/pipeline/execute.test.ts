@@ -1,8 +1,64 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { configureRowBasedFormatterRegistry, createRowBasedFormatterRegistry } from "../rowBased";
 
 import { compileFormattersPipelineExecutor } from "./execute";
 
+beforeEach(() => {
+	configureRowBasedFormatterRegistry(
+		createRowBasedFormatterRegistry([
+			{
+				id: "add-dependency",
+				name: "Добавить зависимость",
+				description: "Добавляет числовую зависимость к исходному значению.",
+				fn: (context) => Number(context.rawValue) + context.num(0)
+			}
+		])
+	);
+});
+
 describe("table column formatters pipeline execute", () => {
+	it("использует настроенный registry в rowBasedOverride formula-режиме", () => {
+		const compiled = compileFormattersPipelineExecutor({
+			config: {
+				version: 1,
+				plan: {
+					steps: [
+						{
+							id: "formulaOverride",
+							type: "rowBasedOverride",
+							config: {
+								mode: "formula",
+								formulaId: "add-dependency",
+								dependencyIds: ["DELTA"]
+							}
+						}
+					]
+				}
+			},
+			column: {
+				role: "measure",
+				type: "decimal"
+			}
+		});
+
+		expect(compiled.ok).toBe(true);
+		if (!compiled.ok) return;
+
+		const result = compiled.executor.execute({
+			value: 5,
+			rowData: { DELTA: 7 },
+			rowKind: "plain",
+			isGroupRow: false,
+			isTotalsRow: false,
+			rowLevel: 0,
+			groupingIds: [],
+			columnId: "AMOUNT"
+		});
+
+		expect(result.value).toBe(12);
+	});
+
 	it("применяет rowBasedOverride + resolveValueState + typedValueFormat", () => {
 		const compiled = compileFormattersPipelineExecutor({
 			config: {

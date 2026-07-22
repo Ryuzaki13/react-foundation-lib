@@ -66,7 +66,7 @@ function runIterations(args: {
 	for (let index = 0; index < args.iterations; index += 1) {
 		const rowData = args.sampleRows[index % sampleRowsCount];
 		const execution = args.executor({
-			formulaId: "markup",
+			formulaId: "benchmark",
 			rowData,
 			keys: args.keys
 		});
@@ -240,11 +240,11 @@ export function runTableFormulaV2PrecompilePerf(args?: {
 	});
 
 	const compiled = compileTableFormula({
-		formulaId: "markup",
+		formulaId: "benchmark",
 		keys
 	});
 	if (!compiled.ok) {
-		throw new Error("Не удалось скомпилировать формулу markup для perf-теста");
+		throw new Error("Не удалось скомпилировать формулу benchmark для perf-теста");
 	}
 
 	const precompiled = measureCompiledExecutor({

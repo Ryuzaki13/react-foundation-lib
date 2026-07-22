@@ -22,6 +22,22 @@ export type SqlFilterInCondition = {
 
 export type SqlFilterCondition = SqlFilterEqualCondition | SqlFilterInCondition;
 
+export type SqlFilterConjunction = "and" | "or";
+
+/**
+ * Явная группа SQL-like выражений с собственным логическим оператором.
+ * Группа всегда сериализуется в скобках, чтобы её границы сохранялись при
+ * объединении с соседними выражениями верхнего уровня через `AND`.
+ */
+export type SqlFilterGroup = {
+	operation: "group";
+	conjunction: SqlFilterConjunction;
+	expressions: readonly SqlFilterExpression[];
+};
+
+/** Узел безопасного SQL-like выражения: простое условие или вложенная группа. */
+export type SqlFilterExpression = SqlFilterCondition | SqlFilterGroup;
+
 const SQL_FILTER_FIELD_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function isSqlFilterScalarValue(value: unknown): value is SqlFilterScalarValue {
@@ -42,6 +58,15 @@ export function createSqlFilterIn(fieldId: string, values: readonly unknown[] | 
 	return { fieldId, operation: "in", values };
 }
 
+/**
+ * Создаёт логическую группу SQL-like выражений.
+ * Вложенность нужна потребителям, где один пользовательский фильтр объединяет
+ * альтернативные физические поля, а сам остаётся частью общего `AND`-выражения.
+ */
+export function createSqlFilterGroup(expressions: readonly SqlFilterExpression[], conjunction: SqlFilterConjunction): SqlFilterGroup {
+	return { operation: "group", conjunction, expressions };
+}
+
 function normalizeSqlFilterValue(value: unknown): string | undefined {
 	if (value instanceof Date) {
 		throw new Error("Дата должна быть отформатирована вызывающей стороной до формирования SQL-фильтра");
@@ -57,22 +82,32 @@ function normalizeSqlFilterValue(value: unknown): string | undefined {
 	return `'${rawValue.replaceAll("'", "''")}'`;
 }
 
-function buildSqlFilterCondition(condition: SqlFilterCondition): string | undefined {
-	if (condition.operation === "eq") {
-		const formattedValue = normalizeSqlFilterValue(condition.value);
-		if (!formattedValue) return undefined;
+function buildSqlFilterExpression(expression: SqlFilterExpression): string | undefined {
+	if (expression.operation === "group") {
+		const nestedExpressions = expression.expressions
+			.map((nestedExpression) => buildSqlFilterExpression(nestedExpression))
+			.filter((nestedExpression): nestedExpression is string => Boolean(nestedExpression));
+		if (!nestedExpressions.length) return undefined;
 
-		assertSqlFilterFieldId(condition.fieldId);
-		return `${condition.fieldId}=${formattedValue}`;
+		const separator = expression.conjunction === "or" ? " OR " : " AND ";
+		return `(${nestedExpressions.join(separator)})`;
 	}
 
-	const formattedValues = (condition.values ?? [])
+	if (expression.operation === "eq") {
+		const formattedValue = normalizeSqlFilterValue(expression.value);
+		if (!formattedValue) return undefined;
+
+		assertSqlFilterFieldId(expression.fieldId);
+		return `${expression.fieldId}=${formattedValue}`;
+	}
+
+	const formattedValues = (expression.values ?? [])
 		.map((value) => normalizeSqlFilterValue(value))
 		.filter((value): value is string => Boolean(value));
 	if (formattedValues.length === 0) return undefined;
 
-	assertSqlFilterFieldId(condition.fieldId);
-	return `${condition.fieldId} IN (${formattedValues.join(", ")})`;
+	assertSqlFilterFieldId(expression.fieldId);
+	return `${expression.fieldId} IN (${formattedValues.join(", ")})`;
 }
 
 /**
@@ -82,11 +117,11 @@ function buildSqlFilterCondition(condition: SqlFilterCondition): string | undefi
  * а не в SAP Gateway URL. Для защиты от падения dynamic WHERE builder намеренно разрешает только
  * простые имена полей и строковые литералы с экранированными одинарными кавычками.
  */
-export function buildSqlFilter(conditions: readonly SqlFilterCondition[] | undefined): string {
-	if (!conditions) return "";
+export function buildSqlFilter(expressions: readonly SqlFilterExpression[] | undefined): string {
+	if (!expressions) return "";
 
-	return conditions
-		.map((condition) => buildSqlFilterCondition(condition))
-		.filter((condition): condition is string => Boolean(condition))
+	return expressions
+		.map((expression) => buildSqlFilterExpression(expression))
+		.filter((expression): expression is string => Boolean(expression))
 		.join(" AND ");
 }

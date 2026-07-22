@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSqlFilter, createSqlFilterEqual, createSqlFilterIn } from "./sqlFilters";
+import { buildSqlFilter, createSqlFilterEqual, createSqlFilterGroup, createSqlFilterIn } from "./sqlFilters";
 
 describe("buildSqlFilter", () => {
 	it("собирает равенство и IN с экранированием строковых значений", () => {
@@ -11,6 +11,24 @@ describe("buildSqlFilter", () => {
 		]);
 
 		expect(filter).toBe("FIELD1='TEXT_VALUE1' AND FIELD2='O''Hara' AND STATUS IN ('S1', 'S''2', 'S3')");
+	});
+
+	it("сохраняет OR-группу в скобках внутри общего AND-выражения", () => {
+		const filter = buildSqlFilter([
+			createSqlFilterGroup([createSqlFilterIn("ZDIV", ["01"]), createSqlFilterIn("ZCFO1", ["0202", "02'03"])], "or"),
+			createSqlFilterEqual("STATUS", "A")
+		]);
+
+		expect(filter).toBe("(ZDIV IN ('01') OR ZCFO1 IN ('0202', '02''03')) AND STATUS='A'");
+	});
+
+	it("пропускает пустые элементы группы и не сериализует пустую группу", () => {
+		const filter = buildSqlFilter([
+			createSqlFilterGroup([createSqlFilterIn("EMPTY_LIST", []), createSqlFilterEqual("ACTIVE", "X")], "or"),
+			createSqlFilterGroup([], "and")
+		]);
+
+		expect(filter).toBe("(ACTIVE='X')");
 	});
 
 	it("пропускает пустые и неподдерживаемые значения", () => {

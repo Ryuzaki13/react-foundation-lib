@@ -164,6 +164,45 @@ describe("table column formatters pipeline execute", () => {
 		expect(result.value).toBe("34 тыс");
 	});
 
+	it("применяет compact round-пресет в typedValueFormat", () => {
+		const compiled = compileFormattersPipelineExecutor({
+			config: {
+				version: 1,
+				plan: {
+					steps: [
+						{
+							id: "typed",
+							type: "typedValueFormat",
+							config: {
+								numberPresetName: "compact-currency-round"
+							}
+						}
+					]
+				}
+			},
+			column: {
+				role: "measure",
+				type: "decimal"
+			}
+		});
+
+		expect(compiled.ok).toBe(true);
+		if (!compiled.ok) return;
+
+		const result = compiled.executor.execute({
+			value: 34823,
+			rowData: {},
+			rowKind: "plain",
+			isGroupRow: false,
+			isTotalsRow: false,
+			rowLevel: 0,
+			groupingIds: [],
+			columnId: "MEASURE"
+		});
+
+		expect(result.value).toBe("35 тыс");
+	});
+
 	it("применяет rowBasedOverride(field) для plain-строки generic-таблицы", () => {
 		const compiled = compileFormattersPipelineExecutor({
 			config: {

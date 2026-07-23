@@ -59,8 +59,11 @@ describe("реестр предустановок", () => {
 		"percent",
 		"tonnage",
 		"compact-currency",
+		"compact-currency-round",
 		"compact-percent",
-		"compact-tonnage"
+		"compact-percent-round",
+		"compact-tonnage",
+		"compact-tonnage-round"
 	];
 	it("содержит все типовые предустановки", () => {
 		expect(getNumberPresetNames()).toEqual(defaultPresets);
@@ -90,6 +93,20 @@ describe("реестр предустановок", () => {
 			groupingSeparator: S,
 			groupingSize: 3,
 			compact: {}
+		});
+	});
+
+	it("getPreset возвращает compact round-предустановку", () => {
+		expect(getNumberPreset("compact-currency-round")).toEqual({
+			name: "compact-currency-round",
+			decimals: 0,
+			decimalSeparator: "",
+			grouping: true,
+			groupingSeparator: S,
+			groupingSize: 3,
+			compact: {
+				roundingMode: "round"
+			}
 		});
 	});
 
@@ -239,6 +256,14 @@ describe("компактные предустановки", () => {
 
 	it("compact-tonnage: выше порога использует компактную шкалу", () => {
 		expect(formatNumber(9500000, "compact-tonnage")).toBe("9,5 млн");
+	});
+
+	it("compact round-пресеты округляют компактное значение вместо усечения", () => {
+		expect(formatNumber(34823, "compact-currency-round")).toBe("35 тыс");
+		expect(formatNumber(12345.67, "compact-percent-round")).toBe("12,35 тыс");
+		expect(formatNumber(9560000, "compact-tonnage-round")).toBe("9,6 млн");
+		expect(formatNumber(999999, "compact-currency-round")).toBe("1 млн");
+		expect(formatNumber(-34823, "compact-currency-round")).toBe("-35 тыс");
 	});
 
 	it("кастомный compact-пресет поддерживает maxDecimals", () => {

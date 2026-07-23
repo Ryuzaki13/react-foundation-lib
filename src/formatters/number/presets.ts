@@ -22,11 +22,20 @@ export const DEFAULT_NUMBER_PRESET_NAMES = Object.freeze({
 	percent: "percent",
 	tonnage: "tonnage",
 	compactCurrency: "compact-currency",
+	compactCurrencyRound: "compact-currency-round",
 	compactPercent: "compact-percent",
-	compactTonnage: "compact-tonnage"
+	compactPercentRound: "compact-percent-round",
+	compactTonnage: "compact-tonnage",
+	compactTonnageRound: "compact-tonnage-round"
 });
 
-/** Типовые предустановки (недостающие поля заполнятся из FORMAT_DEFAULTS) */
+/**
+ * Типовые предустановки числового форматирования.
+ *
+ * Compact-пресеты без суффикса сохраняют консервативное усечение, а парные
+ * `*-round` дают явный математический режим без runtime-переопределения пресета.
+ * Недостающие поля каждой предустановки заполняются из `NUMBER_FORMAT_DEFAULTS`.
+ */
 const BUILTIN: NumberFormatPresetConfig[] = [
 	{ name: "integer", decimals: 0, decimalSeparator: "" },
 	{ name: "decimal" },
@@ -37,8 +46,11 @@ const BUILTIN: NumberFormatPresetConfig[] = [
 	{ name: "percent", decimals: 2 },
 	{ name: "tonnage" },
 	{ name: "compact-currency", decimals: 0, decimalSeparator: "", compact: {} },
+	{ name: "compact-currency-round", decimals: 0, decimalSeparator: "", compact: { roundingMode: "round" } },
 	{ name: "compact-percent", decimals: 2, compact: { maxDecimals: 2 } },
-	{ name: "compact-tonnage", compact: { maxDecimals: 1 } }
+	{ name: "compact-percent-round", decimals: 2, compact: { maxDecimals: 2, roundingMode: "round" } },
+	{ name: "compact-tonnage", compact: { maxDecimals: 1 } },
+	{ name: "compact-tonnage-round", compact: { maxDecimals: 1, roundingMode: "round" } }
 ];
 
 const registry = new Map<string, NumberFormatPreset>();

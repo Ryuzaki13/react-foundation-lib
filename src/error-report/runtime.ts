@@ -1,3 +1,5 @@
+import { clearRuntimeErrorReportDeduplication } from "./runtimeDeduplication";
+
 import type { ErrorReportRuntimeContext } from "./types";
 
 export type ErrorReportRuntimeErrorReporter = (error: unknown, context: ErrorReportRuntimeContext) => void | Promise<void>;
@@ -10,6 +12,7 @@ let runtimeErrorReporter: ErrorReportRuntimeErrorReporter | undefined;
  */
 export function setErrorReportRuntimeErrorReporter(reporter: ErrorReportRuntimeErrorReporter | undefined) {
 	runtimeErrorReporter = reporter;
+	clearRuntimeErrorReportDeduplication();
 }
 
 /**

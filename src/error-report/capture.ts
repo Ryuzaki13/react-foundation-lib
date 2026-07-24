@@ -9,6 +9,7 @@ import {
 } from "./diagnostics";
 import { captureErrorReportDraft } from "./drafts";
 import { createErrorInfo } from "./errorInfo";
+import { coalesceRuntimeErrorReportCapture } from "./runtimeDeduplication";
 import { sanitizeDetail } from "./safeValue";
 import { suppressTransportErrorReport } from "./transport";
 
@@ -77,25 +78,53 @@ export async function captureMutationErrorReport(
 	});
 }
 
-export async function captureRuntimeErrorReport(error: unknown, context: ErrorReportRuntimeContext = {}, queryClient?: QueryClient) {
+export function captureRuntimeErrorReport(error: unknown, context: ErrorReportRuntimeContext = {}, queryClient?: QueryClient) {
+	const category = context.category ?? "runtime";
 	const source = context.source ?? context.category ?? "runtime";
+	const errorInfo = context.errorInfo ?? createErrorInfo(error);
+	const detail = sanitizeDetail(context.detail);
 
-	addErrorReportBreadcrumb({
-		type: "runtime-error",
-		detail: sanitizeDetail({ category: context.category ?? "runtime", source, ...context.detail })
-	});
+	const captureDraft = async () => {
+		addErrorReportBreadcrumb({
+			type: "runtime-error",
+			detail: sanitizeDetail({ category, source, ...context.detail })
+		});
 
-	const [persistedQueries, queryClientDiagnostics] = queryClient
-		? await Promise.all([collectPersistedQueryDiagnostics(), Promise.resolve(collectQueryClientDiagnostics(queryClient))])
-		: [undefined, undefined];
+		const [persistedQueries, queryClientDiagnostics] = queryClient
+			? await Promise.all([collectPersistedQueryDiagnostics(), Promise.resolve(collectQueryClientDiagnostics(queryClient))])
+			: [undefined, undefined];
 
-	return captureErrorReportDraft({
-		category: context.category ?? "runtime",
-		source,
-		error: context.errorInfo ?? createErrorInfo(error),
-		react: context.componentStack ? { componentStack: context.componentStack } : undefined,
-		queryClient: queryClientDiagnostics,
-		persistedQueries,
-		context: sanitizeDetail(context.detail)
-	});
+		return captureErrorReportDraft({
+			category,
+			source,
+			error: errorInfo,
+			react: context.componentStack ? { componentStack: context.componentStack } : undefined,
+			queryClient: queryClientDiagnostics,
+			persistedQueries,
+			context: detail
+		});
+	};
+
+	/**
+	 * Error report draft создаётся только в браузере. Прямой вызов capture
+	 * сохраняет прежнее SSR-поведение без клиентского TTL-таймера, который
+	 * иначе удерживал бы Node-процесс после no-op результата.
+	 */
+	if (typeof window === "undefined") {
+		return captureDraft();
+	}
+
+	return coalesceRuntimeErrorReportCapture(
+		{
+			category,
+			source,
+			error: errorInfo,
+			pathname: window.location.pathname,
+			scope: {
+				componentStack: context.componentStack,
+				detail
+			}
+		},
+		captureDraft
+	);
 }

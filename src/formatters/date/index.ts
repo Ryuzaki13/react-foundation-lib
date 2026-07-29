@@ -51,7 +51,7 @@ export {
 	formatDateAsTimeShort,
 	formatDateRange
 } from "./formatDate";
-export { parseDate, parseDateByFormat, parseDateByPattern, parseDateValue } from "./parseDate";
+export { parseDate, parseDateByFormat, parseDateByPattern, parseDateTZ, parseDateValue, parseDateValueTZ } from "./parseDate";
 export type { ParseDateByFormatOptions, ParseDateByPatternOptions } from "./parseDate";
 export { DATE_PATTERN_DATE_TOKENS, DATE_PATTERN_TIME_TOKENS, DATE_PATTERN_TOKEN_RE, DATE_PATTERN_TOKENS } from "./pattern";
 export {

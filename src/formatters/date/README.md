@@ -3,6 +3,8 @@
 Утилитарный модуль для форматирования, парсинга и простых календарных операций в "плавающей" календарной семантике.
 Человекочитаемые форматы строятся на заранее созданных `Intl.DateTimeFormat`, чтобы переиспользовать formatter в больших таблицах и не создавать `Intl` на каждый вызов.
 
+Для источников, где важен абсолютный момент времени, модуль предоставляет параллельные функции `parseDateValueTZ` и `parseDateTZ`. Они применяют явный timezone и не меняют поведение основного API.
+
 ## Ключевая идея
 
 Модуль намеренно не пересчитывает входные значения по timezone клиента. Для него важны видимые календарные компоненты:
@@ -30,6 +32,7 @@
 - форматировать даты и диапазоны
 - нормализовать `Date | null | [Date | null, Date | null]` в диапазон `Date`
 - парсить вход из `unknown`
+- явно парсить timezone-aware значения как абсолютный instant
 - разбирать даты по пользовательскому шаблону
 - приводить результат парсинга к `Date | null`
 - хранить и переопределять именованные пресеты форматирования
@@ -294,6 +297,32 @@ parseDateValue("PT2H30M");
 - неподдерживаемых типов
 - битых дат и duration-строк
 
+### `parseDateValueTZ`
+
+Возвращает тот же подробный результат, но сохраняет абсолютный instant для источников с timezone:
+
+```ts
+import { parseDateValueTZ } from "@/shared/lib";
+
+parseDateValueTZ("2026-03-03T18:03:50.327+05:30");
+// {
+//   kind: "date-time",
+//   source: "iso-zoned",
+//   date: Date("2026-03-03T12:33:50.327Z")
+// }
+
+parseDateValueTZ("/Date(1234567890+0200)/");
+// {
+//   kind: "date-time",
+//   source: "odata-ticks",
+//   date: Date(1234567890)
+// }
+```
+
+Timezone-aware режим применяется к `Date`, numeric timestamp, ISO `Z|±HH:mm`, OData ticks и `datetimeoffset` literal. Форматы без timezone (`2026-03-03T18:03:50`, ABAP compact/dotted, slash-date) остаются локальными календарными значениями.
+
+В OData v2 ticks уже содержат миллисекунды от Unix epoch. Суффикс offset описывает сервисное timezone-представление, поэтому `parseDateValueTZ` не прибавляет его к instant повторно. Обычный `parseDateValue` по-прежнему использует offset для восстановления видимых сервисных компонентов.
+
 ### `parseDateByPattern`
 
 Парсит строку по пользовательскому шаблону с токенами:
@@ -320,18 +349,21 @@ parseDateByPattern("03+03+2026", "dd+MM+yyyy");
 
 ## Обёртки с результатом `Date | null`
 
-### `parseDate`
+### `parseDate`, `parseDateTZ`
 
 Если нужен не подробный объект, а сразу `Date | null`, используй эту обёртку:
 
 ```ts
-import { parseDate } from "@/shared/lib";
+import { parseDate, parseDateTZ } from "@/shared/lib";
 
 parseDate("2026-03-03T18:03:50Z");
 // Date(2026-03-03 18:03:50)
 
 parseDate("PT2H30M");
 // Date(1970-01-01 02:30:00)
+
+parseDateTZ("2026-03-03T18:03:50.327+05:30");
+// Date("2026-03-03T12:33:50.327Z")
 ```
 
 Для `duration` модуль строит `Date` из длительности без timezone-сдвига, сохраняя видимые UTC-компоненты. Это удобно для унификации API, но важно помнить: длительность и календарная дата не одно и то же.
@@ -455,8 +487,10 @@ isSameCalendarDay(new Date(2026, 2, 3, 1, 0, 0), new Date(2026, 2, 3, 23, 59, 59
 - `formatDateAsTime`
 - `formatDateRange`
 - `parseDateValue`
+- `parseDateValueTZ`
 - `parseDateByPattern`
 - `parseDate`
+- `parseDateTZ`
 - `registerDatePreset`
 - `getDatePreset`
 - `getDatePresetNames`

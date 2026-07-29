@@ -21,7 +21,7 @@ const ISO_LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2})(?::(\d{2})(?::(\d{2
 /**
  * Регулярное выражение для даты с явным timezone.
  */
-const ISO_ZONED_RE = /(Z|[+-]\d{2}:?\d{2})$/i;
+const ISO_ZONED_RE = /(Z|([+-])(\d{2}):?(\d{2}))$/i;
 
 /**
  * Регулярное выражение для ABAP даты `YYYYMMDD`.
@@ -64,6 +64,26 @@ const MS_IN_DAY = 86_400_000;
 const APPROX_DAYS_IN_MONTH = 30;
 const APPROX_DAYS_IN_YEAR = 365;
 const TWO_DIGIT_YEAR_PIVOT = 70;
+
+/**
+ * Режим интерпретации источников, которые несут абсолютный момент времени.
+ *
+ * `floating` сохраняет историческую семантику видимых календарных компонентов,
+ * `instant` применяет timezone и сохраняет Unix instant.
+ */
+type DateParsingMode = "floating" | "instant";
+
+/**
+ * Внутренние настройки общего механизма парсинга.
+ *
+ * Опция намеренно не экспортируется: публичные функции жёстко выбирают режим,
+ * чтобы существующий вызов нельзя было неявно переключить на другую семантику.
+ */
+type ParseDateValueInternalOptions = {
+	mode?: DateParsingMode;
+};
+
+const DEFAULT_DATE_PARSING_MODE: DateParsingMode = "floating";
 
 /**
  * Шаблоны ручного ввода для встроенных Intl-пресетов.
@@ -326,25 +346,33 @@ function asDateTimeValue(date: Date, source: ParsedDateTimeValue["source"]): Par
 /**
  * Парсит timestamp (секунды или миллисекунды Unix epoch).
  */
-function parseTimestamp(value: number): ParsedDateTimeValue | null {
+function parseTimestamp(value: number, mode: DateParsingMode = DEFAULT_DATE_PARSING_MODE): ParsedDateTimeValue | null {
 	if (!Number.isFinite(value)) return null;
 
 	const timestamp = Math.abs(value) < 1e12 ? value * 1_000 : value;
 	const parsed = new Date(timestamp);
 	if (Number.isNaN(parsed.getTime())) return null;
 
-	return asDateTimeValue(cloneUtcCalendarDate(parsed), "timestamp");
+	return asDateTimeValue(mode === "instant" ? parsed : cloneUtcCalendarDate(parsed), "timestamp");
 }
 
 /**
- * Парсит OData ticks и учитывает смещение, если оно передано.
+ * Парсит OData ticks: floating-режим восстанавливает сервисные компоненты
+ * через offset, instant-режим сохраняет абсолютный timestamp.
  */
-function parseODataTicks(value: string): ParsedDateTimeValue | null {
+function parseODataTicks(value: string, mode: DateParsingMode = DEFAULT_DATE_PARSING_MODE): ParsedDateTimeValue | null {
 	const match = ODATA_TICKS_RE.exec(value);
 	if (!match) return null;
 
 	const timestamp = Number(match[1]);
 	if (!Number.isFinite(timestamp)) return null;
+
+	if (mode === "instant") {
+		// В OData v2 ticks уже содержат миллисекунды от Unix epoch.
+		// Offset описывает сервисное представление и не должен повторно сдвигать instant.
+		const instantDate = new Date(timestamp);
+		return Number.isNaN(instantDate.getTime()) ? null : asDateTimeValue(instantDate, "odata-ticks");
+	}
 
 	const offset = match[2];
 	if (!offset) return asDateTimeValue(cloneUtcCalendarDate(new Date(timestamp)), "odata-ticks");
@@ -379,14 +407,51 @@ function parseIsoLocal(value: string): ParsedDateTimeValue | null {
 }
 
 /**
+ * Возвращает смещение ISO timezone в миллисекундах.
+ *
+ * Положительный offset означает, что локальные компоненты опережают UTC,
+ * поэтому при построении instant это значение вычитается.
+ */
+function resolveIsoTimezoneOffsetMs(timezoneMatch: RegExpExecArray): number | null {
+	if (timezoneMatch[1].toUpperCase() === "Z") return 0;
+
+	const sign = timezoneMatch[2] === "-" ? -1 : 1;
+	const hours = Number(timezoneMatch[3]);
+	const minutes = Number(timezoneMatch[4]);
+	if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours > 23 || minutes > 59) return null;
+
+	return sign * (hours * MS_IN_HOUR + minutes * MS_IN_MINUTE);
+}
+
+/**
  * Парсит даты с явным timezone.
  */
-function parseIsoZoned(value: string): ParsedDateTimeValue | null {
-	if (!ISO_ZONED_RE.test(value)) return null;
+function parseIsoZoned(value: string, mode: DateParsingMode = DEFAULT_DATE_PARSING_MODE): ParsedDateTimeValue | null {
+	const timezoneMatch = ISO_ZONED_RE.exec(value);
+	if (!timezoneMatch) return null;
 
-	const normalizedValue = value.replace(ISO_ZONED_RE, "");
+	const normalizedValue = value.slice(0, timezoneMatch.index);
 	const parsed = parseIsoLocal(normalizedValue);
-	return parsed ? asDateTimeValue(parsed.date, "iso-zoned") : null;
+	if (!parsed) return null;
+	if (mode === "floating") return asDateTimeValue(parsed.date, "iso-zoned");
+
+	const timezoneOffsetMs = resolveIsoTimezoneOffsetMs(timezoneMatch);
+	if (timezoneOffsetMs === null) return null;
+
+	const calendarDate = parsed.date;
+	const instantTimestamp =
+		Date.UTC(
+			calendarDate.getFullYear(),
+			calendarDate.getMonth(),
+			calendarDate.getDate(),
+			calendarDate.getHours(),
+			calendarDate.getMinutes(),
+			calendarDate.getSeconds(),
+			calendarDate.getMilliseconds()
+		) - timezoneOffsetMs;
+
+	const instantDate = new Date(instantTimestamp);
+	return Number.isNaN(instantDate.getTime()) ? null : asDateTimeValue(instantDate, "iso-zoned");
 }
 
 /**
@@ -453,12 +518,12 @@ function parseSlashDate(value: string): ParsedDateTimeValue | null {
 /**
  * Парсит OData литералы `datetime'...'` и `datetimeoffset'...'`.
  */
-function parseODataLiteral(value: string): ParsedDateTimeValue | null {
+function parseODataLiteral(value: string, mode: DateParsingMode = DEFAULT_DATE_PARSING_MODE): ParsedDateTimeValue | null {
 	const match = ODATA_LITERAL_RE.exec(value);
 	if (!match) return null;
 
 	const innerValue = match[2].trim();
-	return parseDateString(innerValue, "odata-literal");
+	return parseDateString(innerValue, "odata-literal", mode);
 }
 
 /**
@@ -506,8 +571,12 @@ function withSourceOverride(value: ParsedDateTimeValue, sourceOverride?: ParsedD
 /**
  * Парсит строку в дату.
  */
-function parseDateString(value: string, sourceOverride?: ParsedDateTimeValue["source"]): ParsedDateTimeValue | null {
-	const zoned = parseIsoZoned(value);
+function parseDateString(
+	value: string,
+	sourceOverride?: ParsedDateTimeValue["source"],
+	mode: DateParsingMode = DEFAULT_DATE_PARSING_MODE
+): ParsedDateTimeValue | null {
+	const zoned = parseIsoZoned(value, mode);
 	if (zoned) return withSourceOverride(zoned, sourceOverride);
 
 	const localIso = parseIsoLocal(value);
@@ -527,7 +596,7 @@ function parseDateString(value: string, sourceOverride?: ParsedDateTimeValue["so
 
 	const timestampAsNumber = Number(value);
 	if (/^-?\d+$/.test(value) && Number.isFinite(timestampAsNumber)) {
-		const timestamp = parseTimestamp(timestampAsNumber);
+		const timestamp = parseTimestamp(timestampAsNumber, mode);
 		if (timestamp) return withSourceOverride(timestamp, sourceOverride);
 	}
 
@@ -704,18 +773,22 @@ export function parseDateByFormat(value: unknown, dateFormat?: string, options: 
 }
 
 /**
- * Универсально парсит вход даты/времени из `unknown`.
+ * Общий механизм парсинга с явно выбранной timezone-семантикой.
  */
-export function parseDateValue(value: unknown): ParsedDateValue | null {
+function parseDateValueInternal(
+	value: unknown,
+	{ mode = DEFAULT_DATE_PARSING_MODE }: ParseDateValueInternalOptions = {}
+): ParsedDateValue | null {
 	if (value == null) return null;
 
 	if (value instanceof Date) {
 		if (Number.isNaN(value.getTime())) return null;
-		return asDateTimeValue(cloneCalendarDate(value), "date-object");
+		const date = mode === "instant" ? new Date(value.getTime()) : cloneCalendarDate(value);
+		return asDateTimeValue(date, "date-object");
 	}
 
 	if (typeof value === "number") {
-		return parseTimestamp(value);
+		return parseTimestamp(value, mode);
 	}
 
 	if (typeof value !== "string") return null;
@@ -723,16 +796,34 @@ export function parseDateValue(value: unknown): ParsedDateValue | null {
 	const trimmed = value.trim();
 	if (EMPTY_STRING_VALUES.has(trimmed.toLowerCase())) return null;
 
-	const odataTicks = parseODataTicks(trimmed);
+	const odataTicks = parseODataTicks(trimmed, mode);
 	if (odataTicks) return odataTicks;
 
-	const odataLiteral = parseODataLiteral(trimmed);
+	const odataLiteral = parseODataLiteral(trimmed, mode);
 	if (odataLiteral) return odataLiteral;
 
 	const duration = parseIsoDuration(trimmed);
 	if (duration) return duration;
 
-	return parseDateString(trimmed);
+	return parseDateString(trimmed, undefined, mode);
+}
+
+/**
+ * Универсально парсит вход даты/времени из `unknown`, сохраняя исторические
+ * видимые календарные компоненты без применения timezone.
+ */
+export function parseDateValue(value: unknown): ParsedDateValue | null {
+	return parseDateValueInternal(value);
+}
+
+/**
+ * Универсально парсит вход даты/времени из `unknown` как абсолютный instant.
+ *
+ * Явные timezone в ISO/OData и Unix timestamp преобразуются в `Date`
+ * с сохранением момента времени; форматы без timezone остаются календарными.
+ */
+export function parseDateValueTZ(value: unknown): ParsedDateValue | null {
+	return parseDateValueInternal(value, { mode: "instant" });
 }
 
 /**
@@ -756,4 +847,11 @@ function coerceParsedDateToDate(value: ParsedDateValue | null): Date | null {
  */
 export function parseDate(value: unknown): Date | null {
 	return coerceParsedDateToDate(parseDateValue(value));
+}
+
+/**
+ * Универсально парсит вход с учётом timezone и возвращает `Date | null`.
+ */
+export function parseDateTZ(value: unknown): Date | null {
+	return coerceParsedDateToDate(parseDateValueTZ(value));
 }

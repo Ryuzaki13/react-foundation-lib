@@ -51,6 +51,7 @@ export const DEFAULT_DATE_PRESET_NAMES = Object.freeze({
 	dateMedium: "date-medium",
 	dateLong: "date-long",
 	monthShort: "month-short",
+	monthMedium: "month-medium",
 	monthLong: "month-long",
 	datetime: "datetime",
 	datetimeSeconds: "datetime-seconds",
@@ -112,14 +113,10 @@ const BUILTIN_PRESETS: DateFormatPresetConfig[] = [
 		name: `date-${style}`,
 		intlOptions: getDateStyleIntlOptions(style)
 	})),
-	{
-		name: DEFAULT_DATE_PRESET_NAMES.monthShort,
-		intlOptions: { day: "numeric", month: "short" }
-	},
-	{
-		name: DEFAULT_DATE_PRESET_NAMES.monthLong,
-		intlOptions: { day: "numeric", month: "long" }
-	},
+	...FORMAT_STYLES.map((style) => ({
+		name: `month-${style}`,
+		intlOptions: getMonthStyleIntlOptions(style)
+	})),
 	...FORMAT_STYLES.map((style) => ({
 		name: `time-${style}`,
 		intlOptions: getTimeStyleIntlOptions(style),
@@ -166,6 +163,18 @@ function getDateStyleIntlOptions(style: DateFormatStyle, precision: DateFormatPr
 	if (style === "short") return { day: "2-digit", month: "2-digit", year: "numeric" };
 	if (style === "medium") return { day: "numeric", month: "short", year: "numeric" };
 	return { day: "numeric", month: "long", year: "numeric" };
+}
+
+/**
+ * Возвращает настройки Intl для dateStyle-подобного формата без года.
+ *
+ * Семейство сохраняет различия стандартных уровней детализации:
+ * числовой short, сокращённый текстовый medium и полный текстовый long.
+ */
+function getMonthStyleIntlOptions(style: DateFormatStyle): Intl.DateTimeFormatOptions {
+	if (style === "short") return { day: "2-digit", month: "2-digit" };
+	if (style === "medium") return { day: "numeric", month: "short" };
+	return { day: "numeric", month: "long" };
 }
 
 /**

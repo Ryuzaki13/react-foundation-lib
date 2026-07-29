@@ -13,8 +13,9 @@ import {
 	formatDateAsDatetimeLong,
 	formatDateAsDatetimeMedium,
 	formatDateAsDatetimeShort,
-	formatDateAsMonthLong,
 	formatDateAsMonthShort,
+	formatDateAsMonthMedium,
+	formatDateAsMonthLong,
 	formatDateAsODataDate,
 	formatDateAsODataDatetime,
 	formatDateAsODataTime,
@@ -70,6 +71,7 @@ describe("реестр предустановок", () => {
 			"date-medium",
 			"date-long",
 			"month-short",
+			"month-medium",
 			"month-long",
 			"time-short",
 			"time-medium",
@@ -274,11 +276,14 @@ describe("Intl style-пресеты без timezone-семантики", () => {
 	});
 
 	it("форматирует day+month пресеты ru-RU без года", () => {
+		expect(formatDate(new Date(2026, 4, 25), "month-short")).toBe("25.05");
+		expect(formatDate(new Date(2026, 5, 25), "month-short")).toBe("25.06");
+
+		expect(formatDate(new Date(2026, 4, 25), "month-medium")).toBe("25 мая");
+		expect(formatDate(new Date(2026, 5, 25), "month-medium")).toBe("25 июн.");
+
 		expect(formatDate(new Date(2026, 4, 25), "month-long")).toBe("25 мая");
 		expect(formatDate(new Date(2026, 5, 25), "month-long")).toBe("25 июня");
-
-		expect(formatDate(new Date(2026, 4, 25), "month-short")).toBe("25 мая");
-		expect(formatDate(new Date(2026, 5, 25), "month-short")).toBe("25 июн.");
 	});
 
 	it("форматирует timeStyle-подобные пресеты ru-RU без timezoneName", () => {
@@ -362,8 +367,9 @@ describe("дополнительные API", () => {
 		expect(formatDateAsDateShort(BASE_LOCAL_DATE)).toBe("03.03.2026");
 		expect(formatDateAsDateMedium(BASE_LOCAL_DATE)).toBe("3 мар. 2026 г.");
 		expect(formatDateAsDateLong(BASE_LOCAL_DATE)).toBe("3 марта 2026 г.");
+		expect(formatDateAsMonthShort(BASE_LOCAL_DATE)).toBe("03.03");
+		expect(formatDateAsMonthMedium(BASE_LOCAL_DATE)).toBe("3 мар.");
 		expect(formatDateAsMonthLong(BASE_LOCAL_DATE)).toBe("3 марта");
-		expect(formatDateAsMonthShort(BASE_LOCAL_DATE)).toBe("3 мар.");
 		expect(formatDateAsTime(BASE_LOCAL_DATE)).toBe("18:03");
 		expect(formatDateAsTimeSeconds(BASE_LOCAL_DATE)).toBe("18:03:50");
 		expect(formatDateAsTimeShort(BASE_LOCAL_DATE)).toBe("18:03");

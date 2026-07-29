@@ -154,7 +154,11 @@ describe("shared/lib/excel/tableExport", () => {
 		});
 	});
 
-	it("поддерживает day+month date preset из typedValueFormat", () => {
+	it.each([
+		["month-short", "dd.mm"],
+		["month-medium", "d mmm"],
+		["month-long", "d mmmm"]
+	])("поддерживает day+month date preset %s из typedValueFormat", (datePresetName, expectedFormat) => {
 		const column = createTableExcelColumn({
 			id: "BIRTHDAY",
 			header: "Дата",
@@ -167,7 +171,7 @@ describe("shared/lib/excel/tableExport", () => {
 							id: "typed",
 							type: "typedValueFormat",
 							config: {
-								datePresetName: "month-long"
+								datePresetName
 							}
 						}
 					]
@@ -177,7 +181,7 @@ describe("shared/lib/excel/tableExport", () => {
 
 		expect(column).toMatchObject({
 			type: Date,
-			format: "d mmmm"
+			format: expectedFormat
 		});
 	});
 

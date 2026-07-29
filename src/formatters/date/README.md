@@ -58,7 +58,8 @@
 - `date-short`: `03.03.2026`
 - `date-medium`: `3 мар. 2026 г.`
 - `date-long`: `3 марта 2026 г.`
-- `month-short`: `3 мар.`
+- `month-short`: `03.03`
+- `month-medium`: `3 мар.`
 - `month-long`: `3 марта`
 - `time-short`: `18:03`
 - `time-medium`: `18:03:50`
@@ -71,7 +72,7 @@
 - `abap-date`: `yyyyMMdd`
 - `abap-datetime`: `yyyyMMddHHmmss`
 
-Style-пресеты используют `Intl.DateTimeFormat` с `ru-RU`, но время описано явными полями. Это важно для `long`: стандартный `timeStyle: "long"` добавляет timezone, а в этом модуле timezone-семантика запрещена.
+Style-пресеты используют `Intl.DateTimeFormat` с `ru-RU`. Семейство `month-short|medium|long` повторяет уровни детализации даты, но не выводит год. Время описано явными полями: стандартный `timeStyle: "long"` добавляет timezone, а в этом модуле timezone-семантика запрещена.
 
 Значения по умолчанию для любого пресета:
 
@@ -114,7 +115,7 @@ formatDate("20260303", "date");
 // "03.03.2026"
 
 formatDate("2026-06-25", "month-short");
-// "25 июн."
+// "25.06"
 
 formatDate("datetimeoffset'2026-03-03T18:03:50.327Z'", "datetimeSeconds");
 // "03.03.2026 18:03:50"
@@ -155,15 +156,28 @@ formatDate("abc", "datetime", { fallback: "н/д" });
 // "н/д"
 ```
 
-### `formatDateAsDate`, `formatDateAsMonthLong`, `formatDateAsDateTime`, `formatDateAsTime`
+### `formatDateAsDate`, `formatDateAsMonthShort`, `formatDateAsMonthMedium`, `formatDateAsMonthLong`, `formatDateAsDateTime`, `formatDateAsTime`
 
 Упрощённые helper-обёртки поверх встроенных пресетов:
 
 ```ts
-import { formatDateAsDate, formatDateAsDateTime, formatDateAsMonthLong, formatDateAsTime } from "@/shared/lib";
+import {
+	formatDateAsDate,
+	formatDateAsDateTime,
+	formatDateAsMonthLong,
+	formatDateAsMonthMedium,
+	formatDateAsMonthShort,
+	formatDateAsTime
+} from "@/shared/lib";
 
 formatDateAsDate("2026-03-03T18:03:50Z");
 // "03.03.2026"
+
+formatDateAsMonthShort("2026-03-03T18:03:50Z");
+// "03.03"
+
+formatDateAsMonthMedium("2026-03-03T18:03:50Z");
+// "3 мар."
 
 formatDateAsMonthLong("2026-03-03T18:03:50Z");
 // "3 марта"
@@ -423,8 +437,9 @@ isSameCalendarDay(new Date(2026, 2, 3, 1, 0, 0), new Date(2026, 2, 3, 23, 59, 59
 - `formatDate`
 - `formatDateAsDate`
 - `formatDateAsDateTime`
-- `formatDateAsMonthLong`
 - `formatDateAsMonthShort`
+- `formatDateAsMonthMedium`
+- `formatDateAsMonthLong`
 - `formatDateAsTime`
 - `formatDateRange`
 - `parseDateValue`

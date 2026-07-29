@@ -80,12 +80,23 @@ const DATE_FORMAT_PARSE_PATTERNS: Readonly<Record<string, readonly DateFormatPat
  * Регулярное выражение для человекочитаемых дат вида `3 марта 2026 г.`.
  */
 const LOCALIZED_DATE_RE = /^(\d{1,2})\s+([\p{L}.]+)\s+(\d{4})(?:\s*[\p{L}.]+)?(?:,?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/iu;
+/**
+ * Регулярное выражение для короткой числовой даты без года вида `03.03`.
+ */
+const NUMERIC_DAY_MONTH_RE = /^(\d{1,2})\.(\d{1,2})$/u;
+/**
+ * Регулярное выражение для текстовой даты без года вида `3 марта`.
+ */
 const LOCALIZED_DAY_MONTH_RE = /^(\d{1,2})\s+([\p{L}.]+)$/iu;
 const LOCALIZED_MONTH_RE = /^([\p{L}.]+)\s+(\d{4})(?:\s*[\p{L}.]+)?$/iu;
 const LOCALIZED_YEAR_RE = /^(\d{4})(?:\s*[\p{L}.]+)?$/iu;
 
 const localizedMonthIndexCache = new Map<string, ReadonlyMap<string, number>>();
-const DAY_MONTH_PRESET_NAMES = new Set<string>([DEFAULT_DATE_PRESET_NAMES.monthShort, DEFAULT_DATE_PRESET_NAMES.monthLong]);
+const DAY_MONTH_PRESET_NAMES = new Set<string>([
+	DEFAULT_DATE_PRESET_NAMES.monthShort,
+	DEFAULT_DATE_PRESET_NAMES.monthMedium,
+	DEFAULT_DATE_PRESET_NAMES.monthLong
+]);
 
 /**
  * Создаёт календарную дату без timezone-семантики и валидирует компоненты.
@@ -183,6 +194,15 @@ function parseLocalizedDayString(value: string, locale: string): ParsedDateTimeV
  * Парсит человекочитаемую дату без года, сформированную day+month-пресетами.
  */
 function parseLocalizedDayMonthString(value: string, locale: string, year: number): ParsedDateTimeValue | null {
+	const numericMatch = NUMERIC_DAY_MONTH_RE.exec(value.trim());
+	if (numericMatch) {
+		const day = Number(numericMatch[1]);
+		const month = Number(numericMatch[2]);
+		const parsed = createCalendarDate(year, month, day);
+
+		return parsed ? asDateTimeValue(parsed, "iso-local") : null;
+	}
+
 	const match = LOCALIZED_DAY_MONTH_RE.exec(value.trim());
 	if (!match) return null;
 

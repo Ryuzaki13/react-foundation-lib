@@ -260,16 +260,22 @@ describe("parseDateByFormat", () => {
 	});
 
 	it("парсит day+month пресеты с опорным годом", () => {
+		expect(parseDateByFormat("25.05", "month-short", { referenceDate: new Date(2026, 0, 1) })).toEqual({
+			kind: "date-time",
+			source: "iso-local",
+			date: new Date(2026, 4, 25, 0, 0, 0, 0)
+		});
+		expect(parseDateByFormat("25 июн.", "month-medium", { referenceDate: new Date(2026, 0, 1) })).toEqual({
+			kind: "date-time",
+			source: "iso-local",
+			date: new Date(2026, 5, 25, 0, 0, 0, 0)
+		});
 		expect(parseDateByFormat("25 мая", "month-long", { referenceDate: new Date(2026, 0, 1) })).toEqual({
 			kind: "date-time",
 			source: "iso-local",
 			date: new Date(2026, 4, 25, 0, 0, 0, 0)
 		});
-		expect(parseDateByFormat("25 июн.", "month-short", { referenceDate: new Date(2026, 0, 1) })).toEqual({
-			kind: "date-time",
-			source: "iso-local",
-			date: new Date(2026, 5, 25, 0, 0, 0, 0)
-		});
+		expect(parseDateByFormat("31.02", "month-short", { referenceDate: new Date(2026, 0, 1) })).toBeNull();
 	});
 
 	it("парсит дату и время по Intl-пресету", () => {

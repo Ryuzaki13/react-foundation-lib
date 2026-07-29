@@ -128,10 +128,17 @@ export function formatDateAsDateLong(value: unknown, options?: FormatDateOptions
 }
 
 /**
- * Форматирует значение как короткую дату без года `3 мар.`.
+ * Форматирует значение как короткую дату без года `03.03`.
  */
 export function formatDateAsMonthShort(value: unknown, options?: FormatDateOptions): string {
 	return formatDate(value, DEFAULT_DATE_PRESET_NAMES.monthShort, options);
+}
+
+/**
+ * Форматирует значение как среднюю дату без года `3 мар.`.
+ */
+export function formatDateAsMonthMedium(value: unknown, options?: FormatDateOptions): string {
+	return formatDate(value, DEFAULT_DATE_PRESET_NAMES.monthMedium, options);
 }
 
 /**

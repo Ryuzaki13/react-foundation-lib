@@ -185,6 +185,36 @@ describe("shared/lib/excel/tableExport", () => {
 		});
 	});
 
+	it.each([
+		["month-year-medium", "mmm yyyy"],
+		["month-year-long", "mmmm yyyy"]
+	])("поддерживает month+year date preset %s из typedValueFormat", (datePresetName, expectedFormat) => {
+		const column = createTableExcelColumn({
+			id: "PERIOD",
+			header: "Период",
+			odataType: "datetime",
+			formattersPipeline: {
+				version: 1,
+				plan: {
+					steps: [
+						{
+							id: "typed",
+							type: "typedValueFormat",
+							config: {
+								datePresetName
+							}
+						}
+					]
+				}
+			}
+		});
+
+		expect(column).toMatchObject({
+			type: Date,
+			format: expectedFormat
+		});
+	});
+
 	it("использует встроенные Excel-форматы для time и datetimeOffset", () => {
 		expect(createTableExcelColumn({ id: "TIME", header: "Время", odataType: "time" })).toMatchObject({
 			type: Date,

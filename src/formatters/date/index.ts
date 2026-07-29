@@ -39,6 +39,8 @@ export {
 	formatDateAsMonthShort,
 	formatDateAsMonthMedium,
 	formatDateAsMonthLong,
+	formatDateAsMonthYearMedium,
+	formatDateAsMonthYearLong,
 	formatDateAsODataDate,
 	formatDateAsODataDatetime,
 	formatDateAsODataTime,

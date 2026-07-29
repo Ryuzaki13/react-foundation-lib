@@ -60,12 +60,14 @@ const INTEGER_EXCEL_FORMAT = "#,##0";
 const DEFAULT_DECIMAL_EXCEL_FORMAT = "#,##0.0";
 const EXCEL_DATE_FORMAT = "dd.mm.yyyy";
 /**
- * Excel-маски семейства month-* сохраняют ту же детализацию, что и экранные
- * пресеты без года: числовой short, сокращённый medium и полный long.
+ * Excel-маски календарных пресетов сохраняют экранную детализацию:
+ * month-* выводит день и месяц без года, а month-year-* — месяц и год без дня.
  */
 const EXCEL_DAY_MONTH_SHORT_FORMAT = "dd.mm";
 const EXCEL_DAY_MONTH_MEDIUM_FORMAT = "d mmm";
 const EXCEL_DAY_MONTH_LONG_FORMAT = "d mmmm";
+const EXCEL_MONTH_YEAR_MEDIUM_FORMAT = "mmm yyyy";
+const EXCEL_MONTH_YEAR_LONG_FORMAT = "mmmm yyyy";
 const EXCEL_TIME_FORMAT = "hh:mm";
 const EXCEL_TIME_SECONDS_FORMAT = "hh:mm:ss";
 const EXCEL_DATETIME_FORMAT = `${EXCEL_DATE_FORMAT} ${EXCEL_TIME_FORMAT}`;
@@ -133,6 +135,14 @@ function resolveBuiltinDatePresetExcelFormat(presetName: string): string | undef
 
 	if (presetName === DEFAULT_DATE_PRESET_NAMES.monthLong) {
 		return EXCEL_DAY_MONTH_LONG_FORMAT;
+	}
+
+	if (presetName === DEFAULT_DATE_PRESET_NAMES.monthYearMedium) {
+		return EXCEL_MONTH_YEAR_MEDIUM_FORMAT;
+	}
+
+	if (presetName === DEFAULT_DATE_PRESET_NAMES.monthYearLong) {
+		return EXCEL_MONTH_YEAR_LONG_FORMAT;
 	}
 
 	if (presetName.startsWith("datetime")) {

@@ -53,6 +53,8 @@ export const DEFAULT_DATE_PRESET_NAMES = Object.freeze({
 	monthShort: "month-short",
 	monthMedium: "month-medium",
 	monthLong: "month-long",
+	monthYearMedium: "month-year-medium",
+	monthYearLong: "month-year-long",
 	datetime: "datetime",
 	datetimeSeconds: "datetime-seconds",
 	datetimeShort: "datetime-short",
@@ -117,6 +119,14 @@ const BUILTIN_PRESETS: DateFormatPresetConfig[] = [
 		name: `month-${style}`,
 		intlOptions: getMonthStyleIntlOptions(style)
 	})),
+	{
+		name: DEFAULT_DATE_PRESET_NAMES.monthYearMedium,
+		intlOptions: { month: "short", year: "numeric" }
+	},
+	{
+		name: DEFAULT_DATE_PRESET_NAMES.monthYearLong,
+		intlOptions: { month: "long", year: "numeric" }
+	},
 	...FORMAT_STYLES.map((style) => ({
 		name: `time-${style}`,
 		intlOptions: getTimeStyleIntlOptions(style),
@@ -135,6 +145,14 @@ const BUILTIN_PRESETS: DateFormatPresetConfig[] = [
 	{ name: DEFAULT_DATE_PRESET_NAMES.abapMonth, pattern: "yyyyMM" },
 	{ name: DEFAULT_DATE_PRESET_NAMES.abapYear, pattern: "yyyy" }
 ];
+
+/**
+ * Текстовая детализация месяца для встроенных пресетов `месяц + год`.
+ */
+const MONTH_YEAR_PRESET_STYLES: ReadonlyMap<string, "short" | "long"> = new Map([
+	[DEFAULT_DATE_PRESET_NAMES.monthYearMedium, "short"],
+	[DEFAULT_DATE_PRESET_NAMES.monthYearLong, "long"]
+]);
 
 /**
  * Реестр предустановок форматирования.
@@ -426,11 +444,60 @@ function createPresetFormatter(preset: DateFormatPreset): CompiledDateFormatter 
 }
 
 /**
+ * Создаёт форматтер месяца и года без локализованного маркера года `г.`.
+ *
+ * `Intl.DateTimeFormat` для `ru-RU` добавляет этот маркер автоматически.
+ * Пресет предназначен для компактного отображения месячной точности в DateInput,
+ * поэтому собирает только содержательные части `month` и `year`.
+ */
+function createMonthYearFormatter(locale: string, monthStyle: "short" | "long"): CompiledDateFormatter {
+	// Русская локаль сокращает название месяца только в контексте даты с днём.
+	// День нужен Intl для правильной формы, но в итоговую строку не включается.
+	const monthYearFormatter = new Intl.DateTimeFormat(
+		locale,
+		monthStyle === "short" ? { day: "numeric", month: monthStyle, year: "numeric" } : { month: monthStyle, year: "numeric" }
+	);
+	const standaloneMonthFormatter = new Intl.DateTimeFormat(locale, { month: "long" });
+	const yearFormatter = new Intl.DateTimeFormat(locale, { year: "numeric" });
+
+	return (date, precision = "day") => {
+		const formatter = precision === "year" ? yearFormatter : monthYearFormatter;
+		const parts = formatter.formatToParts(date);
+		const year = parts.find((part) => part.type === "year")?.value ?? "";
+		if (precision === "year") return year;
+
+		const contextualMonth = parts.find((part) => part.type === "month")?.value ?? "";
+		// Для мая Intl возвращает нескорочённую родительную форму `мая`.
+		// Если сокращение с точкой отсутствует, берём самостоятельную форму `май`.
+		const month =
+			monthStyle === "short" && !contextualMonth.endsWith(".")
+				? (standaloneMonthFormatter.formatToParts(date).find((part) => part.type === "month")?.value ?? contextualMonth)
+				: contextualMonth;
+
+		return `${month} ${year}`;
+	};
+}
+
+/**
+ * Компилирует встроенный пресет с учётом его фиксированной семантики.
+ */
+function compileBuiltinDatePreset(config: DateFormatPresetConfig): CompiledDateFormatPreset {
+	const preset = compileDatePreset(config);
+	const monthYearStyle = MONTH_YEAR_PRESET_STYLES.get(config.name);
+	if (!monthYearStyle) return preset;
+
+	return {
+		...preset,
+		formatDateTime: createMonthYearFormatter(preset.locale, monthYearStyle)
+	};
+}
+
+/**
  * Инициализирует реестр встроенными предустановками.
  */
 function initPresets(): void {
 	for (const config of BUILTIN_PRESETS) {
-		registry.set(config.name, compileDatePreset(config));
+		registry.set(config.name, compileBuiltinDatePreset(config));
 	}
 }
 

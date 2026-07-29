@@ -61,6 +61,8 @@
 - `month-short`: `03.03`
 - `month-medium`: `3 мар.`
 - `month-long`: `3 марта`
+- `month-year-medium`: `мар. 2026`
+- `month-year-long`: `март 2026`
 - `time-short`: `18:03`
 - `time-medium`: `18:03:50`
 - `time-long`: `18:03:50`
@@ -72,7 +74,7 @@
 - `abap-date`: `yyyyMMdd`
 - `abap-datetime`: `yyyyMMddHHmmss`
 
-Style-пресеты используют `Intl.DateTimeFormat` с `ru-RU`. Семейство `month-short|medium|long` повторяет уровни детализации даты, но не выводит год. Время описано явными полями: стандартный `timeStyle: "long"` добавляет timezone, а в этом модуле timezone-семантика запрещена.
+Style-пресеты используют `Intl.DateTimeFormat` с `ru-RU`. Семейство `month-short|medium|long` повторяет уровни детализации даты, но не выводит год. Пресеты `month-year-medium|long` предназначены для полей с месячной точностью и выводят месяц с годом без маркера `г.`. Время описано явными полями: стандартный `timeStyle: "long"` добавляет timezone, а в этом модуле timezone-семантика запрещена.
 
 Значения по умолчанию для любого пресета:
 
@@ -156,7 +158,7 @@ formatDate("abc", "datetime", { fallback: "н/д" });
 // "н/д"
 ```
 
-### `formatDateAsDate`, `formatDateAsMonthShort`, `formatDateAsMonthMedium`, `formatDateAsMonthLong`, `formatDateAsDateTime`, `formatDateAsTime`
+### `formatDateAsDate`, `formatDateAsMonthShort`, `formatDateAsMonthMedium`, `formatDateAsMonthLong`, `formatDateAsMonthYearMedium`, `formatDateAsMonthYearLong`, `formatDateAsDateTime`, `formatDateAsTime`
 
 Упрощённые helper-обёртки поверх встроенных пресетов:
 
@@ -167,6 +169,8 @@ import {
 	formatDateAsMonthLong,
 	formatDateAsMonthMedium,
 	formatDateAsMonthShort,
+	formatDateAsMonthYearLong,
+	formatDateAsMonthYearMedium,
 	formatDateAsTime
 } from "@/shared/lib";
 
@@ -181,6 +185,12 @@ formatDateAsMonthMedium("2026-03-03T18:03:50Z");
 
 formatDateAsMonthLong("2026-03-03T18:03:50Z");
 // "3 марта"
+
+formatDateAsMonthYearMedium("2026-03-03T18:03:50Z");
+// "мар. 2026"
+
+formatDateAsMonthYearLong("2026-03-03T18:03:50Z");
+// "март 2026"
 
 formatDateAsDateTime("2026-03-03T18:03:50Z");
 // "03.03.2026 18:03"
@@ -440,6 +450,8 @@ isSameCalendarDay(new Date(2026, 2, 3, 1, 0, 0), new Date(2026, 2, 3, 23, 59, 59
 - `formatDateAsMonthShort`
 - `formatDateAsMonthMedium`
 - `formatDateAsMonthLong`
+- `formatDateAsMonthYearMedium`
+- `formatDateAsMonthYearLong`
 - `formatDateAsTime`
 - `formatDateRange`
 - `parseDateValue`

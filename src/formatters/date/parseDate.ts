@@ -97,6 +97,7 @@ const DAY_MONTH_PRESET_NAMES = new Set<string>([
 	DEFAULT_DATE_PRESET_NAMES.monthMedium,
 	DEFAULT_DATE_PRESET_NAMES.monthLong
 ]);
+const MONTH_YEAR_PRESET_NAMES = new Set<string>([DEFAULT_DATE_PRESET_NAMES.monthYearMedium, DEFAULT_DATE_PRESET_NAMES.monthYearLong]);
 
 /**
  * Создаёт календарную дату без timezone-семантики и валидирует компоненты.
@@ -262,6 +263,13 @@ function parseLocalizedDateString(value: string, locale: string, precision: Date
  */
 function isDayMonthPresetName(dateFormat: string): boolean {
 	return DAY_MONTH_PRESET_NAMES.has(dateFormat);
+}
+
+/**
+ * Проверяет, что пресет содержит месяц и год без дня.
+ */
+function isMonthYearPresetName(dateFormat: string): boolean {
+	return MONTH_YEAR_PRESET_NAMES.has(dateFormat);
 }
 
 /**
@@ -686,6 +694,10 @@ export function parseDateByFormat(value: unknown, dateFormat?: string, options: 
 	if (precision === "day" && isDayMonthPresetName(resolvedFormat)) {
 		const parsedDayMonth = parseLocalizedDayMonthString(trimmed, locale, resolveReferenceYear(options.referenceDate));
 		if (parsedDayMonth) return parsedDayMonth;
+	}
+
+	if (precision !== "year" && isMonthYearPresetName(resolvedFormat)) {
+		return parseLocalizedMonthString(trimmed, locale);
 	}
 
 	return parseLocalizedDateString(trimmed, locale, precision);

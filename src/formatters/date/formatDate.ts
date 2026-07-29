@@ -149,6 +149,20 @@ export function formatDateAsMonthLong(value: unknown, options?: FormatDateOption
 }
 
 /**
+ * Форматирует значение как сокращённый месяц и год `мар. 2026`.
+ */
+export function formatDateAsMonthYearMedium(value: unknown, options?: FormatDateOptions): string {
+	return formatDate(value, DEFAULT_DATE_PRESET_NAMES.monthYearMedium, options);
+}
+
+/**
+ * Форматирует значение как полный месяц и год `март 2026`.
+ */
+export function formatDateAsMonthYearLong(value: unknown, options?: FormatDateOptions): string {
+	return formatDate(value, DEFAULT_DATE_PRESET_NAMES.monthYearLong, options);
+}
+
+/**
  * Форматирует значение как короткое время `18:03`.
  */
 export function formatDateAsTimeShort(value: unknown, options?: FormatDateOptions): string {

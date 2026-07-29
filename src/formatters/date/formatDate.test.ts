@@ -16,6 +16,8 @@ import {
 	formatDateAsMonthShort,
 	formatDateAsMonthMedium,
 	formatDateAsMonthLong,
+	formatDateAsMonthYearMedium,
+	formatDateAsMonthYearLong,
 	formatDateAsODataDate,
 	formatDateAsODataDatetime,
 	formatDateAsODataTime,
@@ -73,6 +75,8 @@ describe("реестр предустановок", () => {
 			"month-short",
 			"month-medium",
 			"month-long",
+			"month-year-medium",
+			"month-year-long",
 			"time-short",
 			"time-medium",
 			"time-long",
@@ -286,6 +290,14 @@ describe("Intl style-пресеты без timezone-семантики", () => {
 		expect(formatDate(new Date(2026, 5, 25), "month-long")).toBe("25 июня");
 	});
 
+	it("форматирует month+year пресеты ru-RU без маркера года", () => {
+		expect(formatDate(new Date(2026, 4, 25), "month-year-medium")).toBe("май 2026");
+		expect(formatDate(new Date(2026, 5, 25), "month-year-medium")).toBe("июн. 2026");
+
+		expect(formatDate(new Date(2026, 4, 25), "month-year-long")).toBe("май 2026");
+		expect(formatDate(new Date(2026, 5, 25), "month-year-long")).toBe("июнь 2026");
+	});
+
 	it("форматирует timeStyle-подобные пресеты ru-RU без timezoneName", () => {
 		expect(formatDate(BASE_LOCAL_DATE, "time-short")).toBe("18:03");
 		expect(formatDate(BASE_LOCAL_DATE, "time-medium")).toBe("18:03:50");
@@ -370,6 +382,8 @@ describe("дополнительные API", () => {
 		expect(formatDateAsMonthShort(BASE_LOCAL_DATE)).toBe("03.03");
 		expect(formatDateAsMonthMedium(BASE_LOCAL_DATE)).toBe("3 мар.");
 		expect(formatDateAsMonthLong(BASE_LOCAL_DATE)).toBe("3 марта");
+		expect(formatDateAsMonthYearMedium(BASE_LOCAL_DATE)).toBe("мар. 2026");
+		expect(formatDateAsMonthYearLong(BASE_LOCAL_DATE)).toBe("март 2026");
 		expect(formatDateAsTime(BASE_LOCAL_DATE)).toBe("18:03");
 		expect(formatDateAsTimeSeconds(BASE_LOCAL_DATE)).toBe("18:03:50");
 		expect(formatDateAsTimeShort(BASE_LOCAL_DATE)).toBe("18:03");
@@ -391,6 +405,11 @@ describe("дополнительные API", () => {
 		expect(formatDateRange("2026-03-03T18:03:50.327Z", "2026-03-04T05:20:00.000+03:00", "datetime")).toBe(
 			"03.03.2026 18:03 - 04.03.2026 05:20"
 		);
+		expect(
+			formatDateRange(new Date(2026, 5, 1), new Date(2026, 6, 1), "month-year-medium", {
+				precision: "month"
+			})
+		).toBe("июн. 2026 - июл. 2026");
 	});
 
 	it("возвращает fallback для невалидного диапазона", () => {
@@ -404,12 +423,14 @@ describe("точность форматирования календарной �
 		expect(formatDate(BASE_LOCAL_DATE, "date-short", { precision: "month" })).toBe("03.2026");
 		expect(formatDate(BASE_LOCAL_DATE, "date-long", { precision: "month" })).toBe("март 2026 г.");
 		expect(formatDate(BASE_LOCAL_DATE, "datetime-medium", { precision: "month" })).toBe("март 2026 г.");
+		expect(formatDate(BASE_LOCAL_DATE, "month-year-long", { precision: "month" })).toBe("март 2026");
 	});
 
 	it("не выводит день и месяц при точности year", () => {
 		expect(formatDate(BASE_LOCAL_DATE, "date-short", { precision: "year" })).toBe("2026");
 		expect(formatDate(BASE_LOCAL_DATE, "date-long", { precision: "year" })).toBe("2026");
 		expect(formatDate(BASE_LOCAL_DATE, "datetime-medium", { precision: "year" })).toBe("2026");
+		expect(formatDate(BASE_LOCAL_DATE, "month-year-long", { precision: "year" })).toBe("2026");
 	});
 
 	it("фильтрует ручные шаблоны по точности", () => {

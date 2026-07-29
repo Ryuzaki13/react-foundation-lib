@@ -278,6 +278,19 @@ describe("parseDateByFormat", () => {
 		expect(parseDateByFormat("31.02", "month-short", { referenceDate: new Date(2026, 0, 1) })).toBeNull();
 	});
 
+	it("парсит month+year пресеты без маркера года", () => {
+		expect(parseDateByFormat("июн. 2026", "month-year-medium")).toEqual({
+			kind: "date-time",
+			source: "iso-local",
+			date: new Date(2026, 5, 1, 0, 0, 0, 0)
+		});
+		expect(parseDateByFormat("июнь 2026", "month-year-long")).toEqual({
+			kind: "date-time",
+			source: "iso-local",
+			date: new Date(2026, 5, 1, 0, 0, 0, 0)
+		});
+	});
+
 	it("парсит дату и время по Intl-пресету", () => {
 		expect(parseDateByFormat("3 мар. 2026 г., 18:03:50", "datetime-medium")).toEqual({
 			kind: "date-time",

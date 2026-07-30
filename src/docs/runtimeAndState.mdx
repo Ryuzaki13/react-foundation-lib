@@ -1,0 +1,155 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Runtime, state и diagnostics" />
+
+# Runtime, state и diagnostics
+
+Этот раздел содержит инфраструктурные API, которые создаются в composition root host-приложения. Они не должны подключаться из каждой feature: persistence, BroadcastChannel, notifications и error reporting имеют глобальный lifecycle и приватные данные.
+
+## `query-client`: TanStack Query инфраструктура
+
+```ts
+import {
+	configureQueryPersistenceProjectAdapter,
+	createQueryClient,
+	installReactQueryBroadcast,
+	installSessionScopedQueryReset,
+	persistedQueryMeta,
+	resetSessionScopedQueries,
+	sessionScopedQueryMeta
+} from "@ryuzaki13/react-foundation-lib/query-client";
+```
+
+### Composition root
+
+1. До создания `QueryClient` вызовите `configureQueryPersistenceProjectAdapter` при необходимости задать application-specific `persistenceBuster` и `resolveSystemIdentifier`.
+2. Создайте один `QueryClient` через `createQueryClient({ onQueryError?, onMutationError? })`.
+3. В browser bootstrap установите sync/reset channels и обязательно сохраните их `cleanup` для shutdown/tests.
+
+```ts
+configureQueryPersistenceProjectAdapter({
+	persistenceBuster: "host-v1",
+	resolveSystemIdentifier: () => "host-production"
+});
+
+const queryClient = createQueryClient({
+	onQueryError: (error, query) => reportQueryError(error, query)
+});
+
+const broadcast = installReactQueryBroadcast(queryClient, {
+	queriesChannel: "host-query-cache",
+	eventsChannel: "host-query-events"
+});
+const sessionReset = installSessionScopedQueryReset(queryClient, {
+	channelName: "host-session-reset"
+});
+
+// teardown: broadcast.cleanup(); sessionReset.cleanup();
+```
+
+### Persistence, session scope и broadcast
+
+| API                                                      | Когда использовать                                                                                                |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `persistedQueryMeta`                                     | `meta` query только для публичных, serializable данных, которым разрешено переживать restart.                     |
+| `sessionScopedQueryMeta`                                 | `meta` query, чей результат зависит от текущей server session/role. Такой query никогда не сохраняется.           |
+| `shouldPersistQuery(query)`                              | Predicate persistence: true лишь для `persist: true` без `sessionScoped`.                                         |
+| `createIndexedDbQueryStorage(options?)`                  | Создаёт async IndexedDB storage либо `undefined`, если API недоступен.                                            |
+| `createReactQueryPersister()`                            | Создаёт TanStack persister с 90-дневным max age или `undefined`.                                                  |
+| `installReactQueryBroadcast(queryClient, channels)`      | Синхронизирует Query cache и explicit invalidate/set events между вкладками; возвращает `{ broadcast, cleanup }`. |
+| `broadcastCacheEvent(event)` / `setBroadcastFn(fn)`      | Imperative bridge для explicit cache event. Настраивается один раз в composition root.                            |
+| `resetSessionScopedQueries(queryClient, { broadcast? })` | Отменяет, очищает и refetches active session-scoped queries после логина, логаута или смены роли.                 |
+| `installSessionScopedQueryReset(...)`                    | Рассылает только команду reset, не query data; возвращает cleanup.                                                |
+
+Не отмечайте query обоими meta-флагами. Не кладите в persisted/broadcast cache tokens, персональные данные без принятой политики, DOM nodes, функции или class instances.
+
+### Оптимистичная мутация
+
+`onMutateOptimistic`, `onErrorOptimistic`, `onSuccessOptimistic`, `onSettledOptimistic` — low-level helpers для одного известного cache key. `onMutateOptimistic` сначала отменяет запросы, сохраняет `previous`, затем применяет patch. Контекст обязательно передаётся в `onError` для rollback.
+
+```ts
+useMutation({
+	mutationFn: updateTodo,
+	onMutate: (input) => onMutateOptimistic(queryClient, todoKey, (old) => patchTodo(old, input)),
+	onError: (_error, _input, context) => onErrorOptimistic(queryClient, todoKey, context),
+	onSettled: () => onSettledOptimistic(queryClient, todoKey, { refetchType: "active" })
+});
+```
+
+`OnSettledOptimisticOptions.refetchType` defaults to `"none"`. Не применяйте helper к непонятно широкому key: cache strategy должен владеть entity/feature, а не shared infrastructure.
+
+## `error-report`: безопасный diagnostic draft
+
+```ts
+import {
+	captureQueryErrorReport,
+	captureRuntimeErrorReport,
+	getErrorReportDrafts,
+	installErrorReportBrowserBreadcrumbs,
+	setErrorReportRuntimeErrorReporter,
+	setErrorReportTransportErrorReporter
+} from "@ryuzaki13/react-foundation-lib/error-report";
+```
+
+Пакет подготавливает, sanitizes и локально сохраняет diagnostic draft. Он **не** отправляет отчёт в backend сам: transport/delivery принадлежит соответствующему API-пакету или host integration.
+
+| Группа API       | Контракт                                                                                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Environment      | `isErrorReportingEnabled`, `getErrorReportEnvironment`, `getErrorReportClientEnvironment` дают browser/non-dev gate и минимальный runtime context.                                              |
+| Safe values      | `createDiagnosticValue`, `createDataShape`, `sanitizeDetail`, `createErrorInfo` превращают `unknown` в serializable diagnostic form. Не передавайте секреты даже в sanitizing API.              |
+| Breadcrumbs      | `addErrorReportBreadcrumb`, `getErrorReportBreadcrumbs`, `clearErrorReportBreadcrumbs`, `installErrorReportBrowserBreadcrumbs`. Установка browser listener возвращает cleanup.                  |
+| Capture          | `captureQueryErrorReport`, `captureMutationErrorReport`, `captureRuntimeErrorReport` создают `ErrorReportDraft` с query/mutation/runtime diagnostics.                                           |
+| Drafts           | `captureErrorReportDraft`, `getErrorReportDraft`, `getErrorReportDrafts`, `updateErrorReportDraft` управляют локальными draft.                                                                  |
+| Reporting bridge | `setErrorReportRuntimeErrorReporter` + `reportRuntimeError`; `setErrorReportTransportErrorReporter`, `reportTransportError`, `suppressTransportErrorReport`, `isTransportErrorReportScheduled`. |
+| Diagnostics      | `collectQueryDiagnostics`, `collectMutationDiagnostics`, `collectQueryClientDiagnostics`, `collectPersistedQueryDiagnostics`.                                                                   |
+
+### Подключение reporter-а
+
+```ts
+setErrorReportRuntimeErrorReporter(async (error, context) => {
+	const draft = captureRuntimeErrorReport(error, context, queryClient);
+	// Передайте draft в owner transport только после собственной privacy policy.
+	await deliverDiagnosticDraft(await draft);
+});
+```
+
+`ErrorReportPayload`, `ErrorReportDraft`, `ErrorReportBreadcrumb`, `ErrorReportErrorInfo`, `ErrorReportSafeValue` и context types — публичные contracts для typed delivery. Runtime capture в браузере coalesces одинаковые ошибки на коротком окне, чтобы flood не создавал много draft. Не дублируйте transport report: `capture*` корректно вызывает `suppressTransportErrorReport` для исходной ошибки.
+
+## `notifications`: global imperative facade
+
+```ts
+import { bindNotifications, createNotificationsStore, notify } from "@ryuzaki13/react-foundation-lib/notifications";
+```
+
+```ts
+const notificationsStore = createNotificationsStore();
+const unbind = bindNotifications(notificationsStore);
+
+notify.success("Сохранено");
+const progress = notify.progress("Загрузка…");
+progress.success("Готово");
+
+// teardown composition root: unbind();
+```
+
+| API                                       | Назначение                                                                                                     |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `createNotificationsStore()`              | Создаёт Zustand store с max 6 items и timer cleanup. Вызов только в browser-compatible UI composition.         |
+| `bindNotifications(store)`                | Связывает единственный store с imperative `notify`; возвращает unbind. До bind любой `notify.*` бросает Error. |
+| `notify.push/upsert/update/dismiss/clear` | Imperative actions над `NotificationPushInput`/`NotificationUpdatePatch`.                                      |
+| `notify.success/info/warning/error`       | Удобные typed shortcuts.                                                                                       |
+| `notify.progress(message, opts?)`         | Возвращает `{ id, update, success, error, dismiss }` для долгой операции.                                      |
+
+`Notification`, `NotificationAction`, `NotificationType`, `NotificationTone`, `NotificationId` описывают данные, а не UI rendering. UI owner подписывается на `NotificationsStoreApi` и отвечает за accessibility/визуал.
+
+## OData collection preferences, session и fingerprint
+
+```ts
+import { odataCollectionConfig, useODataCollectionStore } from "@ryuzaki13/react-foundation-lib/odata";
+import { getSessionStorageId } from "@ryuzaki13/react-foundation-lib/session-storage";
+import { getClientFingerprint } from "@ryuzaki13/react-foundation-lib/fingerprint";
+```
+
+`odataCollectionConfig` даёт selectors для общих UI-defaults (`maxVisibleItems`, min search lengths, debounce); `useODataCollectionStore` даёт state и setters. Это клиентские предпочтения, не backend data и не metadata cache.
+
+`getSessionStorageId(key, createId?)` возвращает стабильный ID одной вкладки из `sessionStorage`; при storage failure всё равно вернёт новый ID. `getClientFingerprint()` асинхронно возвращает fingerprint или `null`, если библиотека/API недоступны. Не используйте fingerprint как authentication/authorization credential.

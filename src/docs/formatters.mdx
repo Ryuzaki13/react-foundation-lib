@@ -1,0 +1,363 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Formatters" />
+
+# Форматтеры
+
+`@ryuzaki13/react-foundation-lib/formatters` — единая публичная точка входа для
+преобразования значений в host-проекте. Она покрывает даты, числа, строки,
+логические значения, ФИО, телефон и числовые идентификаторы. Импортировать
+внутренние файлы пакета и корневой пакет не нужно: все показанные ниже имена
+доступны из опубликованного subpath.
+
+```ts
+import { formatDate, formatNumber, normalizeText, parseBoolean } from "@ryuzaki13/react-foundation-lib/formatters";
+
+import type { DateFormatPreset, NumberFormatPresetConfig } from "@ryuzaki13/react-foundation-lib/formatters";
+```
+
+## Выбор API
+
+| Задача                                                       | Используйте                                                    |
+| ------------------------------------------------------------ | -------------------------------------------------------------- |
+| Отобразить или разобрать дату без неявного timezone-сдвига   | `formatDate`, `parseDate`, `parseDateTZ`                       |
+| Получить календарные границы или безопасный диапазон         | `getCalendarPeriod`, `normalizeDateRange`, `requireDateRange`  |
+| Отобразить число или разобрать SAP-подобную строку           | `formatNumber`, `toFiniteNumber`, `parseNumber`                |
+| Привести текст к безопасной строке или нормализовать пробелы | `toSafeString`, `normalizeText`, `normalizeTextSpaces`         |
+| Преобразовать ABAP boolean                                   | `parseAbapBoolean`, `toAbapBoolean`                            |
+| Показать ФИО, российский номер или код с ведущими нулями     | `formatFullName`, `formatPhone`, `normalizeLeadingZerosStrict` |
+
+## Даты
+
+### Основной форматтер
+
+```ts
+import { formatDate, formatDateAsDateTime, formatDateAsODataDate } from "@ryuzaki13/react-foundation-lib/formatters";
+
+formatDate("2026-03-05T14:30:00", "date");
+// "05.03.2026"
+
+formatDateAsDateTime("/Date(1772713800000+0500)/");
+// строка даты и времени в локальной календарной семантике
+
+formatDateAsODataDate(new Date(2026, 2, 5));
+// "2026-03-05"
+```
+
+Сигнатура универсального вызова:
+
+```ts
+formatDate(
+	value: unknown,
+	presetOrName?: string | DateFormatPreset,
+	options?: FormatDateOptions
+): string;
+```
+
+`value` может быть `Date`, Unix timestamp, OData ticks вида
+`/Date(…)/`, OData literal, ABAP-дата/временная метка, ISO-строка,
+ISO-длительность и несколько распространённых человекочитаемых форматов.
+Неподходящее значение не выбрасывает исключение: результатом будет
+`options.fallback`, либо `invalidFallback` выбранного пресета, либо пустая
+строка по умолчанию.
+
+Исключение — неизвестное строковое имя пресета: `formatDate` выбросит
+`Error`. Если формат получен из внешней конфигурации, сначала разрешите его
+через `resolveDateFormatPreset` или проверьте через `getDatePreset`.
+
+`FormatDateOptions`:
+
+| Поле                                     | Назначение                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------------- |
+| `fallback?: string`                      | Результат для нераспознанного входа; имеет приоритет над fallback пресета. |
+| `precision?: "day" \| "month" \| "year"` | Скрывает календарные части ниже выбранной точности.                        |
+
+### Готовые форматтеры
+
+Все функции принимают `value: unknown` и необязательный `FormatDateOptions`,
+возвращают строку и используют соответствующий встроенный пресет.
+
+| API                                                                                                 | Результат / назначение                                                                 |
+| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `formatDateAsDate`                                                                                  | `dd.MM.yyyy`.                                                                          |
+| `formatDateAsDateTime`                                                                              | Дата и время до минут.                                                                 |
+| `formatDateAsTime`, `formatDateAsTimeSeconds`                                                       | Время до минут или секунд.                                                             |
+| `formatDateAsDateShort`, `formatDateAsDateMedium`, `formatDateAsDateLong`                           | Числовая, сокращённая и полная русская дата.                                           |
+| `formatDateAsMonthShort`, `formatDateAsMonthMedium`, `formatDateAsMonthLong`                        | День и месяц без года: числовой, сокращённый или полный вид.                           |
+| `formatDateAsMonthYearMedium`, `formatDateAsMonthYearLong`                                          | Месяц и год в сокращённом или полном виде.                                             |
+| `formatDateAsTimeShort`, `formatDateAsTimeMedium`, `formatDateAsTimeLong`                           | Короткое или секундное время без вывода timezone.                                      |
+| `formatDateAsDatetimeShort`, `formatDateAsDatetimeMedium`, `formatDateAsDatetimeLong`               | Дата и время с разной детализацией.                                                    |
+| `formatDateAsAbapYear`, `formatDateAsAbapMonth`, `formatDateAsAbapDate`, `formatDateAsAbapDatetime` | Машинные строки `yyyy`, `yyyyMM`, `yyyyMMdd`, `yyyyMMddHHmmss`.                        |
+| `formatDateAsODataDate`, `formatDateAsODataDatetime`                                                | Машинные строки `yyyy-MM-dd`, `yyyy-MM-ddTHH:mm:ss`.                                   |
+| `formatDateAsODataTime`                                                                             | Время как OData duration `PT00H00M00S`; для ISO-длительности форматирует её как время. |
+| `formatDateRange(startValue, endValue, presetOrName?, options?)`                                    | Две валидные даты через `-`; если любая невалидна, возвращает fallback.                |
+
+### Разбор даты и timezone-семантика
+
+```ts
+import { parseDate, parseDateTZ, parseDateByPattern, parseDateValue } from "@ryuzaki13/react-foundation-lib/formatters";
+
+parseDate("20260305");
+// Date | null
+
+parseDateTZ("2026-03-05T10:00:00+05:00");
+// Date | null, сохраняет абсолютный instant
+
+parseDateByPattern("05/03/2026", "dd/MM/yyyy");
+// { kind: "date-time", source: "iso-local", date: Date } | null
+
+parseDateValue("PT01H30M");
+// { kind: "duration", source: "iso-duration", durationMs: 5_400_000 } | null
+```
+
+| API                                                   | Вход и результат                                                                                                                                                        |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parseDateValue(value)`                               | `ParsedDateValue \| null`. Обычный режим: сохраняет видимые календарные компоненты без применения timezone.                                                             |
+| `parseDateValueTZ(value)`                             | `ParsedDateValue \| null`. Для Unix timestamp и ISO/OData со смещением сохраняет абсолютный момент времени.                                                             |
+| `parseDate(value)`                                    | `Date \| null`; в том числе приводит duration к `Date` в «плавающей» календарной семантике.                                                                             |
+| `parseDateTZ(value)`                                  | `Date \| null` с timezone-aware трактовкой абсолютного времени.                                                                                                         |
+| `parseDateByPattern(value, pattern?, { precision? })` | Строго разбирает токены `dd`, `MM`, `yyyy`, `yy`, `HH`, `mm`, `ss`; невалидные компоненты дают `null`. Двузначный год `00–69` — это `2000–2069`, `70–99` — `1970–1999`. |
+| `parseDateByFormat(value, dateFormat?, options?)`     | Разбирает зарегистрированное имя пресета, style-алиас или ручной шаблон. `options`: `defaultFormat`, `locale`, `precision`, `referenceDate`.                            |
+
+Публичные типы для результатов и контракта: `DateInputSource`,
+`ParsedDateValue`, `DateFormatPattern`, `DateFormatStyle`,
+`DateFormatPrecision`, `DateFormatPreset`, `DateFormatPresetConfig`,
+`FormatDateOptions`, `ParseDateByPatternOptions`, `ParseDateByFormatOptions`.
+
+Не заменяйте `parseDate` на `new Date("YYYY-MM-DD")`, если значение является
+календарной датой: native parsing может изменить отображаемый день из-за
+timezone.
+
+### Пресеты дат
+
+```ts
+import {
+	DEFAULT_DATE_PRESET_NAMES,
+	getDatePreset,
+	registerDatePreset,
+	resolveDateFormatPreset
+} from "@ryuzaki13/react-foundation-lib/formatters";
+
+registerDatePreset({
+	name: "report-date",
+	pattern: "dd.MM.yyyy",
+	invalidFallback: "—"
+});
+
+formatDate("2026-03-05", "report-date"); // "05.03.2026"
+
+const safePreset = resolveDateFormatPreset("dd/MM/yyyy");
+formatDate("05/03/2026", safePreset); // "05/03/2026"
+```
+
+`DEFAULT_DATE_PRESET_NAMES` содержит: `date`, `date-short`, `date-medium`,
+`date-long`, `month-short`, `month-medium`, `month-long`,
+`month-year-medium`, `month-year-long`, `datetime`, `datetime-seconds`,
+`datetime-short`, `datetime-medium`, `datetime-long`, `time`,
+`time-seconds`, `time-short`, `time-medium`, `time-long`, `odata-date`,
+`odata-datetime`, `abap-datetime`, `abap-date`, `abap-month`, `abap-year`.
+
+| API                                                        | Поведение                                                                                                      |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `DATE_FORMAT_DEFAULTS`                                     | Значения по умолчанию: `ru-RU`, числовая дата и пустой `invalidFallback`.                                      |
+| `DATE_FORMAT_STYLE_PRESET_NAMES`                           | Соответствие `short`, `medium`, `long` встроенным date-пресетам.                                               |
+| `getDatePreset(name)`, `getDatePresetNames()`              | Возвращают пресет или `undefined`, список имён.                                                                |
+| `registerDatePreset(config)`                               | Компилирует и регистрирует/перезаписывает пресет, возвращает готовый `DateFormatPreset`. Реестр module-scoped. |
+| `resetDatePresets()`                                       | Сбрасывает реестр к встроенным пресетам; используйте для изолированных тестов, не в обычном runtime.           |
+| `isDateFormatStyle(value)`, `isDateFormatPrecision(value)` | Type guard для style и precision.                                                                              |
+| `resolveDateFormatName(value?, defaultFormat?)`            | Обрезает пробелы и переводит `short` / `medium` / `long` в имя date-пресета.                                   |
+| `resolveDateFormatPreset(value?, options?)`                | Возвращает имя зарегистрированного пресета или кешируемый объектный пресет для ручного шаблона.                |
+
+Для ручных шаблонов доступны константы `DATE_PATTERN_DATE_TOKENS`,
+`DATE_PATTERN_TIME_TOKENS`, `DATE_PATTERN_TOKENS` и `DATE_PATTERN_TOKEN_RE`.
+Поддерживаются только перечисленные токены; остальные фрагменты шаблона —
+литеральный текст.
+
+### Календарные значения и диапазоны
+
+Эти функции работают с локальными компонентами `Date` и не добавляют UTC- или
+timezone-семантику.
+
+| API                                                                                                                                                                           | Результат / fallback                                                                                               |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `createCalendarDate(year, monthIndex, day, hour?, minute?, second?, millisecond?)`                                                                                            | Новый локальный `Date`; `monthIndex` соответствует `Date#getMonth()`.                                              |
+| `getStartOfDay`, `getEndOfDay`, `getStartOfMonth`, `getStartOfYear`, `getStartOfWeek(date, weekStartsOn?)`                                                                    | Новая дата с календарной границей; по умолчанию неделя начинается в понедельник.                                   |
+| `addCalendarDays`, `addCalendarMonths`, `addCalendarYears`                                                                                                                    | Новый `Date`, сдвинутый в календарной семантике.                                                                   |
+| `isSameCalendarDay(left, right)`                                                                                                                                              | `false`, если любой аргумент не является `Date`; иначе сравнивает год, месяц, день.                                |
+| `getCalendarPeriod(value, { selectionMode?, weekEndDay? })`                                                                                                                   | `{ start, end } \| null`; режимы `day`, `week`, `month`, `year`, конец недели — `friday`, `saturday` или `sunday`. |
+| `isDateInsideCalendarPeriod`, `isCalendarPeriodWithinDateBounds`                                                                                                              | Проверяют включительные границы; при отсутствующих/невалидных данных возвращают `false`.                           |
+| `resolveDateRangePair(value)`                                                                                                                                                 | Упорядоченная пара дат или `null`; одиночная дата становится диапазоном из неё самой.                              |
+| `normalizeDateRange(value, { timeMode? })`                                                                                                                                    | `DateRange \| null`; по умолчанию расширяет до границ суток, `preserve` сохраняет время и создаёт копии.           |
+| `requireDateRange(value, options?)`                                                                                                                                           | Как `normalizeDateRange`, но при отсутствии диапазона выбрасывает `Error`.                                         |
+| `countCalendarDaysInDateRange(value)`                                                                                                                                         | Количество дней включительно или `null`.                                                                           |
+| `isValidDate`, `isDateRangeTuple`, `cloneDate`, `orderDates`                                                                                                                  | Низкоуровневые guards и операции диапазона.                                                                        |
+| `normalizeDateRangeReferenceDate`, `resolveTodayRange`, `resolveYesterdayRange`, `resolveMonthAgoRange`, `resolveMonthStartToTodayRange`, `resolveMonthStartToYesterdayRange` | Относительные диапазоны от `{ referenceDate }`; на первом дне месяца «по вчера» не создаёт инверсию.               |
+
+Публичные типы диапазонов: `CalendarPeriod`, `CalendarPeriodOptions`,
+`CalendarPeriodDateBounds`, `CalendarPeriodSelectionMode`,
+`CalendarWeekEndDay`, `DateRange`, `NullableDateRange`, `DateRangeInput`,
+`DateRangeTimeMode`, `NormalizeDateRangeOptions`, `DateRangeReferenceContext`.
+
+### Учебный календарь
+
+Для образовательной модели доступны `EducationDateKey` (`YYYY-MM-DD`),
+`EducationYearRange` и `EducationWeekRange`.
+
+| API                                                                                                        | Поведение                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `parseEducationDateKey`, `createEducationDateTime`                                                         | Возвращают `Date \| null` при неверном ключе или времени.                                                           |
+| `formatEducationDateKey`, `formatEducationTimeKey`                                                         | Создают стабильные локальные ключи `YYYY-MM-DD` и `HH:mm`.                                                          |
+| `getEducationYear`, `getEducationYearRange`, `isEducationDateInCurrentYear`                                | Учебный год: 1 сентября — 31 августа.                                                                               |
+| `getEducationWeekStartDate`, `getEducationWeekRange`, `getEducationWeekDays`, `getCurrentEducationWeekKey` | Учебная неделя: понедельник — суббота; воскресенье относится к следующей.                                           |
+| `normalizeEducationWeekKey`, `resolveEducationWeekKey`, `isCurrentEducationWeek`                           | Невалидный или вне текущего учебного года ключ даёт `undefined`; `resolve…` вместо этого возвращает текущую неделю. |
+
+## Числа
+
+### Форматирование и пресеты
+
+```ts
+import {
+	formatNumber,
+	formatNumberAsDecimal2,
+	formatNumberAsIntegerOrEmpty,
+	registerNumberPreset
+} from "@ryuzaki13/react-foundation-lib/formatters";
+
+formatNumberAsDecimal2(12345.6); // "12 345,60" в ru-RU
+formatNumberAsIntegerOrEmpty("0"); // ""
+
+registerNumberPreset({
+	name: "quantity-4",
+	decimals: 4,
+	grouping: false
+});
+
+formatNumber(12.5, "quantity-4"); // "12,5000"
+```
+
+```ts
+formatNumber(value: unknown, presetOrName: string | NumberFormatPreset): string;
+```
+
+Форматирование использует `Intl.NumberFormat("ru-RU")`. Пустая строка,
+`NaN`, `Infinity` и значения, которые `Number(value)` не может привести к
+конечному числу, возвращают строку `"0"`. Неизвестное строковое имя пресета
+выбрасывает `Error`.
+
+`formatNumber` не является SAP-парсером: переданная строка `"1 234,5"` не
+обязана быть принята `Number`. Для такого входа сначала используйте
+`toFiniteNumber` или `parseNumber`.
+
+| API                                                                                                                                                                                                                                                             | Поведение                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `formatNumberAsInteger`, `formatNumberAsCurrency`, `formatNumberAsPrice`                                                                                                                                                                                        | Встроенные пресеты с нулевой дробной частью. Валютный знак не добавляется.                                        |
+| `formatNumberAsDecimal`, `formatNumberAsDecimal2`, `formatNumberAsDecimal3`                                                                                                                                                                                     | Один, два или три знака после запятой.                                                                            |
+| `formatNumberAsPercent`, `formatNumberAsTonnage`                                                                                                                                                                                                                | Встроенные пресеты с двумя и одним знаком соответственно; знак `%` не добавляется.                                |
+| `formatNumberAsIntegerOrEmpty`, `formatNumberAsCurrencyOrEmpty`, `formatNumberAsDecimalOrEmpty`, `formatNumberAsDecimal2OrEmpty`, `formatNumberAsDecimal3OrEmpty`, `formatNumberAsPercentOrEmpty`, `formatNumberAsPriceOrEmpty`, `formatNumberAsTonnageOrEmpty` | Сначала проверяют семантический ноль; для него возвращают `""`, иначе используют одноимённый форматтер.           |
+| `truncateNumber(number, decimals)`                                                                                                                                                                                                                              | Усечение дробной части математически, без форматирования и без проверки аргументов.                               |
+| `clearFormatCache()`                                                                                                                                                                                                                                            | Очищает module-scoped кеш `Intl.NumberFormat`; обычно нужен только для тестов или смены изолированного окружения. |
+
+`DEFAULT_NUMBER_PRESET_NAMES` содержит: `integer`, `decimal`, `decimal-2`,
+`decimal-3`, `currency`, `price`, `percent`, `tonnage`,
+`compact-currency`, `compact-currency-round`, `compact-percent`,
+`compact-percent-round`, `compact-tonnage`, `compact-tonnage-round`.
+Компактность задаётся через поле `compact` самого пресета: при значении от
+1000 по умолчанию используются суффиксы `тыс`, `млн`, `млрд`, `трлн`.
+
+| API / тип                                                                                  | Назначение                                                                                                               |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `NUMBER_FORMAT_DEFAULTS`                                                                   | Базовые значения: один знак, `,`, группировка ru-RU, размер группы 3.                                                    |
+| `NumberFormatPreset`, `NumberFormatPresetConfig`                                           | Контракт пресета и конфигурации регистрации.                                                                             |
+| `NumberFormatCompactOptions`, `NumberFormatCompactUnit`, `NumberFormatCompactRoundingMode` | Настройки compact-представления: минимум, дробная часть, режим `round` / `floor` / `ceil` / `trunc`, суффиксы и единицы. |
+| `getNumberPreset(name)`, `getNumberPresetNames()`                                          | Чтение пресета или `undefined`, список имён.                                                                             |
+| `registerNumberPreset(config)`                                                             | Регистрирует или перезаписывает пресет, дополняя отсутствующие поля `NUMBER_FORMAT_DEFAULTS`.                            |
+| `resetNumberPresets()`                                                                     | Возвращает только встроенные пресеты; не вызывайте в работающем приложении.                                              |
+
+### Разбор и проверки
+
+```ts
+import { isPositiveValue, parseNumber, toFiniteNumber, toPositiveInteger } from "@ryuzaki13/react-foundation-lib/formatters";
+
+toFiniteNumber("1 234,50"); // 1234.5
+parseNumber("не число"); // 0
+toPositiveInteger("12"); // 12
+isPositiveValue("0"); // false
+```
+
+| API                        | Fallback                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `toFiniteNumber(value)`    | `number \| undefined`. Поддерживает пробелы, NBSP, узкий NBSP и `'` как группировку; запятую как десятичный разделитель. |
+| `parseNumber(value)`       | Как `toFiniteNumber`, но возвращает `0` вместо `undefined`.                                                              |
+| `toPositiveInteger(value)` | Положительное целое или `undefined`.                                                                                     |
+| `isPositiveValue(value)`   | `true` только для конечного значения строго больше нуля.                                                                 |
+| `isZeroValue(value)`       | `true` для значений, семантически равных нулю; используется вариантами `…OrEmpty`.                                       |
+
+## Строки
+
+| API                                               | Вход, результат и fallback                                                                                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `normalizeText(value)`                            | Обрезанная непустая строка или `undefined` для нестрокового/пустого значения.                                                               |
+| `normalizeTextWithFallback(value, fallback = "")` | Нормализованный текст или указанный fallback.                                                                                               |
+| `normalizeRequiredText(value)`                    | Нормализованный текст или `""`.                                                                                                             |
+| `normalizeTextToLower(value)`                     | Нормализованный текст в нижнем регистре или `""`.                                                                                           |
+| `normalizeTextSpaces(value)`                      | Убирает пробелы по краям и сворачивает пробельные символы, NBSP и узкие NBSP в один обычный пробел.                                         |
+| `toSafeString(value)`                             | `""` для `null`/`undefined`, иначе `String(value)`.                                                                                         |
+| `stripInnerSpaces(value)`                         | Удаляет только обычные, неразрывные и узкие неразрывные пробелы внутри строки.                                                              |
+| `stripLeadingZeros(value)`                        | Для целых цифровых строк удаляет ведущие нули, оставляя один ноль; поддерживает минус. Нечисловая строка возвращается с обрезанными краями. |
+| `startsWithIgnoringZeros(value, searchText)`      | Case-insensitive проверка префикса после удаления ведущих нулей у обеих строк.                                                              |
+| `truncateText(value, maxLength)`                  | Обрезает нормализованный текст и добавляет `...`; пустой/невалидный текст даёт `undefined`.                                                 |
+
+## Логические значения ABAP
+
+```ts
+import { parseAbapBoolean, parseBoolean, toAbapBoolean } from "@ryuzaki13/react-foundation-lib/formatters";
+
+parseAbapBoolean("X"); // true
+parseBoolean("true"); // true
+toAbapBoolean(false); // " "
+```
+
+| API                       | Поведение                                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `parseAbapBoolean(value)` | Возвращает `true` только для строкового точного `"X"`; всё остальное — `false`.                                 |
+| `parseBoolean(value)`     | Для строк регистронезависимо принимает `"true"`, `"x"`, `"1"`; для остальных значений использует JS truthiness. |
+| `toAbapBoolean(value)`    | Возвращает ABAP `"X"` или `" "`. Строка `"0"` — ложь; любая другая строка, включая `""`, — истина.              |
+
+## ФИО, телефон и ведущие нули
+
+### ФИО и телефон
+
+```ts
+import { clearPhone, formatFullName, formatPhone, formatShortName } from "@ryuzaki13/react-foundation-lib/formatters";
+
+formatFullName("  иванов   иван иванович "); // "Иванов Иван Иванович"
+formatShortName("иванов иван иванович"); // "Иванов И.И."
+formatPhone("8 (912) 345-67-89"); // "+7 (912) 345-67-89"
+```
+
+| API                         | Ограничения и fallback                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `formatFullName(fullName)`  | Нормализует пробелы, нижний регистр и регистр первых трёх частей. Это presentation helper, а не валидатор ФИО; дополнительные части игнорируются. |
+| `formatShortName(fullName)` | Показывает фамилию и одну/две инициалы. Пустая строка даёт `""`.                                                                                  |
+| `clearPhone(number)`        | Оставляет цифры, ограничивает ввод первыми 11 цифрами, приводит начальный `7`/`8` к `+7`. Предназначен для российских номеров.                    |
+| `formatPhone(number)`       | Форматирует только полный нормализованный номер `+7` и 10 цифр. Если после очистки номер неполный, возвращает исходную строку без изменений.      |
+
+### Числовые идентификаторы
+
+```ts
+import { normalizeLeadingZeros, normalizeLeadingZerosStrict } from "@ryuzaki13/react-foundation-lib/formatters";
+
+normalizeLeadingZeros("0012", 5); // "00012"
+normalizeLeadingZerosStrict("0012", -1); // "12"
+normalizeLeadingZerosStrict("12,5", 4); // "0012,5"
+```
+
+| API                                          | Поведение                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `normalizeLeadingZeros(value, fixed?)`       | Приводит конечное числовое значение через `Number` к строке; при `fixed > 0` дополняет целую часть нулями. Нечисловое/бесконечное значение возвращает как есть. Поэтому этот вариант может изменить строковое представление и тип результата.                                                                 |
+| `normalizeLeadingZerosStrict(value, fixed?)` | Сохраняет тип `T`: при `fixed` отсутствующем, нулевом или не конечном — no-op; при `fixed < 0` удаляет нули в целой части строки, при `fixed > 0` дополняет. Не распознанная числовая строка возвращается без изменений. Для `number` ведущие нули представить невозможно, поэтому результат остаётся числом. |
+
+Для пользовательского draft не вызывайте нормализацию во время ввода. Храните
+буквальное значение, а `normalizeLeadingZerosStrict` применяйте только на
+явной границе сохранения или восстановления, если это действительно часть
+контракта данных.

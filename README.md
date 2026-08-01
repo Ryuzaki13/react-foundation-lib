@@ -156,6 +156,7 @@ npm run pack:dry-run
 
 | API                                                  | Поведение                                                       |
 | ---------------------------------------------------- | --------------------------------------------------------------- |
+| `selectRussianPluralForm`, `formatRussianPlural`     | Выбирают русскую форму слова или форматируют её с количеством.  |
 | `normalizeText`                                      | Возвращает trimmed непустую строку или `undefined`.             |
 | `normalizeTextWithFallback`, `normalizeRequiredText` | То же, но с fallback, по умолчанию `""`.                        |
 | `normalizeTextToLower`                               | Trim + lowercase, пустое значение превращает в `""`.            |
@@ -166,7 +167,7 @@ npm run pack:dry-run
 | `startsWithIgnoringZeros`                            | Сравнение prefix без учета ведущих нулей и регистра.            |
 | `truncateText`                                       | Trim + обрезка с `...`; пустой ввод дает `undefined`.           |
 
-Тесты: [`strings.test.ts`](./src/formatters/strings/strings.test.ts), [`normalizeText.test.ts`](./src/formatters/strings/normalizeText.test.ts).
+Тесты: [`strings.test.ts`](./src/formatters/strings/strings.test.ts), [`normalizeText.test.ts`](./src/formatters/strings/normalizeText.test.ts), [`formatRussianPlural.test.ts`](./src/formatters/strings/formatRussianPlural.test.ts).
 
 ### Общие форматтеры
 

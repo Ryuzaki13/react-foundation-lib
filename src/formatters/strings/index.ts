@@ -1,3 +1,4 @@
+export * from "./formatRussianPlural";
 export * from "./normalizeText";
 export * from "./startsWithIgnoringZeros";
 export * from "./stripInnerSpaces";

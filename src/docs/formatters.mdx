@@ -24,6 +24,7 @@ import type { DateFormatPreset, NumberFormatPresetConfig } from "@ryuzaki13/reac
 | Получить календарные границы или безопасный диапазон         | `getCalendarPeriod`, `normalizeDateRange`, `requireDateRange`  |
 | Отобразить число или разобрать SAP-подобную строку           | `formatNumber`, `toFiniteNumber`, `parseNumber`                |
 | Привести текст к безопасной строке или нормализовать пробелы | `toSafeString`, `normalizeText`, `normalizeTextSpaces`         |
+| Склонить русское существительное по количеству               | `selectRussianPluralForm`, `formatRussianPlural`               |
 | Преобразовать ABAP boolean                                   | `parseAbapBoolean`, `toAbapBoolean`                            |
 | Показать ФИО, российский номер или код с ведущими нулями     | `formatFullName`, `formatPhone`, `normalizeLeadingZerosStrict` |
 
@@ -294,8 +295,24 @@ isPositiveValue("0"); // false
 
 ## Строки
 
+```ts
+import { formatRussianPlural } from "@ryuzaki13/react-foundation-lib/formatters";
+
+const elementForms = {
+	one: "элемент",
+	few: "элемента",
+	many: "элементов"
+};
+
+formatRussianPlural(1, elementForms); // "1 элемент"
+formatRussianPlural(2, elementForms); // "2 элемента"
+formatRussianPlural(7, elementForms); // "7 элементов"
+```
+
 | API                                               | Вход, результат и fallback                                                                                                                  |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `selectRussianPluralForm(value, forms)`           | Выбирает полную русскую форму `one`, `few`, `many` или `other`; для дробного значения без `other` использует `few`.                         |
+| `formatRussianPlural(value, forms)`               | Возвращает исходное количество и выбранную форму через пробел; не округляет и не форматирует число отдельно.                               |
 | `normalizeText(value)`                            | Обрезанная непустая строка или `undefined` для нестрокового/пустого значения.                                                               |
 | `normalizeTextWithFallback(value, fallback = "")` | Нормализованный текст или указанный fallback.                                                                                               |
 | `normalizeRequiredText(value)`                    | Нормализованный текст или `""`.                                                                                                             |

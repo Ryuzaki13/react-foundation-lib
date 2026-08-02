@@ -16,7 +16,7 @@ export function resolveCurrencyAwareLabel(
 	}
 
 	const currencyLabelIndex = currencyMode === "internal" ? 0 : 1;
-	const currencyLabel = currencyLabels[currencyLabelIndex]?.trim();
+	const currencyLabel = currencyLabels[currencyLabelIndex]?.trim() ?? "";
 	const hasComma = currencyLabel.startsWith(",");
 
 	// NOTE: нужно закрепить правило, что запятая ставится в currencyLabel

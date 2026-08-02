@@ -73,7 +73,7 @@ export function resolveTableLength(length: string | number): string {
  * Определяет, пришёл ли клик из интерактивного элемента внутри таблицы.
  */
 export function isTableInteractiveElement(target: EventTarget | null, extraSelector?: string): boolean {
-	if (!(target instanceof HTMLElement)) {
+	if (typeof Element === "undefined" || !(target instanceof Element)) {
 		return false;
 	}
 

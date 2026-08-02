@@ -54,6 +54,8 @@ describe("table cell selection", () => {
 
 		expect(areTableCellSelectionsEqual([first, second], [second, first])).toBe(true);
 		expect(areTableCellSelectionsEqual([first], [second])).toBe(false);
+		expect(areTableCellSelectionsEqual([first, first], [first])).toBe(true);
+		expect(areTableCellSelectionsEqual([first, first], [first, second])).toBe(false);
 	});
 
 	it("активирует primary-modifier только для безопасного Ctrl или Command", () => {

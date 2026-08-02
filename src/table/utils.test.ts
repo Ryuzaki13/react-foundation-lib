@@ -111,6 +111,9 @@ describe("table utils", () => {
 		const editable = document.createElement("div");
 		const focusable = document.createElement("div");
 		const summary = document.createElement("summary");
+		const iconButton = document.createElement("button");
+		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		const svgPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
 		const wrapper = document.createElement("div");
 		const custom = document.createElement("span");
 		const selectableCell = document.createElement("td");
@@ -119,6 +122,8 @@ describe("table utils", () => {
 		switchControl.setAttribute("role", "switch");
 		editable.setAttribute("contenteditable", "true");
 		focusable.tabIndex = -1;
+		svg.append(svgPath);
+		iconButton.append(svg);
 		wrapper.dataset.rowAction = "true";
 		wrapper.append(custom);
 		selectableCell.tabIndex = 0;
@@ -130,6 +135,7 @@ describe("table utils", () => {
 		expect(isTableInteractiveElement(editable)).toBe(true);
 		expect(isTableInteractiveElement(focusable)).toBe(true);
 		expect(isTableInteractiveElement(summary)).toBe(true);
+		expect(isTableInteractiveElement(svgPath)).toBe(true);
 		expect(isTableInteractiveElement(custom, "[data-row-action='true']")).toBe(true);
 		expect(isTableInteractiveElement(cellText)).toBe(false);
 		expect(isTableInteractiveElement(document.createElement("span"))).toBe(false);

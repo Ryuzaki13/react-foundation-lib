@@ -15,12 +15,14 @@ function buildTableCellKey(cell: TableCellCoordinates): string {
 
 /** Проверяет равенство двух наборов координат без зависимости от порядка. */
 export function areTableCellSelectionsEqual(left: TableCellSelectionState, right: TableCellSelectionState): boolean {
-	if (left.length !== right.length) {
+	const leftKeys = new Set(left.map(buildTableCellKey));
+	const rightKeys = new Set(right.map(buildTableCellKey));
+
+	if (leftKeys.size !== rightKeys.size) {
 		return false;
 	}
 
-	const rightKeys = new Set(right.map(buildTableCellKey));
-	return left.every((cell) => rightKeys.has(buildTableCellKey(cell)));
+	return [...leftKeys].every((key) => rightKeys.has(key));
 }
 
 /**

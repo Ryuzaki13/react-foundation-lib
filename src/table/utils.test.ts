@@ -107,15 +107,31 @@ describe("table utils", () => {
 	it("распознаёт клики из интерактивных элементов таблицы", () => {
 		const button = document.createElement("button");
 		const link = document.createElement("a");
+		const switchControl = document.createElement("span");
+		const editable = document.createElement("div");
+		const focusable = document.createElement("div");
+		const summary = document.createElement("summary");
 		const wrapper = document.createElement("div");
 		const custom = document.createElement("span");
+		const selectableCell = document.createElement("td");
+		const cellText = document.createElement("span");
 
+		switchControl.setAttribute("role", "switch");
+		editable.setAttribute("contenteditable", "true");
+		focusable.tabIndex = -1;
 		wrapper.dataset.rowAction = "true";
 		wrapper.append(custom);
+		selectableCell.tabIndex = 0;
+		selectableCell.append(cellText);
 
 		expect(isTableInteractiveElement(button)).toBe(true);
 		expect(isTableInteractiveElement(link)).toBe(true);
+		expect(isTableInteractiveElement(switchControl)).toBe(true);
+		expect(isTableInteractiveElement(editable)).toBe(true);
+		expect(isTableInteractiveElement(focusable)).toBe(true);
+		expect(isTableInteractiveElement(summary)).toBe(true);
 		expect(isTableInteractiveElement(custom, "[data-row-action='true']")).toBe(true);
+		expect(isTableInteractiveElement(cellText)).toBe(false);
 		expect(isTableInteractiveElement(document.createElement("span"))).toBe(false);
 		expect(isTableInteractiveElement(null)).toBe(false);
 	});

@@ -1,6 +1,48 @@
 import { TableColumnDef, TableColumnFormattingMeta, TableColumnMeta } from "./types";
 
 /**
+ * Интерактивные descendants, действие которых таблица не должна подменять
+ * выбором строки или ячейки.
+ *
+ * `td`, `th` и `tr` намеренно исключены из tabindex-ветки: сама таблица может
+ * использовать roving tabindex для selection, не превращая ячейку в nested control.
+ */
+const TABLE_INTERACTIVE_ELEMENT_SELECTOR = [
+	"button",
+	"a",
+	"input",
+	"select",
+	"textarea",
+	"label",
+	"summary",
+	"audio[controls]",
+	"video[controls]",
+	'[contenteditable]:not([contenteditable="false"])',
+	"[tabindex]:not(td):not(th):not(tr)",
+	'[draggable="true"]',
+	'[role="button"]',
+	'[role="link"]',
+	'[role="checkbox"]',
+	'[role="radio"]',
+	'[role="switch"]',
+	'[role="menu"]',
+	'[role="menuitem"]',
+	'[role="menuitemcheckbox"]',
+	'[role="menuitemradio"]',
+	'[role="listbox"]',
+	'[role="option"]',
+	'[role="tab"]',
+	'[role="tablist"]',
+	'[role="tree"]',
+	'[role="treeitem"]',
+	'[role="slider"]',
+	'[role="spinbutton"]',
+	'[role="textbox"]',
+	'[role="searchbox"]',
+	'[role="combobox"]'
+].join(", ");
+
+/**
  * Возвращает метаданные колонки таблицы.
  */
 export function getTableColumnMeta<TData extends object>(column: TableColumnDef<TData>): TableColumnMeta | undefined {
@@ -35,8 +77,7 @@ export function isTableInteractiveElement(target: EventTarget | null, extraSelec
 		return false;
 	}
 
-	const baseSelector = 'button, a, input, select, textarea, [role="button"], [role="link"]';
-	const selector = extraSelector ? `${baseSelector}, ${extraSelector}` : baseSelector;
+	const selector = extraSelector ? `${TABLE_INTERACTIVE_ELEMENT_SELECTOR}, ${extraSelector}` : TABLE_INTERACTIVE_ELEMENT_SELECTOR;
 
 	return Boolean(target.closest(selector));
 }

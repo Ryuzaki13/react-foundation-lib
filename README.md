@@ -414,6 +414,8 @@ Pipeline — runtime форматирования ячейки. Он прини�
 | `normalizeTableColumnWidth`, `normalizeTableColumnSizing`, `patchTableColumnWidth`, `removeTableColumnWidth` | Column sizing с min width, default `60`.                                       |
 | `pruneTableRowSelection`, `toggleTableRowSelection`                                                          | `none`, `single`, `multi`; single не снимается повторным кликом.               |
 | `useTableRowSelection`                                                                                       | Hook поверх selection helpers.                                                 |
+| `pruneTableCellSelection`, `toggleTableCellSelection`                                                        | Детерминированный выбор координат `rowId + columnId`.                           |
+| `shouldActivateTableCellSelection`                                                                           | Direct либо безопасная активация по Ctrl/Command без Shift/Alt.                 |
 | `resolveTableColumnFormattingContextFromODataColumn`                                                         | OData column -> pipeline context; numeric types force measure.                 |
 | `createTableColumnVisibilityFromODataMetadata`                                                               | Стартовая visibility; code скрывается, если есть text-пара.                    |
 | `createTableColumnsFromODataMetadata`                                                                        | Генерация TanStack columns из metadata.                                        |
@@ -421,7 +423,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 | `resolveStableColumnId`                                                                                      | `id` или строковый `accessorKey`.                                              |
 | `getTableColumnMeta`, `getTableColumnFormattingMeta`, `resolveTableLength`, `isTableInteractiveElement`      | Маленькие runtime helpers для таблиц.                                          |
 
-Тесты: [`columnLayout.test.ts`](./src/table/columnLayout.test.ts), [`columnOrder.test.ts`](./src/table/columnOrder.test.ts), [`columnSizing.test.ts`](./src/table/columnSizing.test.ts), [`selection.test.ts`](./src/table/selection.test.ts), [`odataAdapter.test.ts`](./src/table/odataAdapter.test.ts), [`utils.test.ts`](./src/table/utils.test.ts).
+Тесты: [`columnLayout.test.ts`](./src/table/columnLayout.test.ts), [`columnOrder.test.ts`](./src/table/columnOrder.test.ts), [`columnSizing.test.ts`](./src/table/columnSizing.test.ts), [`selection.test.ts`](./src/table/selection.test.ts), [`cellSelection.test.ts`](./src/table/cellSelection.test.ts), [`odataAdapter.test.ts`](./src/table/odataAdapter.test.ts), [`utils.test.ts`](./src/table/utils.test.ts).
 
 ### `tree-table`
 

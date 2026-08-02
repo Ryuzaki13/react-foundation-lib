@@ -2,11 +2,30 @@ import { RowSelectionState } from "@tanstack/react-table";
 
 import { TableSelectionMode } from "./types";
 
+const TABLE_SELECTION_MODES: ReadonlySet<TableSelectionMode> = new Set(["none", "single", "multi"]);
+
 /**
  * Возвращает только активные идентификаторы выбранных строк.
  */
 function getSelectedRowIds(selection: RowSelectionState): string[] {
 	return Object.keys(selection).filter((rowId) => selection[rowId]);
+}
+
+/** Проверяет равенство активных row-selection идентификаторов без учёта порядка ключей. */
+export function areTableRowSelectionsEqual(left: RowSelectionState, right: RowSelectionState): boolean {
+	const leftRowIds = getSelectedRowIds(left);
+	const rightRowIds = getSelectedRowIds(right);
+
+	if (leftRowIds.length !== rightRowIds.length) {
+		return false;
+	}
+
+	return leftRowIds.every((rowId) => right[rowId]);
+}
+
+/** Нормализует неизвестное значение режима выбора строк на внешней config-boundary. */
+export function normalizeTableSelectionMode(value: unknown, fallback: TableSelectionMode = "none"): TableSelectionMode {
+	return typeof value === "string" && TABLE_SELECTION_MODES.has(value as TableSelectionMode) ? (value as TableSelectionMode) : fallback;
 }
 
 /**
@@ -47,7 +66,8 @@ export function toggleTableRowSelection(selection: RowSelectionState, rowId: str
 	}
 
 	if (selectionMode === "single") {
-		return selection[rowId] ? selection : { [rowId]: true };
+		const selectedRowIds = getSelectedRowIds(selection);
+		return selectedRowIds.length === 1 && selectedRowIds[0] === rowId ? selection : { [rowId]: true };
 	}
 
 	if (selection[rowId]) {

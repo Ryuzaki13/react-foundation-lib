@@ -8,6 +8,44 @@ import { type FormattersPipelineRuntimeField } from "../formatters/pipeline";
 export type TableSelectionMode = "none" | "single" | "multi";
 
 /**
+ * Режим выбора ячеек таблицы.
+ *
+ * Отдельное имя сохраняет назначение настройки, хотя допустимая кардинальность
+ * совпадает с режимами выбора строк.
+ */
+export type TableCellSelectionMode = TableSelectionMode;
+
+/**
+ * Способ активации выбора ячейки пользовательским событием.
+ *
+ * `primary-modifier` означает Ctrl в Windows/Linux и Command в macOS. Такой
+ * контракт не привязывает consumer к конкретной платформе или клавиатуре.
+ */
+export type TableCellSelectionActivationMode = "direct" | "primary-modifier";
+
+/** Устойчивые координаты выбранной ячейки без привязки к DOM или TanStack Row. */
+export type TableCellCoordinates = Readonly<{
+	rowId: string;
+	columnId: string;
+}>;
+
+/** Сериализуемое состояние выбора ячеек. */
+export type TableCellSelectionState = readonly TableCellCoordinates[];
+
+/**
+ * Минимальный event-like контракт для проверки клавиш-модификаторов.
+ *
+ * Структурный тип позволяет использовать один helper для React mouse/keyboard
+ * events и для unit-тестов без зависимости алгоритма от DOM-классов.
+ */
+export type TableSelectionModifierEvent = Readonly<{
+	ctrlKey: boolean;
+	metaKey: boolean;
+	shiftKey: boolean;
+	altKey: boolean;
+}>;
+
+/**
  * Выравнивание содержимого ячейки таблицы.
  */
 export type TableColumnAlign = "left" | "center" | "right";

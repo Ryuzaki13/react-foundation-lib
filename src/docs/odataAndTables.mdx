@@ -107,10 +107,10 @@ import { buildTableColumnLayout, createTableColumnsFromODataMetadata, useTableRo
 | Layout    | `resolveTableColumnOrder`, `buildTableColumnLayout`, `TableColumnLayoutItem`, `BuildTableColumnLayoutArgs`.                                                               |
 | Order     | `normalizeTableColumnOrder`, `reorderTableHeaderColumns`, `resolveReorderedTableHeaderColumns`, `TableColumnOrderState`.                                                  |
 | Sizing    | `DEFAULT_TABLE_COLUMN_MIN_WIDTH`, `normalizeTableColumnWidth`, `normalizeTableColumnSizing`, `patchTableColumnWidth`, `removeTableColumnWidth`, `TableColumnSizingState`. |
-| Selection | `TableSelectionMode`, `toggleTableRowSelection`, `pruneTableRowSelection`, `useTableRowSelection`.                                                                        |
+| Selection | Row/cell modes, pruning/toggle helpers, `shouldActivateTableCellSelection`, `useTableRowSelection`.                                                                       |
 | Metadata  | `getTableColumnMeta`, `getTableColumnFormattingMeta`, `resolveTableLength`, `isTableInteractiveElement`.                                                                  |
 
-`useTableRowSelection` синхронизирует selection state с TanStack Table. Передавайте устойчивый `getRowId` на business identity, не array index: изменяемая сортировка/фильтрация иначе свяжет selection с неверной строкой.
+`useTableRowSelection` синхронизирует selection state с TanStack Table. Передавайте устойчивый `getRowId` на business identity, не array index: изменяемая сортировка/фильтрация иначе свяжет selection с неверной строкой. Cell-selection хранит координаты `rowId + columnId`; режим `primary-modifier` активируется безопасным Ctrl/Command без Shift/Alt.
 
 ### Metadata-driven OData adapter
 

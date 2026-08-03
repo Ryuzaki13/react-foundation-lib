@@ -755,6 +755,36 @@ describe("compileFiltersToExpression", () => {
 		});
 	});
 
+	it("поддерживает явную связку ИЛИ между выбранными уровнями tree-фильтра", () => {
+		const definition: ODataCompiledFilterDefinition = {
+			id: "TREE",
+			ownerColumnId: "PARENT",
+			columnIds: ["PARENT", "CHILD"],
+			kind: "tree",
+			componentId: "tree-multi-select",
+			controlType: "string",
+			levelOperator: "or"
+		};
+
+		expect(
+			compileFiltersToExpression([definition], {
+				TREE: {
+					PARENT: ["A"],
+					CHILD: ["B1"]
+				}
+			})
+		).toEqual({
+			filters: [
+				{
+					conditions: [{ key: "PARENT", operation: "eq", value: "A" }]
+				},
+				{
+					conditions: [{ key: "CHILD", operation: "eq", value: "B1" }]
+				}
+			]
+		});
+	});
+
 	it("компилирует local boolean и value binding с default и explicit conditions", () => {
 		const definitions: ODataCompiledFilterDefinition[] = [
 			{

@@ -85,6 +85,8 @@ export type ODataCompiledFilterDefinition =
 			kind: Extract<FilterDefinitionKind, "tree">;
 			componentId: FilterTreeComponentId;
 			controlType: BaseMetaType;
+			/** Оператор между выбранными значениями разных уровней дерева. */
+			levelOperator?: "and" | "or";
 	  }
 	| {
 			id: string;
@@ -507,7 +509,8 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 					id,
 					ownerColumnId: columnIds.includes(ownerColumnId) ? ownerColumnId : columnIds[0],
 					columnIds,
-					componentId
+					componentId,
+					levelOperator: normalizedDefinition.levelOperator === "or" ? "or" : undefined
 				});
 				break;
 			}
@@ -725,7 +728,7 @@ function compileTreeFilter(definition: Extract<ODataCompiledFilterDefinition, { 
 	if (filters.length === 1) return filters[0];
 
 	return {
-		and: true,
+		and: definition.levelOperator === "or" ? undefined : true,
 		filters
 	};
 }

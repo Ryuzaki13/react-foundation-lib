@@ -228,7 +228,7 @@ describe("sanitize filter definitions", () => {
 			{
 				id: "TREE",
 				ownerColumnId: "TEXT_SEGMENT",
-				columnIds: ["TEXT_SEGMENT"],
+				columnIds: [],
 				kind: "tree",
 				componentId: "tree-select",
 				controlType: "string"
@@ -245,6 +245,33 @@ describe("sanitize filter definitions", () => {
 		];
 
 		expect(sanitizeFilterDefinitions(definitions)).toEqual([]);
+	});
+
+	it("сохраняет tree с одним фильтруемым полем при внешнем synthetic root", () => {
+		const definition: ODataCompiledFilterDefinition = {
+			id: "PRODUCT_TREE",
+			ownerColumnId: "ZPRODH01",
+			columnIds: ["ZPRODH01"],
+			kind: "tree",
+			componentId: "tree-multi-select",
+			controlType: "string",
+			levelOperator: "or"
+		};
+		const values = {
+			PRODUCT_TREE: {
+				ZPROD_CAT: ["02"],
+				ZPRODH01: ["101"],
+				ZPRODH11: ["STALE"]
+			}
+		};
+
+		expect(sanitizeFilterDefinitions([definition])).toEqual([definition]);
+		expect(compileFiltersToExpression([definition], values)).toEqual({
+			conditions: [{ key: "ZPRODH01", operation: "eq", value: "101" }]
+		});
+		expect(flattenFilterValuesToODataDependencies([definition], values)).toEqual({
+			ZPRODH01: ["101"]
+		});
 	});
 
 	it("нормализует legacy kind/componentId из сохранённых конфигов", () => {

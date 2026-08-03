@@ -497,7 +497,12 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 
 			case "tree": {
 				const columnIds = [...new Set(normalizedDefinition.columnIds.map((columnId) => columnId.trim()).filter(Boolean))];
-				if (columnIds.length < 2) break;
+				/*
+				 * Визуальное дерево может иметь consumer-синтетический root, который не
+				 * участвует в серверном фильтре. Поэтому definition обязан содержать хотя
+				 * бы одно фильтруемое поле, но не обязан сериализовать два UI-уровня.
+				 */
+				if (!columnIds.length) break;
 
 				// HACK: на период пересохранения всех конфигов
 				const rawComponentId = normalizedDefinition.componentId as string;
@@ -887,7 +892,9 @@ export function flattenFilterValuesToODataDependencies(
 		const treeValue = sanitizeTreeFilterValue(value);
 		if (!treeValue) continue;
 
-		for (const [columnId, selectedValues] of Object.entries(treeValue)) {
+		for (const columnId of definition.columnIds) {
+			const selectedValues = treeValue[columnId];
+			if (!selectedValues) continue;
 			if (!selectedValues.length) continue;
 			dependencies[columnId] = selectedValues;
 		}

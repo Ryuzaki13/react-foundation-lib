@@ -4,6 +4,7 @@ export * from "./columnSizing";
 export * from "./cellSelection";
 export * from "./odataAdapter";
 export * from "./selection";
+export * from "./tanStackFeatures";
 export * from "./types";
 export * from "./useTableRowSelection";
 export * from "./utils";

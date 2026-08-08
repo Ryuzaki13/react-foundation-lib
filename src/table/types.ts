@@ -1,6 +1,18 @@
-import { type ColumnDef } from "@tanstack/react-table";
+import {
+	type Cell,
+	type Column,
+	type ColumnDef,
+	type ColumnVisibilityState,
+	type Header,
+	type Row,
+	type RowData,
+	type Table,
+	type TableState
+} from "@tanstack/react-table";
 
 import { type FormattersPipelineRuntimeField } from "../formatters/pipeline";
+
+import { type FoundationTableFeatures } from "./tanStackFeatures";
 
 /**
  * Режим выбора строк таблицы.
@@ -103,9 +115,30 @@ export interface TableColumnMeta {
 	formatting?: TableColumnFormattingMeta;
 }
 
+/** Экземпляр TanStack Table, собранный на едином foundation-наборе features. */
+export type FoundationTableInstance<TData extends RowData> = Table<FoundationTableFeatures, TData>;
+
+/** Строка TanStack Table, собранная на едином foundation-наборе features. */
+export type FoundationTableRow<TData extends RowData> = Row<FoundationTableFeatures, TData>;
+
+/** Колонка TanStack Table, собранная на едином foundation-наборе features. */
+export type FoundationTableColumn<TData extends RowData, TValue = unknown> = Column<FoundationTableFeatures, TData, TValue>;
+
+/** Ячейка TanStack Table, собранная на едином foundation-наборе features. */
+export type FoundationTableCell<TData extends RowData, TValue = unknown> = Cell<FoundationTableFeatures, TData, TValue>;
+
+/** Заголовок TanStack Table, собранный на едином foundation-наборе features. */
+export type FoundationTableHeader<TData extends RowData, TValue = unknown> = Header<FoundationTableFeatures, TData, TValue>;
+
+/** Полное состояние TanStack Table для единого foundation-набора features. */
+export type FoundationTableState = TableState<FoundationTableFeatures>;
+
+/** Публичное состояние видимости колонок TanStack Table v9. */
+export type TableColumnVisibilityState = ColumnVisibilityState;
+
 /**
  * Базовый тип колонки таблицы.
  */
-export type TableColumnDef<TData extends object, TValue = unknown> = ColumnDef<TData, TValue> & {
+export type TableColumnDef<TData extends RowData, TValue = unknown> = ColumnDef<FoundationTableFeatures, TData, TValue> & {
 	meta?: TableColumnMeta;
 };

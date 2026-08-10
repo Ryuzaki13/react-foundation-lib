@@ -80,6 +80,7 @@ npm run pack:dry-run
 | Числа, проценты, валютные числа, compact axis labels   | [`formatters/number`](./src/formatters/number/index.ts), тесты: [`formatNumber.test.ts`](./src/formatters/number/formatNumber.test.ts), [`parseNumber.test.ts`](./src/formatters/number/parseNumber.test.ts)                    |
 | Строки, ФИО, телефон, leading zeros, SAP boolean       | [`formatters`](./src/formatters/index.ts), тесты: [`common.test.ts`](./src/formatters/common.test.ts), [`boolean.test.ts`](./src/formatters/boolean/boolean.test.ts), [`strings.test.ts`](./src/formatters/strings/strings.test.ts) |
 | Runtime-форматирование ячеек таблицы                   | [`formatters/pipeline`](./src/formatters/pipeline/index.ts), тесты в [`formatters/pipeline`](./src/formatters/pipeline)                                                                                                     |
+| Группировка, дедупликация, порядок и нормализация массивов | [`array`](./src/array/index.ts), подробный README: [`array/README.md`](./src/array/README.md)                                                                                                                          |
 | OData metadata, filters, sorts, path, values           | [`odata-service`](./src/odata-service/index.ts), тесты в [`odata-service`](./src/odata-service)                                                                                                                             |
 | Справочные code/text пары OData collections            | [`odata`](./src/odata/index.ts), тест: [`odata.test.ts`](./src/odata/odata.test.ts)                                                                                                                                         |
 | TanStack Table helpers                                 | [`table`](./src/table/index.ts), тесты в [`table`](./src/table)                                                                                                                                                             |
@@ -634,13 +635,14 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `array`
 
-Файлы: [`array/index.ts`](./src/array/index.ts), тесты: [`array.test.ts`](./src/array/array.test.ts), [`reorder.test.ts`](./src/array/reorder.test.ts).
+Файлы: [`array/index.ts`](./src/array/index.ts), подробный README: [`array/README.md`](./src/array/README.md), тесты: [`array.test.ts`](./src/array/array.test.ts), [`reorder.test.ts`](./src/array/reorder.test.ts).
 
 | API                                                 | Поведение                                                                  |
 | --------------------------------------------------- | -------------------------------------------------------------------------- |
 | `arrayGroupBy`, `arrayGroupByToArray`               | Группировка по ключу, порядок элементов внутри группы сохраняется.         |
 | `arrayToMap`                                        | Map-object по первому встреченному значению ключа.                         |
 | `arrayUniqueBy`                                     | Дедупликация по ключу без перестановки первого значения.                   |
+| `arrayDeduplicate`                                  | Дедупликация значений через семантику `Set` с сохранением первого вхождения. |
 | `filterAndDeduplicateIds`                           | Оставляет только allowed ids, убирает пустые и дубли.                      |
 | `appendMissingIds`                                  | Добавляет отсутствующие ids в конец базового списка.                       |
 | `pickExistingMapValues`                             | Значения `Map` в порядке keys, отсутствующие ключи пропускаются.           |

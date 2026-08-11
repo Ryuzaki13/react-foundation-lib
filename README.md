@@ -30,7 +30,7 @@ import type { RowRecord } from "@ryuzaki13/react-foundation-lib/types";
 | Entry point                                 | Что может потребоваться в host-проекте                                                                 |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `formatters`, `array`, `utils`, `validators` | Обычно не требуют дополнительных runtime-зависимостей.                                                   |
-| `hooks`, `dom`, `copy`, `media`, `pwa`       | `react`, если используются React hooks.                                                                 |
+| `hooks`, `binary`, `dom`, `copy`, `media`, `pwa` | `react`: `binary` экспортирует `useBinaryFile`, остальные entrypoints требуют React при использовании hooks. |
 | `query-client`, `error-report`              | `@tanstack/react-query`, `@tanstack/query-persist-client-core`, `@tanstack/query-broadcast-client-experimental`. |
 | `odata-service`                             | `zod`; отдельные helpers типизируются вокруг `@tanstack/react-query`.                                    |
 | `odata`, `notifications`                    | `zustand`, для отдельных store-helpers также `immer`.                                                    |

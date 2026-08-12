@@ -525,14 +525,14 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `copy`
 
-Файлы: [`copy/index.ts`](./src/copy/index.ts).
+Файлы: [`copy/index.ts`](./src/copy/index.ts), подробный README: [`copy/README.md`](./src/copy/README.md).
 
 | API                              | Поведение                                                                               |
 | -------------------------------- | --------------------------------------------------------------------------------------- |
 | `useCopyText`                    | Clipboard API в secure context, fallback через `execCommand`; пустой текст не копирует. |
 | `useElementText`                 | Trimmed `textContent` ref.                                                              |
 | `useCopyElementText`             | Копирует текст из ref.                                                                  |
-| `useCopyFeedback`                | `isCopied` на 2 секунды.                                                                |
+| `useCopyFeedback`                | `isCopied` на 2 секунды; повторные вызовы создают независимые timers.                   |
 | `useCopyElementTextWithFeedback` | Копирование элемента + feedback.                                                        |
 
 ### `media`
@@ -690,7 +690,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `crypto` и `session-storage`
 
-Файлы: [`crypto/index.ts`](./src/crypto/index.ts), [`session-storage/index.ts`](./src/session-storage/index.ts).
+Файлы: [`crypto/index.ts`](./src/crypto/index.ts), подробный README: [`crypto/README.md`](./src/crypto/README.md); [`session-storage/index.ts`](./src/session-storage/index.ts).
 
 | API                                                            | Поведение                                                                           |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |

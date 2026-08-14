@@ -492,7 +492,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `dom`
 
-Файлы: [`dom/index.ts`](./src/dom/index.ts), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx).
+Файлы: [`dom/index.ts`](./src/dom/index.ts), подробный README: [`dom/README.md`](./src/dom/README.md), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx).
 
 | API                                                                         | Поведение                                                                                      |
 | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |

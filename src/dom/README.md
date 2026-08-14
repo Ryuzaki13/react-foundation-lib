@@ -1,0 +1,2175 @@
+# Browser DOM и focus helpers через `@ryuzaki13/react-foundation-lib/dom`
+
+Модуль `dom` содержит небольшие browser helpers и React hooks для типовых инфраструктурных задач:
+
+- скачать `Blob`, JSON или уже созданный object URL;
+- получить общий DOM-контейнер для React portal;
+- отреагировать на `mousedown` за пределами одного или нескольких элементов;
+- закрыть активный overlay по `Escape`;
+- установить начальный фокус, зациклить `Tab` и восстановить прежний фокус;
+- узнать высоту элемента через `ResizeObserver`;
+- узнать, пересекается ли элемент с viewport или другим root;
+- определить наличие touch/coarse-pointer возможностей.
+
+Модуль является низкоуровневым browser foundation-слоем. Он не создаёт готовые кнопки, dialog, modal, popover, tooltip или download UI. Визуальный компонент по-прежнему отвечает за семантический HTML, ARIA, стили, анимацию, стек overlay, сообщения об ошибках и пользовательский сценарий.
+
+README рассчитан на разработчика, который использует опубликованный пакет без прямого доступа к исходному коду. Здесь объясняются базовые понятия DOM и React, все публичные функции, точный lifecycle, defaults, cleanup, ограничения доступности, тестирование и частые ошибки.
+
+## Содержание
+
+- [Назначение и границы модуля](#назначение-и-границы-модуля)
+- [Установка и импорт](#установка-и-импорт)
+- [Runtime и browser boundary](#runtime-и-browser-boundary)
+- [Минимальные понятия](#минимальные-понятия)
+- [Как выбрать API](#как-выбрать-api)
+- [Быстрый старт](#быстрый-старт)
+- [Скачивание файлов](#скачивание-файлов)
+- [`getOrCreatePortalRoot`](#getorcreateportalroot)
+- [`useClickOutside`](#useclickoutside)
+- [`useEscapeDismiss`](#useescapedismiss)
+- [`useElementHeightObserver`](#useelementheightobserver)
+- [`useIntersectionObserver`](#useintersectionobserver)
+- [`useIsTouchDevice`](#useistouchdevice)
+- [`useOverlayFocus`](#useoverlayfocus)
+- [`useFocusTrap`](#usefocustrap)
+- [Сборка доступного dialog](#сборка-доступного-dialog)
+- [Композиция overlay hooks](#композиция-overlay-hooks)
+- [SSR, Strict Mode и lifecycle](#ssr-strict-mode-и-lifecycle)
+- [Производительность](#производительность)
+- [Тестирование](#тестирование)
+- [Ограничения и частые ошибки](#ограничения-и-частые-ошибки)
+- [Краткий справочник API](#краткий-справочник-api)
+- [Вопросы и ответы](#вопросы-и-ответы)
+
+## Назначение и границы модуля
+
+### Что делает `dom`
+
+- создаёт браузерную загрузку через временный `<a download>`;
+- берёт на себя создание и последующее освобождение object URL в download-сценариях;
+- сериализует JSON с отступом в два пробела;
+- создаёт или переиспользует `HTMLElement` в `document.body`;
+- подписывает React-компонент на глобальные `mousedown`, `keydown` и `resize`;
+- подключает `ResizeObserver` и `IntersectionObserver` с cleanup;
+- управляет начальными и возвратными переходами focus;
+- предоставляет простую focus trap для modal-like overlay.
+
+### Чего модуль не делает
+
+- не получает файл по HTTP/OData;
+- не декодирует base64 в `Blob`;
+- не читает пользовательский `File`;
+- не проверяет MIME или содержимое скачиваемого файла;
+- не показывает progress, toast или ошибку скачивания;
+- не создаёт React portal самостоятельно;
+- не удаляет portal root после использования;
+- не реализует полноценный dialog/modal/popover;
+- не назначает `role`, `aria-modal`, `aria-labelledby` или `aria-describedby`;
+- не блокирует прокрутку страницы;
+- не делает фон `inert`;
+- не управляет стеком вложенных overlay;
+- не блокирует программный уход фокуса;
+- не предоставляет polyfill для observer APIs;
+- не определяет фактический текущий способ ввода пользователя;
+- не заменяет CSS media queries.
+
+### Соседние модули
+
+| Задача                                       | Предпочтительный владелец                     |
+| -------------------------------------------- | --------------------------------------------- |
+| Base64/data URL → `Blob`                     | `@ryuzaki13/react-foundation-lib/binary`      |
+| Чтение выбранного пользователем файла        | `@ryuzaki13/react-foundation-lib/file`        |
+| Скачивание готового `Blob`                   | `@ryuzaki13/react-foundation-lib/dom`         |
+| Готовый dialog/modal/popover                 | UI-пакет или UI-слой приложения               |
+| Низкоуровневый focus/outside/Escape contract | `@ryuzaki13/react-foundation-lib/dom`         |
+| Responsive styling                           | CSS и `@ryuzaki13/react-foundation-lib/media` |
+| Копирование plain text в clipboard           | `@ryuzaki13/react-foundation-lib/copy`        |
+
+Если приложению нужен готовый UI primitive, сначала ищите его в `@ryuzaki13/react-foundation-ui`. Модуль `dom` нужен авторам primitives и для специальных browser-сценариев, а не для повторной сборки локальных modal/dialog в каждом feature.
+
+## Установка и импорт
+
+Установите пакет:
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+Entrypoint экспортирует React hooks, поэтому host-приложение должно предоставить совместимые peer-зависимости:
+
+```bash
+npm install react react-dom
+```
+
+Текущий контракт пакета требует React `>=19.2.0 <20.0.0`.
+
+Импортируйте API только из опубликованного subpath `/dom`:
+
+```ts
+import {
+	downloadFileFromBlob,
+	downloadFileFromJson,
+	downloadFileFromObjectURL,
+	getOrCreatePortalRoot,
+	useClickOutside,
+	useElementHeightObserver,
+	useEscapeDismiss,
+	useFocusTrap,
+	useIntersectionObserver,
+	useIsTouchDevice,
+	useOverlayFocus
+} from "@ryuzaki13/react-foundation-lib/dom";
+
+import type { UseOverlayFocusOptions } from "@ryuzaki13/react-foundation-lib/dom";
+```
+
+Корневой импорт пакета не поддерживается:
+
+```ts
+// Неправильно.
+import { useOverlayFocus } from "@ryuzaki13/react-foundation-lib";
+
+// Правильно.
+import { useOverlayFocus } from "@ryuzaki13/react-foundation-lib/dom";
+```
+
+Модуль поставляется как ESM.
+
+## Runtime и browser boundary
+
+Почти весь модуль опирается на Web APIs:
+
+- `window`;
+- `document`;
+- `HTMLElement` и `Node`;
+- `Blob`;
+- `URL.createObjectURL` и `URL.revokeObjectURL`;
+- `ResizeObserver`;
+- `IntersectionObserver`;
+- `matchMedia`;
+- focus и keyboard events;
+- `requestAnimationFrame`.
+
+`getOrCreatePortalRoot` имеет явную проверку отсутствующего `document` и возвращает `null`. Остальные helpers не превращаются в универсальный server API: вызывайте их на browser boundary.
+
+React effects не выполняются во время обычного server render, но это не означает, что любой импорт или вызов автоматически безопасен в любой SSR/test среде. Для Node-only кода используйте соответствующий server API, а для тестов предоставляйте DOM и нужные mocks.
+
+## Минимальные понятия
+
+### DOM
+
+DOM — объектное представление HTML-документа. Браузер превращает разметку:
+
+```html
+<button type="button">Сохранить</button>
+```
+
+в объект `HTMLButtonElement`, у которого есть свойства, методы, focus и события.
+
+### `window` и `document`
+
+- `window` представляет браузерное окно и глобальные browser APIs;
+- `document` представляет текущий HTML-документ;
+- `document.body` — элемент `<body>`.
+
+Эти объекты отсутствуют в обычном Node.js process и могут быть частично реализованы в тестовой DOM-среде.
+
+### React ref
+
+Ref хранит ссылку на реальный DOM-элемент:
+
+```tsx
+const buttonRef = useRef<HTMLButtonElement>(null);
+
+return <button ref={buttonRef}>Кнопка</button>;
+```
+
+До commit/mount `buttonRef.current` равен `null`. После commit React помещает туда `HTMLButtonElement`. Читайте ref в event handler или effect, а не во время render.
+
+### Effect и cleanup
+
+Effect синхронизирует компонент с внешней системой:
+
+```tsx
+useEffect(() => {
+	document.addEventListener("example", handler);
+
+	return () => {
+		document.removeEventListener("example", handler);
+	};
+}, [handler]);
+```
+
+Возвращаемая функция называется cleanup. React вызывает её перед повторной подпиской и при unmount. Hooks этого модуля сами очищают свои listeners и observers, если component lifecycle дошёл до cleanup.
+
+### Event bubbling и capture
+
+DOM-событие проходит несколько фаз:
+
+1. capture — от документа к target;
+2. target;
+3. bubbling — от target обратно к документу.
+
+`useEscapeDismiss` слушает `keydown` в capture-фазе. `useClickOutside` слушает `mousedown` в обычной bubbling-фазе.
+
+### Portal
+
+React portal рендерит subtree в другом месте DOM:
+
+```tsx
+createPortal(<Dialog />, portalRoot);
+```
+
+Компонент остаётся частью того же React tree, но его DOM может находиться прямо в `document.body`, вне layout-контейнера приложения.
+
+### `Blob`
+
+`Blob` хранит последовательность байтов и MIME:
+
+```ts
+const blob = new Blob(["Пример"], {
+	type: "text/plain;charset=utf-8"
+});
+```
+
+Blob сам по себе не является URL. Для browser download из него создаётся временный object URL.
+
+### Object URL
+
+Object URL — временная browser-ссылка на `Blob`:
+
+```ts
+const objectUrl = URL.createObjectURL(blob);
+```
+
+Примерный вид:
+
+```text
+blob:https://example.test/...
+```
+
+Object URL удерживает ресурс в памяти, пока не будет вызван `URL.revokeObjectURL` либо пока документ не будет выгружен.
+
+### Observer
+
+`ResizeObserver` сообщает об изменении размера элемента. `IntersectionObserver` сообщает, пересекается ли элемент с viewport или заданным root.
+
+Оба API работают асинхронно: первое значение hook может быть default, а реальное состояние приходит позднее через callback.
+
+### Focus
+
+Focus определяет, какой элемент получает keyboard input. `document.activeElement` показывает текущий focus target.
+
+Кнопки, ссылки и form controls обычно focusable сами. Обычный `<div>` не становится focusable автоматически. Для программного focus контейнеру часто нужен:
+
+```tsx
+<div tabIndex={-1}>...</div>
+```
+
+`tabIndex={-1}` разрешает `.focus()`, но не добавляет контейнер в обычный Tab-порядок.
+
+## Как выбрать API
+
+| Нужно                                                                | API                               |
+| -------------------------------------------------------------------- | --------------------------------- |
+| Скачать уже созданный object URL и сразу передать ownership helper-у | `downloadFileFromObjectURL`       |
+| Скачать готовый `Blob`                                               | `downloadFileFromBlob`            |
+| Сериализовать значение в readable JSON и скачать                     | `downloadFileFromJson`            |
+| Получить общий container для `createPortal`                          | `getOrCreatePortalRoot`           |
+| Закрыть UI по `mousedown` вне одного элемента                        | `useClickOutside`                 |
+| Считать trigger и portal content одной «внутренней» областью         | `useClickOutside` с массивом refs |
+| Закрыть активный overlay по `Escape`                                 | `useEscapeDismiss`                |
+| Измерять высоту элемента                                             | `useElementHeightObserver`        |
+| Узнать, пересекается ли элемент с viewport/root                      | `useIntersectionObserver`         |
+| Получить touch/coarse-pointer heuristic                              | `useIsTouchDevice`                |
+| Настроить initial focus и optional trap/restore                      | `useOverlayFocus`                 |
+| Быстро подключить фиксированную focus trap для `HTMLDivElement`      | `useFocusTrap`                    |
+| Получить полностью доступный modal/dialog                            | Готовый UI primitive              |
+
+## Быстрый старт
+
+### Скачать `Blob`
+
+```tsx
+import { downloadFileFromBlob } from "@ryuzaki13/react-foundation-lib/dom";
+
+export function DownloadTextButton() {
+	const handleDownload = () => {
+		const blob = new Blob(["Привет!"], {
+			type: "text/plain;charset=utf-8"
+		});
+
+		downloadFileFromBlob("hello.txt", blob);
+	};
+
+	return (
+		<button type="button" onClick={handleDownload}>
+			Скачать
+		</button>
+	);
+}
+```
+
+### Скачать JSON
+
+```tsx
+import { downloadFileFromJson } from "@ryuzaki13/react-foundation-lib/dom";
+
+const settings = {
+	theme: "dark",
+	pageSize: 50
+};
+
+export function ExportSettingsButton() {
+	return (
+		<button type="button" onClick={() => downloadFileFromJson("settings.json", settings)}>
+			Экспортировать настройки
+		</button>
+	);
+}
+```
+
+### Создать portal root во время browser bootstrap
+
+```tsx
+import { createRoot } from "react-dom/client";
+import { getOrCreatePortalRoot } from "@ryuzaki13/react-foundation-lib/dom";
+
+const appRoot = document.getElementById("root");
+const overlayRoot = getOrCreatePortalRoot("app-overlay-root");
+
+if (!appRoot || !overlayRoot) {
+	throw new Error("Не удалось подготовить DOM roots приложения");
+}
+
+createRoot(appRoot).render(<App overlayRoot={overlayRoot} />);
+```
+
+Так DOM mutation выполняется на явной application boundary, а не скрывается внутри render компонента.
+
+### Закрыть popover по клику снаружи
+
+```tsx
+import { useCallback, useRef, useState } from "react";
+import { useClickOutside } from "@ryuzaki13/react-foundation-lib/dom";
+
+export function SimplePopover() {
+	const [open, setOpen] = useState(false);
+	const panelRef = useRef<HTMLDivElement>(null);
+
+	const close = useCallback(() => {
+		setOpen(false);
+	}, []);
+
+	useClickOutside(panelRef, close);
+
+	return (
+		<div>
+			<button type="button" onClick={() => setOpen(true)}>
+				Открыть
+			</button>
+			{open ? <div ref={panelRef}>Содержимое</div> : null}
+		</div>
+	);
+}
+```
+
+В этом упрощённом примере trigger не включён во внутреннюю область. `mousedown` по trigger может сначала вызвать outside handler, а затем его `click`. Для toggle/popover обычно передают два refs.
+
+### Наблюдать пересечение
+
+```tsx
+import { useMemo, useRef } from "react";
+import { useIntersectionObserver } from "@ryuzaki13/react-foundation-lib/dom";
+
+export function LazySection() {
+	const sectionRef = useRef<HTMLElement>(null);
+	const options = useMemo<IntersectionObserverInit>(
+		() => ({
+			rootMargin: "200px 0px",
+			threshold: 0.1
+		}),
+		[]
+	);
+	const { isIntersecting } = useIntersectionObserver(sectionRef, options);
+
+	return <section ref={sectionRef}>{isIntersecting ? <ExpensiveContent /> : <Placeholder />}</section>;
+}
+```
+
+Стабильный `options` не заставляет effect пересоздавать observer при каждом render.
+
+## Скачивание файлов
+
+Модуль экспортирует три синхронные функции:
+
+```ts
+declare function downloadFileFromObjectURL(filename: string, objectUrl: string): void;
+declare function downloadFileFromBlob(filename: string, blob: Blob): void;
+declare function downloadFileFromJson(filename: string, payload: unknown): void;
+```
+
+Они запускают browser download и ничего не возвращают. Результат `void` не означает, что пользователь сохранил файл: helper не получает подтверждение от download manager браузера.
+
+### `downloadFileFromObjectURL`
+
+Создаёт `<a>`, устанавливает:
+
+```ts
+link.href = objectUrl;
+link.download = filename;
+```
+
+затем вызывает `link.click()`. Элемент не добавляется в `document.body`.
+
+После вызова `click` helper планирует:
+
+```ts
+window.setTimeout(() => {
+	window.URL.revokeObjectURL(objectUrl);
+}, 0);
+```
+
+#### Ownership object URL
+
+Передавая URL в `downloadFileFromObjectURL`, считайте, что отдаёте helper-у ownership. Он освободит URL в следующем macrotask:
+
+```ts
+const objectUrl = URL.createObjectURL(blob);
+downloadFileFromObjectURL("report.pdf", objectUrl);
+
+// Не используйте objectUrl для preview или второго download:
+// helper уже запланировал revokeObjectURL.
+```
+
+Если один URL нужен и для preview, и для download, создайте отдельный URL для каждой lifetime-задачи либо управляйте download самостоятельно.
+
+#### Параметр `filename`
+
+`filename` передаётся в свойство `download` буквально:
+
+```ts
+downloadFileFromObjectURL("Отчёт за август.pdf", objectUrl);
+```
+
+Helper:
+
+- не добавляет расширение;
+- не удаляет path separators;
+- не исправляет недопустимые для ОС символы;
+- не проверяет MIME;
+- не гарантирует точное финальное имя.
+
+Браузер и ОС могут изменить или проигнорировать предложенное имя.
+
+#### Это именно object URL
+
+Функция вызывает `URL.revokeObjectURL`, поэтому предназначена для URL, созданного через `URL.createObjectURL`. Не используйте её как общий helper для произвольного HTTP URL.
+
+### `downloadFileFromBlob`
+
+Принимает готовый `Blob`:
+
+```ts
+downloadFileFromBlob("report.txt", blob);
+```
+
+Алгоритм:
+
+1. создаёт object URL через `window.URL.createObjectURL(blob)`;
+2. передаёт его в `downloadFileFromObjectURL`;
+3. запускает click;
+4. планирует освобождение URL.
+
+Это предпочтительный API, если вызывающий код уже имеет `Blob`.
+
+#### Blob не уничтожается
+
+`revokeObjectURL` освобождает связь URL с данными. Он не изменяет сам `Blob`:
+
+```ts
+downloadFileFromBlob("first.bin", blob);
+
+// Сам blob можно передать повторно:
+downloadFileFromBlob("second.bin", blob);
+```
+
+Каждый вызов создаст собственный временный URL.
+
+### `downloadFileFromJson`
+
+Сериализует значение:
+
+```ts
+JSON.stringify(payload, null, 2);
+```
+
+Затем создаёт:
+
+```ts
+new Blob([serialized], {
+	type: "application/json;charset=utf-8"
+});
+```
+
+и делегирует скачивание `downloadFileFromBlob`.
+
+#### Формат
+
+- отступ — два пробела;
+- encoding Blob — UTF-8-compatible browser string;
+- MIME — `application/json;charset=utf-8`;
+- BOM не добавляется;
+- перевод строки в конец специально не добавляется.
+
+Пример:
+
+```ts
+downloadFileFromJson("user.json", {
+	id: 42,
+	name: "Анна"
+});
+```
+
+Содержимое:
+
+```json
+{
+	"id": 42,
+	"name": "Анна"
+}
+```
+
+#### Правила `JSON.stringify`
+
+Helper наследует стандартное поведение JavaScript:
+
+- object properties со значением `undefined`, function или `symbol` пропускаются;
+- такие значения внутри array превращаются в `null`;
+- `Date` обычно превращается в ISO string через `toJSON`;
+- custom `toJSON` выполняется;
+- circular reference вызывает `TypeError`;
+- `BigInt` без custom serialization вызывает `TypeError`;
+- для root `undefined`, function или symbol `JSON.stringify` возвращает `undefined`; browser преобразует этот BlobPart в текст `"undefined"`, то есть скачанный файл не будет корректным JSON.
+
+Ошибки сериализации не перехватываются:
+
+```ts
+const cyclic: Record<string, unknown> = {};
+cyclic.self = cyclic;
+
+downloadFileFromJson("cyclic.json", cyclic); // TypeError.
+```
+
+Если payload пришёл с внешней boundary, валидируйте и подготавливайте его до вызова.
+
+### Пользовательское действие
+
+Браузер может блокировать автоматические downloads, не связанные с user activation. Предпочтительно вызывать helper из click/keyboard command:
+
+```tsx
+<button type="button" onClick={handleDownload}>
+	Скачать
+</button>
+```
+
+Не запускайте download во время render.
+
+### Ошибки download helpers
+
+Функции не используют `try/catch` и не возвращают `Promise`. Ошибка доступа к DOM, создания URL, сериализации или синтетического click будет выброшена синхронно.
+
+Если `link.click()` выбросит ошибку, timer освобождения URL ещё не будет запланирован. Вызывающий boundary должен обработать ошибку и cleanup, если это значимо для среды.
+
+## `getOrCreatePortalRoot`
+
+Возвращает существующий `HTMLElement` с заданным ID либо создаёт новый `<div>` в `document.body`.
+
+### Сигнатура
+
+```ts
+declare function getOrCreatePortalRoot(id: string): HTMLElement | null;
+```
+
+### Алгоритм
+
+1. Если global `document` отсутствует, возвращает `null`.
+2. Выполняет `document.getElementById(id)`.
+3. Если результат является `HTMLElement`, возвращает его.
+4. Иначе создаёт `document.createElement("div")`.
+5. Устанавливает `portalRoot.id = id`.
+6. Добавляет элемент в `document.body`.
+7. Возвращает созданный element.
+
+### Повторное использование
+
+```ts
+const first = getOrCreatePortalRoot("dialog-root");
+const second = getOrCreatePortalRoot("dialog-root");
+
+console.log(first === second); // true в обычном browser document.
+```
+
+Idempotency действует, когда:
+
+- ID непустой и стабильный;
+- существующий element является `HTMLElement`;
+- никто не удалил или не заменил element между вызовами.
+
+### Использование с `createPortal`
+
+```tsx
+import { createPortal } from "react-dom";
+
+function Overlay({ portalRoot }: { portalRoot: HTMLElement }) {
+	return createPortal(<div role="presentation">Overlay content</div>, portalRoot);
+}
+```
+
+`getOrCreatePortalRoot` только возвращает container. Сам React portal создаётся функцией `createPortal` из `react-dom`.
+
+### Browser bootstrap предпочтительнее render
+
+Функция изменяет DOM. Render React-компонента должен оставаться чистым, поэтому предпочтительно:
+
+- объявить portal container в HTML shell;
+- получить его во время application bootstrap;
+- создать его на явной browser boundary;
+- передать готовый element компонентам или provider.
+
+Не вызывайте функцию в `useMemo`: memoization не предназначена для side effects.
+
+### Функция не удаляет root
+
+Созданный element остаётся в `document.body`, даже если все portals закрыты. Это подходит для application-wide roots:
+
+```text
+dialog-root
+popover-root
+notifications-root
+```
+
+Для временного root с ограниченным lifetime вызывающий код сам владеет удалением.
+
+### Ограничения ID и body
+
+- ID не очищается и не валидируется;
+- пустой ID не является безопасным application contract;
+- пользовательский ввод не должен становиться ID без validation;
+- если element с тем же ID существует, но не является `HTMLElement` (например, SVG element), helper создаст новый `div` с тем же ID;
+- duplicate IDs делают DOM невалидным и ломают однозначный поиск;
+- если `document` существует, но `document.body` ещё не создан, append завершится ошибкой.
+
+Вызывайте helper после подготовки `body` и используйте контролируемый уникальный ID.
+
+### SSR
+
+На server:
+
+```ts
+getOrCreatePortalRoot("dialog-root"); // null, если document отсутствует.
+```
+
+Не кешируйте этот `null` в server-loaded module и не ожидайте, что он автоматически станет HTMLElement на client. Portal target должен разрешаться на корректной browser lifecycle boundary.
+
+## `useClickOutside`
+
+Вызывает handler на `mousedown`, если target находится вне одного ref или вне всех refs из массива.
+
+### Сигнатура
+
+```ts
+declare function useClickOutside(ref: RefObject<HTMLElement | null> | RefObject<HTMLElement | null>[], handler: () => void): void;
+```
+
+### Один ref
+
+```tsx
+const panelRef = useRef<HTMLDivElement>(null);
+
+useClickOutside(panelRef, close);
+
+return <div ref={panelRef}>...</div>;
+```
+
+Handler вызывается, когда:
+
+- `panelRef.current` существует;
+- `panelRef.current.contains(event.target)` возвращает `false`.
+
+Если единственный ref равен `null`, handler не вызывается.
+
+### Несколько refs
+
+Массив нужен, когда несколько разнесённых DOM-subtrees считаются одной внутренней областью. Типичный popover:
+
+- trigger находится в обычном application tree;
+- floating content находится в portal.
+
+```tsx
+const triggerRef = useRef<HTMLButtonElement>(null);
+const panelRef = useRef<HTMLDivElement>(null);
+const insideRefs = useMemo<RefObject<HTMLElement | null>[]>(() => [triggerRef, panelRef], []);
+
+useClickOutside(insideRefs, close);
+```
+
+`mousedown` внутри любого непустого ref не вызывает handler. Событие снаружи всех refs вызывает.
+
+### Важное поведение null refs в массиве
+
+Для массива алгоритм начинает с предположения «снаружи» и проверяет только непустые refs. Поэтому:
+
+- null-элементы массива игнорируются;
+- если все refs равны `null`, любой `mousedown` будет считаться внешним;
+- это отличается от single-ref режима, где null ref блокирует вызов.
+
+Не передавайте массив refs до того, как жизненный цикл open/closed состояния продуман. Handler должен уметь безопасно проигнорировать событие, когда overlay закрыт.
+
+### Событие `mousedown`
+
+Hook слушает:
+
+```ts
+document.addEventListener("mousedown", handleClickOutside);
+```
+
+Следствия:
+
+- handler срабатывает раньше последующего `click`;
+- touch/pointer abstraction отдельно не используется;
+- hook не передаёт исходный `MouseEvent` в callback;
+- hook не вызывает `preventDefault`;
+- hook не вызывает `stopPropagation`.
+
+Если продукту нужен единый pointer contract, right-click policy или event metadata, текущий API может быть недостаточен.
+
+### Descendants считаются внутренними
+
+`HTMLElement.contains` учитывает сам element и всех DOM-потомков:
+
+```tsx
+<div ref={panelRef}>
+	<button type="button">Внутренняя кнопка</button>
+</div>
+```
+
+`mousedown` по кнопке считается внутренним.
+
+React ownership не влияет на `contains`. Portal content является отдельным DOM-subtree и требует отдельного ref.
+
+### Stable handler и массив
+
+Effect зависит от `ref` и `handler`. Новая ссылка приводит к remove/add listener.
+
+Для handler используйте `useCallback`, когда referential stability важна:
+
+```tsx
+const close = useCallback(() => {
+	setOpen(false);
+}, []);
+```
+
+Массив refs также следует стабилизировать через `useMemo` либо хранить вне частых renders.
+
+### Как условно отключить
+
+Hooks нельзя вызывать условно:
+
+```tsx
+// Неправильно.
+if (open) {
+	useClickOutside(panelRef, close);
+}
+```
+
+У `useClickOutside` нет параметра `enabled`. Сохраняйте вызов hook и проверяйте state внутри callback:
+
+```tsx
+const closeOutside = useCallback(() => {
+	if (open) {
+		setOpen(false);
+	}
+}, [open]);
+
+useClickOutside(panelRef, closeOutside);
+```
+
+Либо монтируйте отдельный component с hook только на время жизни overlay.
+
+### Cleanup
+
+При unmount или изменении dependencies удаляется тот же document listener.
+
+Hook всегда использует global `document`. Передать document iframe или другого realm нельзя.
+
+## `useEscapeDismiss`
+
+Подписывает активный overlay на закрытие по клавише `Escape`.
+
+### Сигнатура
+
+Публичная функция принимает объект:
+
+```ts
+declare function useEscapeDismiss(options: {
+	active: boolean;
+	onDismiss: () => void;
+	enabled?: boolean;
+	documentTarget?: Document | null;
+	containerRef?: RefObject<HTMLElement | null>;
+}): void;
+```
+
+Named type options отдельно не экспортируется текущим public API.
+
+### Параметры
+
+| Параметр         | Тип                              | Default         | Назначение                                   |
+| ---------------- | -------------------------------- | --------------- | -------------------------------------------- |
+| `active`         | `boolean`                        | Обязательный    | Подключать ли listener для текущего overlay. |
+| `onDismiss`      | `() => void`                     | Обязательный    | Команда закрытия.                            |
+| `enabled`        | `boolean`                        | `true`          | Разрешено ли закрытие по Escape.             |
+| `documentTarget` | `Document \| null`               | Global document | Document, на котором слушать keydown.        |
+| `containerRef`   | `RefObject<HTMLElement \| null>` | Не задан        | Ограничить dismiss focus-областью container. |
+
+### Условия подписки
+
+Listener не устанавливается, если:
+
+- `active === false`;
+- `enabled === false`;
+- не удалось получить target document.
+
+В остальных случаях подписка использует capture:
+
+```ts
+targetDocument.addEventListener("keydown", handleKeyDown, true);
+```
+
+### Проверка клавиши
+
+Обрабатывается только:
+
+```ts
+event.key === "Escape";
+```
+
+Legacy значение `"Esc"` не обрабатывается.
+
+При dismiss hook:
+
+1. вызывает `event.preventDefault()`;
+2. вызывает актуальный `onDismiss`.
+
+Он не вызывает `stopPropagation`.
+
+### `onDismiss` всегда актуален
+
+Внутри используется React `useEffectEvent`. Listener не обязан пересоздаваться только потому, что callback получил новую ссылку: при событии вызывается последняя committed версия `onDismiss`.
+
+Не передавайте Effect Event наружу и не вызывайте hook вне React-компонента/custom hook.
+
+### Ограничение через `containerRef`
+
+Если container существует, Escape срабатывает только когда `targetDocument.activeElement`:
+
+- равен самому container;
+- является его DOM-потомком.
+
+Если focus находится снаружи, dismiss игнорируется.
+
+```tsx
+const panelRef = useRef<HTMLDivElement>(null);
+
+useEscapeDismiss({
+	active: open,
+	onDismiss: close,
+	containerRef: panelRef
+});
+```
+
+Это помогает нескольким обычным overlay не реагировать на Escape, когда keyboard focus принадлежит другой области.
+
+Если `containerRef.current` равен `null`, focus scope не применяется и Escape может вызвать dismiss.
+
+### Без `containerRef`
+
+Любой Escape в target document вызывает dismiss, пока hook active/enabled. Для нескольких активных hooks это может привести к нескольким вызовам.
+
+Вложенный overlay manager должен передавать `active: true` только верхнему слою.
+
+### `documentTarget`
+
+Если параметр не передан, используется global `document`.
+
+Реализация использует nullish fallback:
+
+```ts
+documentTarget ?? document;
+```
+
+Поэтому явный `documentTarget: null` при наличии global document не отключает hook. Для отключения используйте `active: false` или `enabled: false`.
+
+Custom document полезен для специальных same-origin document scenarios, но container/focus elements должны принадлежать согласованной DOM-среде.
+
+### Уже отменённое событие
+
+Текущий контракт не проверяет `event.defaultPrevented`. Даже если предыдущий capture listener уже вызвал `preventDefault`, hook всё равно может выполнить dismiss.
+
+Если приложение требует приоритетов между overlay, задавайте их через `active`, а не только через `preventDefault`.
+
+### Hook не управляет фокусом
+
+`useEscapeDismiss` только вызывает callback. Начальный focus и restore выполняет `useOverlayFocus` либо UI-owner.
+
+## `useElementHeightObserver`
+
+Возвращает актуальную высоту element, полученную через `ResizeObserver`.
+
+### Сигнатура
+
+```ts
+declare function useElementHeightObserver<TElement extends HTMLElement>(elementRef: RefObject<TElement | null>): number;
+```
+
+### Начальное значение
+
+До первого observer callback возвращается:
+
+```ts
+0;
+```
+
+Hook не вызывает `getBoundingClientRect` синхронно при setup только для initial value. В обычном браузере ResizeObserver вскоре сообщает текущее измерение, но consumer должен корректно обработать `0`.
+
+### Источник высоты
+
+Callback выбирает:
+
+```ts
+entries[0]?.contentRect.height;
+```
+
+Если первая entry отсутствует, используется:
+
+```ts
+element.getBoundingClientRect().height;
+```
+
+Обычно `contentRect.height` описывает content box. Это не обязательно равно:
+
+- CSS `height`;
+- border-box высоте;
+- `offsetHeight`;
+- визуальной высоте с transform;
+- целому числу.
+
+Результат может быть дробным.
+
+### Пример
+
+```tsx
+function HeightLabel() {
+	const panelRef = useRef<HTMLDivElement>(null);
+	const height = useElementHeightObserver(panelRef);
+
+	return (
+		<div>
+			<div ref={panelRef}>Изменяемое содержимое</div>
+			<output>Высота content box: {height}px</output>
+		</div>
+	);
+}
+```
+
+### Lifecycle
+
+Hook использует `useLayoutEffect`:
+
+1. после DOM commit получает `elementRef.current`;
+2. если element отсутствует, ничего не наблюдает;
+3. создаёт `ResizeObserver`;
+4. вызывает `observer.observe(element)`;
+5. при cleanup вызывает `observer.disconnect()`.
+
+### Стабильный ref и смена элемента
+
+Hook рассчитан на React ref, установленный на актуальный element. Простое изменение `ref.current` само по себе не вызывает render. Для динамической замены target используйте понятную component boundary/key или обеспечьте render, на котором hook сможет переподключиться.
+
+Не мутируйте ref вручную во время render.
+
+### Отсутствующий `ResizeObserver`
+
+Fallback/polyfill отсутствует. Если global `ResizeObserver` не определён, effect завершится runtime error.
+
+Для старой browser/test среды подключите совместимый polyfill на уровне application environment либо mock в тесте.
+
+### Не создавайте feedback loop
+
+Осторожно с кодом, где измеренная высота сразу меняет CSS-высоту того же элемента. Это может создать цепочку:
+
+```text
+resize → setState → layout change → resize → ...
+```
+
+Используйте измерение только там, где оно действительно необходимо, и не дублируйте задачу, решаемую CSS.
+
+## `useIntersectionObserver`
+
+Возвращает boolean `isIntersecting` для одного DOM `Element`.
+
+### Сигнатура
+
+```ts
+declare function useIntersectionObserver(
+	ref: React.RefObject<Element | null>,
+	options?: IntersectionObserverInit
+): {
+	isIntersecting: boolean;
+};
+```
+
+### Начальное значение
+
+```ts
+false;
+```
+
+Даже если element видим, первый render возвращает `false`, пока native observer не вызовет callback.
+
+Не интерпретируйте initial `false` как доказательство, что element точно находится вне viewport.
+
+### Options
+
+`IntersectionObserverInit` — native browser contract:
+
+| Поле         | Назначение                                                       |
+| ------------ | ---------------------------------------------------------------- |
+| `root`       | Scroll container; `null`/отсутствие означает viewport.           |
+| `rootMargin` | Внешний/внутренний отступ области наблюдения в CSS-like формате. |
+| `threshold`  | Доля пересечения или массив порогов от `0` до `1`.               |
+
+Пример preloading до появления в viewport:
+
+```tsx
+const options = useMemo<IntersectionObserverInit>(
+	() => ({
+		root: null,
+		rootMargin: "300px 0px",
+		threshold: 0
+	}),
+	[]
+);
+```
+
+### Stable options
+
+Effect зависит от ссылки `options`. Такой код создаёт новый object на каждом render:
+
+```tsx
+useIntersectionObserver(ref, {
+	rootMargin: "100px"
+});
+```
+
+Это приводит к disconnect и созданию нового observer после каждого render.
+
+Стабилизируйте options:
+
+```tsx
+const options = useMemo(
+	() => ({
+		rootMargin: "100px"
+	}),
+	[]
+);
+
+const { isIntersecting } = useIntersectionObserver(ref, options);
+```
+
+### Lifecycle
+
+Если `ref.current` существует:
+
+1. создаётся `IntersectionObserver(callback, options)`;
+2. вызывается `observe(element)`;
+3. callback берёт первую entry;
+4. state обновляется значением `entry.isIntersecting`;
+5. cleanup вызывает `unobserve(element)`;
+6. затем вызывает `disconnect()`.
+
+Если ref пустой во время effect, observer не создаётся.
+
+### Возвращается только boolean
+
+Hook не возвращает:
+
+- `intersectionRatio`;
+- `boundingClientRect`;
+- `rootBounds`;
+- `time`;
+- саму `IntersectionObserverEntry`;
+- `observe/unobserve` commands.
+
+Если они нужны, текущий API не подходит.
+
+### Видимость и бизнес-истина
+
+`isIntersecting` является browser layout signal, а не security/business fact. Его можно использовать для:
+
+- lazy rendering;
+- предварительной загрузки;
+- запуска/остановки лёгкой анимации;
+- UI-оптимизации.
+
+Нельзя использовать пересечение как authorization, подтверждение просмотра юридического текста или гарантию, что пользователь действительно увидел содержимое.
+
+### Отсутствующий `IntersectionObserver`
+
+Hook не содержит fallback. В среде без API effect выбросит ошибку.
+
+## `useIsTouchDevice`
+
+Возвращает heuristic наличия touch/coarse-pointer возможностей.
+
+### Сигнатура
+
+```ts
+declare const useIsTouchDevice: () => boolean;
+```
+
+### Алгоритм
+
+Результат становится `true`, если выполняется хотя бы одно условие:
+
+```ts
+window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window || navigator.maxTouchPoints > 0;
+```
+
+### Начальное значение
+
+Первый render возвращает:
+
+```ts
+false;
+```
+
+После mount effect запускает detection и обновляет state. Поэтому возможен переход `false → true` и один дополнительный render.
+
+Не используйте initial `false` для необратимой команды.
+
+### Обновление
+
+Hook повторяет detection на событии:
+
+```ts
+window.addEventListener("resize", checkTouchDevice);
+```
+
+При unmount listener удаляется.
+
+Hook не подписывается напрямую на `MediaQueryList.change`, `pointerchange` или подключение внешнего устройства. Изменение обнаруживается при mount или следующем `resize`.
+
+### Что означает `true`
+
+`true` означает, что среда выглядит touch-capable/coarse-pointer-capable. Это не гарантирует, что:
+
+- пользователь сейчас касается экрана;
+- touch является primary input;
+- мыши нет;
+- hover недоступен;
+- viewport маленький;
+- устройство является телефоном;
+- пользователь не использует keyboard или assistive technology.
+
+Hybrid laptop может одновременно поддерживать touch, mouse и keyboard.
+
+### Не скрывайте функциональность
+
+Плохой пример:
+
+```tsx
+{
+	isTouchDevice ? null : <button>Важная команда</button>;
+}
+```
+
+Touch heuristic нельзя использовать, чтобы лишить пользователя функции. Адаптируйте удобство interaction, сохраняя keyboard/pointer доступность.
+
+Для responsive layout и hover styling предпочитайте CSS:
+
+```css
+@media (pointer: coarse) {
+	.target {
+		min-block-size: 44px;
+	}
+}
+```
+
+### Runtime
+
+Hook ожидает `window.matchMedia` и browser globals. В test environment их нужно mock.
+
+## `useOverlayFocus`
+
+Управляет focus lifecycle одного overlay:
+
+- запоминает ранее активный element;
+- ждёт появления container ref;
+- устанавливает initial focus;
+- опционально зацикливает `Tab`;
+- опционально возвращает focus при cleanup.
+
+### Сигнатура
+
+```ts
+export interface UseOverlayFocusOptions<T extends HTMLElement> {
+	active: boolean;
+	trapFocus?: boolean;
+	restoreFocus?: boolean;
+	initialFocus?: "auto" | "container" | ((container: T) => HTMLElement | null | undefined);
+	restoreFocusTarget?: () => HTMLElement | null | undefined;
+	containerRef?: RefObject<T | null>;
+}
+
+declare function useOverlayFocus<T extends HTMLElement>(options: UseOverlayFocusOptions<T>): RefObject<T | null>;
+```
+
+### Options
+
+| Option               | Default  | Поведение                                               |
+| -------------------- | -------- | ------------------------------------------------------- |
+| `active`             | Required | Запускает focus lifecycle.                              |
+| `trapFocus`          | `false`  | Зацикливает Tab на границах container.                  |
+| `restoreFocus`       | `true`   | Возвращает focus при cleanup.                           |
+| `initialFocus`       | `"auto"` | Выбирает первый focus target.                           |
+| `restoreFocusTarget` | Не задан | Позволяет вернуть focus в явно вычисленный element.     |
+| `containerRef`       | Не задан | Позволяет передать существующий ref вместо внутреннего. |
+
+Hook возвращает ref, который нужно установить на overlay container:
+
+```tsx
+const overlayRef = useOverlayFocus<HTMLDivElement>({
+	active: open
+});
+
+return open ? <div ref={overlayRef}>...</div> : null;
+```
+
+### Internal и external ref
+
+Если `containerRef` не передан, hook создаёт собственный `useRef`.
+
+Если передан, используется и возвращается именно он:
+
+```tsx
+const existingRef = useRef<HTMLDivElement>(null);
+const overlayRef = useOverlayFocus({
+	active: open,
+	containerRef: existingRef
+});
+
+console.log(overlayRef === existingRef); // true.
+```
+
+Это полезно для объединения с Floating UI callback ref или другим imperative owner.
+
+### Activation lifecycle
+
+При переходе в active effect:
+
+1. сохраняет текущий `document.activeElement`, если это `HTMLElement`;
+2. пытается прочитать `overlayRef.current`;
+3. если ref ещё пустой, повторяет попытку через `requestAnimationFrame`;
+4. когда container найден, вычисляет initial focus;
+5. вызывает `.focus()`, только если target — подключённый `HTMLElement`;
+6. при `trapFocus: true` добавляет `keydown` listener на container.
+
+Если `active: true`, но container никогда не монтируется, requestAnimationFrame retry продолжается до cleanup. Всегда согласовывайте `active` с реальным mount overlay.
+
+### `initialFocus: "auto"`
+
+Это default. Hook собирает descendants по selector:
+
+```css
+button:not([disabled]),
+[href],
+input:not([disabled]),
+select:not([disabled]),
+textarea:not([disabled]),
+[tabindex]:not([tabindex="-1"]):not([disabled])
+```
+
+Затем:
+
+1. удаляет elements, у которых на самом element есть `aria-hidden`;
+2. ищет element с `autofocus`/`autoFocus` attribute;
+3. иначе берёт первый focusable element в DOM-порядке;
+4. если candidates нет, использует container.
+
+Пример:
+
+```tsx
+<div ref={overlayRef} tabIndex={-1}>
+	<button type="button" autoFocus>
+		Основное действие
+	</button>
+	<button type="button">Отмена</button>
+</div>
+```
+
+React `autoFocus` имеет собственное commit-поведение, а hook дополнительно ищет соответствующий DOM attribute. Для однозначного выбора initial target используйте callback.
+
+### Ограничения auto selector
+
+Это компактный selector, а не полноценный tabbability engine. Он:
+
+- не проверяет `display: none` или `visibility: hidden`;
+- не проверяет hidden/inert ancestors;
+- не учитывает disabled `fieldset` полностью;
+- не проверяет фактический layout box;
+- не включает все возможные focusable browser элементы;
+- не исключает произвольный negative `tabindex`, кроме точного `-1`;
+- проверяет `aria-hidden` только на candidate, а не на ancestors.
+
+Для сложного accessibility primitive используйте проверенный UI-компонент или специализированный focus manager.
+
+### `initialFocus: "container"`
+
+Hook вызывает focus у container:
+
+```tsx
+const overlayRef = useOverlayFocus<HTMLDivElement>({
+	active: open,
+	initialFocus: "container"
+});
+
+return (
+	<div ref={overlayRef} tabIndex={-1}>
+		...
+	</div>
+);
+```
+
+Без `tabIndex={-1}` обычный `div` может не принять focus.
+
+### Custom initial focus
+
+```tsx
+const overlayRef = useOverlayFocus<HTMLDivElement>({
+	active: open,
+	initialFocus: (container) => container.querySelector<HTMLElement>("[data-initial-focus]")
+});
+```
+
+Если callback возвращает `null` или `undefined`, используется container.
+
+Если callback возвращает подключённый `HTMLElement` вне container, hook всё равно сфокусирует его. Ответственность за корректность target лежит на consumer.
+
+Если возвращён disconnected HTMLElement, focus не выполняется; дополнительного fallback после проверки `isConnected` нет.
+
+### Focus trap
+
+При `trapFocus: true` container получает bubbling `keydown` listener.
+
+На каждый `Tab` focusable elements вычисляются заново, поэтому динамически добавленные controls могут участвовать.
+
+#### Обычный Tab
+
+Если focus находится на последнем candidate:
+
+1. вызывается `preventDefault()`;
+2. focus переходит на первый candidate.
+
+#### Shift+Tab
+
+Если focus находится:
+
+- на первом candidate;
+- на самом container;
+
+то event отменяется и focus переходит на последний candidate.
+
+#### Нет candidates
+
+Hook отменяет Tab и вызывает:
+
+```ts
+container.focus();
+```
+
+Container должен быть программно focusable.
+
+### Граница focus trap
+
+Это boundary wrap, а не абсолютная focus containment:
+
+- listener срабатывает только для keydown, прошедшего через container;
+- программный `.focus()` снаружи не перехватывается;
+- mouse/pointer focus снаружи не возвращается;
+- focus в другом portal не является descendant;
+- iframe и shadow DOM требуют отдельного проектирования;
+- background не становится `inert`;
+- browser chrome и assistive technology имеют собственное поведение.
+
+Не используйте этот hook как единственную гарантию доступности или безопасности.
+
+### Restore focus
+
+При activation hook запоминает ранее активный `HTMLElement`.
+
+При cleanup с `restoreFocus: true` выбирается:
+
+```ts
+restoreFocusTarget?.() ?? previousActiveElement;
+```
+
+Focus возвращается, только если выбранный element всё ещё `isConnected`.
+
+Типичный сценарий:
+
+```tsx
+const triggerRef = useRef<HTMLButtonElement>(null);
+
+const overlayRef = useOverlayFocus<HTMLDivElement>({
+	active: open,
+	restoreFocus: true,
+	restoreFocusTarget: () => triggerRef.current
+});
+```
+
+Если custom callback возвращает `null`/`undefined`, используется ранее активный element.
+
+Если callback возвращает disconnected element, fallback к предыдущему element уже не выполняется: target был выбран, но проверку `isConnected` не прошёл.
+
+### Когда выполняется cleanup
+
+Restore может произойти:
+
+- при `active: true → false`;
+- при unmount;
+- при изменении effect dependencies, например `trapFocus`, `restoreFocus` или ссылки `containerRef`.
+
+Не меняйте эти options без необходимости во время открытого overlay.
+
+### Exit animation
+
+Если DOM overlay остаётся видимым на время exit animation, но `active` уже стал `false`, hook восстановит focus при cleanup сразу, а не после окончания animation.
+
+Для такого UI:
+
+- передайте `restoreFocus: false`;
+- сохраните trigger отдельно;
+- восстановите focus в callback окончания exit animation;
+- убедитесь, что background уже перестал быть inert.
+
+### Изменение `initialFocus`
+
+`initialFocus` читается через Effect Event и не входит в effect dependencies. Изменение option во время уже подключённого active overlay само по себе не запускает повторный initial focus. Initial focus — действие открытия, а не derived state каждого render.
+
+### Nested overlays
+
+Hook не знает о стеке modal/dialog/popover. Если несколько hooks имеют `active: true`, каждый управляет своей подпиской и restore lifecycle.
+
+Application/UI manager должен:
+
+- определить top overlay;
+- активировать Escape/trap только для него;
+- согласовать inert и z-index;
+- не позволить нижнему overlay восстановить focus поверх верхнего.
+
+## `useFocusTrap`
+
+Совместимый wrapper с фиксированными options.
+
+### Сигнатура
+
+```ts
+declare const useFocusTrap: (isOpen: boolean) => RefObject<HTMLDivElement | null>;
+```
+
+Эквивалентен:
+
+```ts
+useOverlayFocus<HTMLDivElement>({
+	active: isOpen,
+	trapFocus: true,
+	restoreFocus: true,
+	initialFocus: "auto"
+});
+```
+
+### Пример
+
+```tsx
+function LegacyPanel({ open }: { open: boolean }) {
+	const panelRef = useFocusTrap(open);
+
+	return open ? (
+		<div ref={panelRef} tabIndex={-1}>
+			<button type="button">Подтвердить</button>
+			<button type="button">Отмена</button>
+		</div>
+	) : null;
+}
+```
+
+Wrapper не позволяет:
+
+- отключить restore;
+- выбрать custom initial focus;
+- передать existing ref;
+- отключить trap при active panel;
+- выбрать другой HTMLElement generic.
+
+Для нового настраиваемого кода используйте `useOverlayFocus`.
+
+## Сборка доступного dialog
+
+`useOverlayFocus` и `useEscapeDismiss` решают только часть задачи. Минимальный dialog должен также иметь:
+
+- семантический `role="dialog"`;
+- `aria-modal="true"` только для действительно modal поведения;
+- accessible name через `aria-labelledby` или `aria-label`;
+- при необходимости description через `aria-describedby`;
+- доступную кнопку закрытия;
+- focusable container fallback;
+- top-layer policy;
+- background/inert policy;
+- scroll lock при необходимости;
+- восстановление focus;
+- keyboard и pointer способы закрытия;
+- визуальный focus indicator.
+
+Ниже учебный пример. Для production сначала ищите готовый UI primitive.
+
+```tsx
+import { useId } from "react";
+import { createPortal } from "react-dom";
+import { useEscapeDismiss, useOverlayFocus } from "@ryuzaki13/react-foundation-lib/dom";
+
+type ConfirmDialogProps = {
+	description: string;
+	onClose: () => void;
+	onConfirm: () => void;
+	open: boolean;
+	portalRoot: HTMLElement;
+	title: string;
+};
+
+export function ConfirmDialog({ description, onClose, onConfirm, open, portalRoot, title }: ConfirmDialogProps) {
+	const titleId = useId();
+	const descriptionId = useId();
+	const panelRef = useOverlayFocus<HTMLDivElement>({
+		active: open,
+		trapFocus: true,
+		restoreFocus: true,
+		initialFocus: (container) => container.querySelector<HTMLButtonElement>("[data-confirm]")
+	});
+
+	useEscapeDismiss({
+		active: open,
+		onDismiss: onClose,
+		containerRef: panelRef
+	});
+
+	if (!open) {
+		return null;
+	}
+
+	return createPortal(
+		<div className="dialogBackdrop">
+			<div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} tabIndex={-1}>
+				<h2 id={titleId}>{title}</h2>
+				<p id={descriptionId}>{description}</p>
+				<button type="button" data-confirm onClick={onConfirm}>
+					Подтвердить
+				</button>
+				<button type="button" onClick={onClose}>
+					Отмена
+				</button>
+			</div>
+		</div>,
+		portalRoot
+	);
+}
+```
+
+Этот пример всё ещё не реализует inert/background manager, scroll lock, nested modal stack и animation exit coordination. Эти обязанности должны находиться у UI-owner.
+
+### Почему нужен `useId`
+
+`useId` создаёт React ID для accessibility connections:
+
+```tsx
+<h2 id={titleId}>...</h2>
+<div aria-labelledby={titleId}>...</div>
+```
+
+Не используйте случайный UUID на каждом render.
+
+### Почему container имеет `tabIndex={-1}`
+
+Если custom initial target отсутствует либо focusable elements нет, hook использует container. Без программной focusability fallback может ничего не сделать.
+
+### Почему `active` совпадает с mount
+
+Когда `open === false`, container не рендерится и hook inactive. Когда `open === true`, container появляется и hook может получить ref. Это предотвращает бесконечный requestAnimationFrame retry.
+
+## Композиция overlay hooks
+
+### Popover: trigger и panel считаются внутренними
+
+```tsx
+import { type RefObject, useCallback, useMemo, useRef, useState } from "react";
+import { useClickOutside, useEscapeDismiss, useOverlayFocus } from "@ryuzaki13/react-foundation-lib/dom";
+
+function Popover() {
+	const [open, setOpen] = useState(false);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	const panelRef = useOverlayFocus<HTMLDivElement>({
+		active: open,
+		initialFocus: "container",
+		restoreFocus: true
+	});
+	const insideRefs = useMemo<RefObject<HTMLElement | null>[]>(() => [triggerRef, panelRef], [panelRef]);
+
+	const close = useCallback(() => {
+		setOpen(false);
+	}, []);
+
+	const closeOutside = useCallback(() => {
+		if (open) {
+			close();
+		}
+	}, [close, open]);
+
+	useClickOutside(insideRefs, closeOutside);
+	useEscapeDismiss({
+		active: open,
+		onDismiss: close,
+		containerRef: panelRef
+	});
+
+	return (
+		<>
+			<button ref={triggerRef} type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+				Открыть
+			</button>
+			{open ? (
+				<div ref={panelRef} tabIndex={-1}>
+					Содержимое
+				</div>
+			) : null}
+		</>
+	);
+}
+```
+
+Если panel находится в portal, логика refs не меняется: `contains` проверяет реальный DOM каждого ref.
+
+### Только верхний overlay активен
+
+```tsx
+useEscapeDismiss({
+	active: open && isTopOverlay,
+	onDismiss: close,
+	containerRef: panelRef
+});
+```
+
+Конкретная stack и focus policy принадлежит UI manager. Нельзя механически переключать `useOverlayFocus.active` у нижнего слоя при каждом открытии верхнего: cleanup нижнего hook может преждевременно восстановить focus. Менеджер должен согласовать activation, restore, inert и exit lifecycle всей стопки. Модуль `dom` не предоставляет store/registry overlay.
+
+### Non-modal popover
+
+Не каждому popover нужна focus trap:
+
+```tsx
+const panelRef = useOverlayFocus<HTMLDivElement>({
+	active: open,
+	trapFocus: false,
+	restoreFocus: true,
+	initialFocus: "container"
+});
+```
+
+`aria-modal="true"` также не следует ставить на non-modal UI автоматически.
+
+## SSR, Strict Mode и lifecycle
+
+### Browser-only side effects
+
+Не вызывайте download helpers или DOM mutations:
+
+- во время render;
+- в Node-only utility;
+- в server loader;
+- до появления `document.body`;
+- без проверки целевого browser runtime.
+
+User-triggered effects выполняйте в handlers. Subscriptions и observers уже находятся внутри hooks.
+
+### Первый render может содержать default
+
+| Hook                       | Initial render |
+| -------------------------- | -------------- |
+| `useElementHeightObserver` | `0`            |
+| `useIntersectionObserver`  | `false`        |
+| `useIsTouchDevice`         | `false`        |
+
+После mount/observer callback state может измениться. UI должен выдерживать этот переход без опасного решения и сильного layout shift.
+
+### Strict Mode
+
+React development Strict Mode может выполнить setup → cleanup → setup для проверки симметрии effects.
+
+Hooks удаляют listeners и disconnect observers в cleanup. Consumer callbacks также должны быть безопасны при повторном lifecycle.
+
+Не используйте render для:
+
+- скачивания;
+- создания случайного URL;
+- focus;
+- append в body;
+- ручной мутации ref.
+
+### Conditional hooks запрещены
+
+Нельзя:
+
+```tsx
+if (open) {
+	useEscapeDismiss({ active: true, onDismiss: close });
+}
+```
+
+Правильно:
+
+```tsx
+useEscapeDismiss({
+	active: open,
+	onDismiss: close
+});
+```
+
+### Ref становится доступен после commit
+
+`useOverlayFocus` умеет ждать ref через requestAnimationFrame. Observer hooks читают ref в effect. Не пытайтесь читать `ref.current` во время render для условного вызова hook.
+
+## Производительность
+
+### Global listeners
+
+Каждый экземпляр:
+
+- `useClickOutside` добавляет свой `document.mousedown`;
+- активный `useEscapeDismiss` добавляет свой `document.keydown`;
+- `useIsTouchDevice` добавляет свой `window.resize`.
+
+Для десятков/сотен экземпляров оцените общий owner или монтируйте interaction hook только в реально активном UI component.
+
+### Stable dependencies
+
+- стабилизируйте массив refs для `useClickOutside`;
+- используйте `useCallback` для handler, когда нужно избежать listener churn;
+- стабилизируйте `IntersectionObserverInit`;
+- не меняйте focus options без причины во время active overlay.
+
+Не добавляйте memoization механически: она нужна там, где ссылка является effect contract.
+
+### Observer callbacks
+
+`ResizeObserver` и `IntersectionObserver` могут вызывать state update много раз. Не выполняйте тяжёлую синхронную работу прямо во время каждого render, зависящего от observer state.
+
+### CSS прежде измерений
+
+Если layout можно выразить через Grid, Flexbox, container queries, `min/max/clamp` или media queries, CSS обычно проще и дешевле `ResizeObserver → state → render`.
+
+### Object URL
+
+`downloadFileFromBlob` освобождает созданный URL автоматически. Не создавайте ещё один URL вокруг него:
+
+```ts
+// Лишнее создание URL.
+const url = URL.createObjectURL(blob);
+downloadFileFromBlob("file.bin", blob);
+```
+
+Либо передайте Blob, либо создайте URL и передайте его в `downloadFileFromObjectURL`.
+
+## Тестирование
+
+DOM hooks требуют DOM test environment. Для Vitest файл может начинаться:
+
+```ts
+// @vitest-environment jsdom
+```
+
+### Cleanup React root
+
+После каждого теста:
+
+- unmount React root;
+- удаляйте container;
+- восстанавливайте mocks;
+- возвращайте real timers;
+- удаляйте portal roots из `document.body`.
+
+### Download helpers
+
+Mock:
+
+- `document.createElement`/anchor `click`;
+- `URL.createObjectURL`;
+- `URL.revokeObjectURL`;
+- timers.
+
+```ts
+vi.useFakeTimers();
+
+const click = vi.fn();
+const revokeObjectURL = vi.fn();
+
+// После вызова helper:
+expect(click).toHaveBeenCalledOnce();
+
+vi.runAllTimers();
+expect(revokeObjectURL).toHaveBeenCalledWith("blob:test");
+```
+
+Проверяйте revoke после выполнения timer, а не сразу после функции.
+
+### `ResizeObserver`
+
+JSDOM не выполняет реальный layout. Используйте controllable fake:
+
+```ts
+let resizeCallback: ResizeObserverCallback | undefined;
+
+class FakeResizeObserver {
+	constructor(callback: ResizeObserverCallback) {
+		resizeCallback = callback;
+	}
+
+	observe = vi.fn();
+	disconnect = vi.fn();
+}
+
+vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+```
+
+Затем вызовите callback внутри React `act`:
+
+```ts
+await act(async () => {
+	resizeCallback?.([{ contentRect: { height: 42 } } as ResizeObserverEntry], {} as ResizeObserver);
+});
+```
+
+### `IntersectionObserver`
+
+```ts
+let intersectionCallback: IntersectionObserverCallback | undefined;
+
+class FakeIntersectionObserver {
+	constructor(callback: IntersectionObserverCallback) {
+		intersectionCallback = callback;
+	}
+
+	observe = vi.fn();
+	unobserve = vi.fn();
+	disconnect = vi.fn();
+}
+
+vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+```
+
+Передавайте fake entry:
+
+```ts
+await act(async () => {
+	intersectionCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+});
+```
+
+### `useClickOutside`
+
+Dispatch именно `mousedown`, а не только `click`:
+
+```ts
+outside.dispatchEvent(
+	new MouseEvent("mousedown", {
+		bubbles: true
+	})
+);
+```
+
+Проверьте:
+
+- inside одного ref;
+- inside второго ref;
+- outside всех refs;
+- null refs;
+- cleanup после unmount.
+
+### `useEscapeDismiss`
+
+```ts
+const event = new KeyboardEvent("keydown", {
+	key: "Escape",
+	bubbles: true,
+	cancelable: true
+});
+
+document.dispatchEvent(event);
+
+expect(onDismiss).toHaveBeenCalledOnce();
+expect(event.defaultPrevented).toBe(true);
+```
+
+Отдельно проверьте focus внутри и снаружи container.
+
+### `useOverlayFocus`
+
+JSDOM не имеет полноценной browser Tab navigation. Проверяйте управляемые boundary cases:
+
+- initial focus;
+- Tab на последнем element;
+- Shift+Tab на первом;
+- container fallback без candidates;
+- restore target;
+- disconnected restore target;
+- cleanup listener.
+
+`requestAnimationFrame` можно mock, но callback должен выполняться в контролируемом `act`.
+
+### `useIsTouchDevice`
+
+Mock:
+
+- `window.matchMedia`;
+- `navigator.maxTouchPoints`;
+- при необходимости наличие `ontouchstart`;
+- `window.resize`.
+
+Проверяйте initial `false` отдельно от состояния после effect.
+
+## Ограничения и частые ошибки
+
+### Вызов download во время render
+
+```tsx
+function BadComponent({ blob }: { blob: Blob }) {
+	downloadFileFromBlob("file.bin", blob);
+	return null;
+}
+```
+
+Render может выполняться повторно. Download является user-facing side effect и должен запускаться из command handler.
+
+### Повторное использование отозванного object URL
+
+`downloadFileFromObjectURL` планирует revoke. Не сохраняйте переданный URL как долговечный preview source.
+
+### Ожидание Promise или подтверждения download
+
+Helpers возвращают `void`. Они не знают, сохранил ли пользователь файл и куда.
+
+### Невалидный JSON
+
+Root `undefined`, circular data и `BigInt` не превращаются в надёжный JSON export автоматически. Подготавливайте serializable payload.
+
+### Portal root внутри pure render
+
+`getOrCreatePortalRoot` меняет `document.body`. Создавайте root на browser bootstrap или используйте element из HTML shell.
+
+### Случайный/пустой portal ID
+
+Это ломает reuse и может создать duplicate IDs. Используйте стабильную application constant.
+
+### Trigger не включён в outside refs
+
+Для toggle popover `mousedown` по trigger может считаться внешним, а следующий `click` снова изменить state. Передайте trigger и panel refs как единую область.
+
+### Inline refs array
+
+```tsx
+useClickOutside([triggerRef, panelRef], close);
+```
+
+Функционально понятно, но новая array reference пересоздаёт listener после каждого render. Для часто обновляемого компонента стабилизируйте массив.
+
+### Условный вызов hook
+
+Не помещайте hooks внутрь `if (open)`. Передавайте `active`/`enabled` либо выделите mounted overlay component.
+
+### Несколько active Escape hooks
+
+`preventDefault` не останавливает другие listeners. Только top overlay должен быть active.
+
+### Container без focus
+
+`initialFocus: "container"` и zero-candidate trap требуют `tabIndex={-1}` для обычного `div`.
+
+### Focus trap без семантики
+
+Focus trap не добавляет `role="dialog"`, accessible name, inert background и close command.
+
+### Focus trap на non-modal UI
+
+Не зацикливайте focus автоматически в tooltip или простом non-modal popover. Это может мешать keyboard navigation.
+
+### Restore до завершения animation
+
+Cleanup выполняется при деактивации hook. Если exit animation ещё идёт, управляйте restore отдельно.
+
+### Active overlay без mounted ref
+
+`useOverlayFocus` будет повторять requestAnimationFrame до появления element или cleanup.
+
+### Inline observer options
+
+Новый object на каждом render пересоздаёт `IntersectionObserver`.
+
+### Observer как синхронное измерение
+
+Initial height/visibility — defaults. Реальный callback приходит позднее.
+
+### Отсутствующие observer APIs
+
+Hooks не предоставляют polyfills. Настройте target browsers и test environment.
+
+### Touch равен mobile
+
+Touch-capable laptop не обязательно mobile. Не связывайте бизнес/UI доступность только с результатом heuristic.
+
+### ResizeObserver вместо CSS
+
+Не измеряйте layout через JavaScript, если задача полностью решается CSS.
+
+## Краткий справочник API
+
+| API                         | Вход                          | Результат                           | Default/событие                       | Главное ограничение                                      |
+| --------------------------- | ----------------------------- | ----------------------------------- | ------------------------------------- | -------------------------------------------------------- |
+| `downloadFileFromObjectURL` | filename, object URL          | `void`                              | revoke через `setTimeout(0)`          | Принимает ownership URL; нет подтверждения download.     |
+| `downloadFileFromBlob`      | filename, `Blob`              | `void`                              | Сам создаёт/revokes URL               | Browser-only, ошибки синхронные.                         |
+| `downloadFileFromJson`      | filename, `unknown`           | `void`                              | JSON с 2 spaces, UTF-8 MIME           | Наследует ошибки и потери `JSON.stringify`.              |
+| `getOrCreatePortalRoot`     | `id: string`                  | `HTMLElement \| null`               | Создаёт `div` в body                  | DOM mutation; root не удаляется.                         |
+| `useClickOutside`           | один ref/массив refs, handler | `void`                              | Global bubbling `mousedown`           | Нет enabled/event arg/custom document.                   |
+| `useEscapeDismiss`          | options object                | `void`                              | enabled=true, capture `keydown`       | Не управляет stack/focus; defaultPrevented игнорируется. |
+| `useElementHeightObserver`  | element ref                   | `number`                            | Initial `0`                           | ContentRect, требует ResizeObserver.                     |
+| `useIntersectionObserver`   | element ref, native options   | `{ isIntersecting }`                | Initial `false`                       | Только boolean, требует IntersectionObserver.            |
+| `useIsTouchDevice`          | Нет                           | `boolean`                           | Initial false, update на mount/resize | Capability heuristic, не текущий input mode.             |
+| `useOverlayFocus`           | `UseOverlayFocusOptions<T>`   | `RefObject<T \| null>`              | auto focus, no trap, restore=true     | Не полноценный accessibility/overlay manager.            |
+| `useFocusTrap`              | `isOpen: boolean`             | `RefObject<HTMLDivElement \| null>` | auto + trap + restore                 | Фиксированный compatibility wrapper.                     |
+
+## Вопросы и ответы
+
+### Как скачать base64?
+
+Сначала преобразуйте base64 в `Blob` через модуль `/binary`, затем передайте Blob:
+
+```ts
+const blob = binaryToBlob(base64, "application/pdf", true);
+downloadFileFromBlob("report.pdf", blob);
+```
+
+### Нужно ли самостоятельно вызывать `URL.revokeObjectURL` после `downloadFileFromBlob`?
+
+Нет. Helper создаёт URL и планирует revoke самостоятельно.
+
+### Нужно ли вызывать revoke после `downloadFileFromObjectURL`?
+
+Нет, если URL передан этому helper: ownership уже отдан. Не используйте URL повторно.
+
+### Можно ли передать обычный HTTPS URL?
+
+API предназначен для object URL и вызывает `revokeObjectURL`. Для навигации/скачивания remote URL используйте отдельный contract с учётом same-origin, headers и browser policy.
+
+### Почему JSON export упал на объекте?
+
+Наиболее частые причины — circular reference, `BigInt` или исключение в custom `toJSON`.
+
+### Создаёт ли `getOrCreatePortalRoot` React portal?
+
+Нет. Он создаёт только DOM container. Portal создаётся через `createPortal`.
+
+### Почему функция вернула `null`?
+
+Global `document` отсутствовал. Обычно это server/Node boundary.
+
+### Нужно ли удалять portal root при закрытии dialog?
+
+Обычно application-wide root оставляют до выгрузки страницы. Helper не удаляет его. Временный root должен очищать его owner.
+
+### Почему outside handler сработал при клике по popover?
+
+Portal content или trigger мог не входить в refs. Передайте все DOM-subtrees, считающиеся внутренними.
+
+### Почему outside handler сработал, пока elements ещё не mounted?
+
+В array mode все null refs считаются отсутствующими внутренними областями, поэтому событие является outside. Проверяйте `open` в callback или монтируйте hook вместе с overlay component.
+
+### Почему Escape не закрыл overlay?
+
+Проверьте:
+
+- `active`;
+- `enabled`;
+- точное `event.key === "Escape"`;
+- target document;
+- focus внутри `containerRef`;
+- существует ли container.
+
+### Почему Escape закрыл несколько overlay?
+
+Несколько hooks были active. Модуль не управляет stack и не вызывает `stopPropagation`. Активируйте только top overlay.
+
+### Можно ли отключить Escape через `documentTarget: null`?
+
+Нет при наличии global document: nullish fallback выберет его. Используйте `active: false` или `enabled: false`.
+
+### Почему focus не установился на container?
+
+Обычному `div` нужен `tabIndex={-1}`. Также target должен быть подключён к DOM.
+
+### Почему focus ушёл из trap программно?
+
+Hook зацикливает только keyboard Tab на boundary container. Он не перехватывает произвольный `.focus()`, pointer focus или другой portal.
+
+### Почему focus восстановился до окончания анимации?
+
+Restore выполняется в effect cleanup при деактивации. Для exit animation отключите встроенный restore и выполните его после фактического удаления overlay.
+
+### Почему `useElementHeightObserver` сначала вернул `0`?
+
+Это initial state. Hook ждёт callback ResizeObserver.
+
+### Какую высоту возвращает observer?
+
+В первую очередь `ResizeObserverEntry.contentRect.height`, обычно content box. Это не обязательно `offsetHeight` или визуальный border-box.
+
+### Почему `useIntersectionObserver` пересоздаётся?
+
+Вероятно, `options` создаётся inline и имеет новую ссылку на каждом render. Стабилизируйте object.
+
+### Можно ли использовать `isIntersecting` как доказательство просмотра?
+
+Нет. Это layout signal, а не гарантия человеческого внимания или бизнес-событие.
+
+### Почему touch hook сначала возвращает `false`?
+
+Detection выполняется после mount в effect. Initial state равен `false`.
+
+### Можно ли по `useIsTouchDevice` определить телефон?
+
+Нет. Результат означает touch/coarse capability heuristic. Он не определяет класс устройства, размер экрана или единственный input method.
+
+### Что выбрать для modal: `useFocusTrap` или `useOverlayFocus`?
+
+Для нового кода обычно `useOverlayFocus`: у него есть явные options, custom initial/restore target и external ref. `useFocusTrap` — фиксированный compatibility wrapper.
+
+### Достаточно ли `useOverlayFocus({ trapFocus: true })` для доступного modal?
+
+Нет. Нужны semantic role, accessible name, close command, inert/background policy, stack management, scroll policy и проверка keyboard/screen-reader сценария.

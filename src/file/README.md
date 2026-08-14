@@ -1,289 +1,1953 @@
-# Библиотека чтения файлов
+# Работа с пользовательскими файлами через `@ryuzaki13/react-foundation-lib/file`
 
-Библиотека для безопасного чтения файлов на клиенте через `FileReader` API с валидацией, поддержкой отмены и строгой типизацией.
+Модуль `file` содержит browser helpers для четырёх связанных задач:
 
-## Структура
+- прочитать выбранный пользователем `File` как data URL или `ArrayBuffer`;
+- проверить MIME-тип и размер файла перед чтением;
+- прочитать изображение и получить его естественные размеры;
+- определить MIME по расширению и безопаснее сформировать HTTP-заголовок `Content-Disposition` с Unicode-именем файла.
 
+Модуль является низкоуровневым foundation-слоем. Он не рисует `<input type="file">`, не отправляет файл на backend, не показывает preview или progress, не проверяет реальное содержимое файла и не заменяет серверную валидацию.
+
+README рассчитан на разработчика, который использует опубликованный пакет без доступа к исходному коду. Поэтому ниже отдельно объясняются базовые понятия JavaScript/TypeScript, точный порядок проверок, структура результатов, все публичные функции и типы, фактические классы ошибок, ограничения безопасности и известные особенности текущей реализации.
+
+## Содержание
+
+- [Назначение и границы модуля](#назначение-и-границы-модуля)
+- [Установка и импорт](#установка-и-импорт)
+- [Runtime и browser boundary](#runtime-и-browser-boundary)
+- [Минимальные понятия](#минимальные-понятия)
+- [Как выбрать API](#как-выбрать-api)
+- [Быстрый старт](#быстрый-старт)
+- [`readFile`](#readfile)
+- [Режим `data-url`](#режим-data-url)
+- [Режим `array-buffer`](#режим-array-buffer)
+- [Проверка типа и размера](#проверка-типа-и-размера)
+- [Отмена через `AbortSignal`](#отмена-через-abortsignal)
+- [Ошибки `readFile`](#ошибки-readfile)
+- [`readImageFile`](#readimagefile)
+- [Ошибки `readImageFile`](#ошибки-readimagefile)
+- [`resolveMimeTypeByExtension`](#resolvemimetypebyextension)
+- [Helpers для `Content-Disposition`](#helpers-для-content-disposition)
+- [Низкоуровневые helpers](#низкоуровневые-helpers)
+- [Готовые рецепты](#готовые-рецепты)
+- [Безопасность](#безопасность)
+- [Производительность и память](#производительность-и-память)
+- [Тестирование](#тестирование)
+- [Известные ограничения](#известные-ограничения)
+- [Краткий справочник API](#краткий-справочник-api)
+- [Вопросы и ответы](#вопросы-и-ответы)
+
+## Назначение и границы модуля
+
+### Что делает `file`
+
+- запускает браузерный `FileReader`;
+- возвращает строго типизированный результат чтения;
+- сохраняет исходный объект `File` в результате;
+- создаёт snapshot основных metadata файла;
+- ограничивает допустимые MIME и максимальный размер;
+- связывает `AbortSignal` с `FileReader.abort()`;
+- проверяет, что файл объявлен как `image/*`;
+- получает `naturalWidth` и `naturalHeight` изображения в режиме data URL;
+- сопоставляет ограниченный список расширений с MIME;
+- формирует `Content-Disposition` одновременно с ASCII fallback и UTF-8 `filename*`.
+
+### Чего модуль не делает
+
+- не создаёт UI выбора файла;
+- не управляет React state;
+- не выполняет HTTP/OData-запрос;
+- не загружает файл на сервер;
+- не скачивает `Blob` в браузере;
+- не превращает произвольный base64 в `Blob`;
+- не читает файл потоково и не сообщает progress;
+- не проверяет magic bytes, структуру PDF, ZIP, изображения или документа;
+- не обнаруживает вирусы и вредоносное содержимое;
+- не гарантирует, что `File.type` соответствует байтам;
+- не сжимает и не изменяет изображение;
+- не ограничивает ширину, высоту или количество декодированных пикселей;
+- не удаляет потенциально опасное содержимое из SVG;
+- не нормализует путь для записи файла на диск;
+- не создаёт HTTP `Response` и не устанавливает заголовки автоматически.
+
+### Соседние модули
+
+| Задача                                             | Предпочтительный владелец                                   |
+| -------------------------------------------------- | ----------------------------------------------------------- |
+| Прочитать выбранный пользователем `File`           | `@ryuzaki13/react-foundation-lib/file`                      |
+| Base64/data URL → `Blob`                           | `@ryuzaki13/react-foundation-lib/binary`                    |
+| Скачать готовый `Blob`, JSON или object URL        | `@ryuzaki13/react-foundation-lib/dom`                       |
+| Скопировать обычный текст в clipboard              | `@ryuzaki13/react-foundation-lib/copy`                      |
+| Прочитать файл через готовый React UI              | `@ryuzaki13/react-foundation-ui/input-file` или `drop-zone` |
+| Выбрать изображение через готовый React UI         | `@ryuzaki13/react-foundation-ui/input-image`                |
+| Проверить формат по реальному содержимому          | Специализированный parser на доверенной boundary            |
+| Выполнить окончательную проверку перед сохранением | Backend                                                     |
+
+Если нужен только обычный upload через `multipart/form-data`, браузерный `File` можно положить в `FormData` напрямую. Предварительное чтение всего файла через `readFile` для этого не обязательно.
+
+## Установка и импорт
+
+Установите пакет:
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
 ```
-src/shared/lib/file/
-├── read-file/          — универсальное чтение любых файлов
-│   ├── types.ts
-│   ├── readFile.ts
-│   └── index.ts
-├── image/              — чтение изображений (надстройка над read-file)
-│   ├── types.ts
-│   ├── readImageFile.ts
-│   └── index.ts
-└── index.ts
-```
 
-Все экспорты доступны через `@/shared/lib`.
-
----
-
-## `readFile` — чтение любых файлов
-
-Универсальная функция для чтения файлов. Поддерживает два режима: `data-url` (по умолчанию) и `array-buffer`.
-
-### Сигнатуры
+Импортируйте API только из опубликованного subpath `/file`:
 
 ```ts
-// Чтение как Data URL (по умолчанию)
-readFile(file: File, opts?: { mode?: "data-url"; ... }): Promise<ReadFileAsDataUrlResult>
+import { createContentDispositionHeader, readFile, readImageFile, resolveMimeTypeByExtension } from "@ryuzaki13/react-foundation-lib/file";
 
-// Чтение как ArrayBuffer
-readFile(file: File, opts: { mode: "array-buffer"; ... }): Promise<ReadFileAsArrayBufferResult>
+import type { ImageMime, ReadFileOptions, ReadFileResult, ReadImageResult } from "@ryuzaki13/react-foundation-lib/file";
 ```
 
-### Опции (`ReadFileOptions`)
-
-| Параметр      | Тип                            | По умолчанию | Описание                           |
-| ------------- | ------------------------------ | ------------ | ---------------------------------- |
-| `mode`        | `"data-url" \| "array-buffer"` | `"data-url"` | Режим чтения файла                 |
-| `allowedMime` | `readonly string[]`            | —            | Список разрешённых MIME-типов      |
-| `maxBytes`    | `number`                       | —            | Максимальный размер файла в байтах |
-| `signal`      | `AbortSignal`                  | —            | Сигнал для отмены операции         |
-
-### Результат
-
-**`ReadFileAsDataUrlResult`** (при `mode: "data-url"`):
-
-| Поле      | Тип          | Описание                      |
-| --------- | ------------ | ----------------------------- |
-| `mode`    | `"data-url"` | Дискриминант режима           |
-| `meta`    | `FileMeta`   | Метаданные файла              |
-| `dataUrl` | `string`     | Содержимое в формате Data URL |
-| `file`    | `File`       | Исходный объект `File`        |
-
-**`ReadFileAsArrayBufferResult`** (при `mode: "array-buffer"`):
-
-| Поле     | Тип              | Описание               |
-| -------- | ---------------- | ---------------------- |
-| `mode`   | `"array-buffer"` | Дискриминант режима    |
-| `meta`   | `FileMeta`       | Метаданные файла       |
-| `buffer` | `ArrayBuffer`    | Бинарное содержимое    |
-| `file`   | `File`           | Исходный объект `File` |
-
-**`FileMeta`** — метаданные файла:
-
-| Поле           | Тип      | Описание                               |
-| -------------- | -------- | -------------------------------------- |
-| `mime`         | `string` | MIME-тип файла                         |
-| `size`         | `number` | Размер в байтах                        |
-| `name`         | `string` | Имя файла                              |
-| `lastModified` | `number` | Время последнего изменения (timestamp) |
-
-### Примеры
-
-**Чтение PDF-файла как Data URL для предпросмотра:**
+Корневой импорт пакета не поддерживается:
 
 ```ts
-import { readFile, ReadFileError } from "@/shared/lib";
+// Неправильно.
+import { readFile } from "@ryuzaki13/react-foundation-lib";
 
-async function handlePdfUpload(file: File) {
-  try {
-    const result = await readFile(file, {
-      allowedMime: ["application/pdf"],
-      maxBytes: 50 * 1024 * 1024, // 50 МБ
-    });
-
-    // result.mode === "data-url" (тип сужен автоматически)
-    console.log(result.meta.name);   // "document.pdf"
-    console.log(result.meta.size);   // 1234567
-    previewIframe.src = result.dataUrl;
-  } catch (error) {
-    if (error instanceof ReadFileError) {
-      console.error(error.code, error.message);
-    }
-  }
-}
+// Правильно.
+import { readFile } from "@ryuzaki13/react-foundation-lib/file";
 ```
 
-**Чтение файла как ArrayBuffer для отправки на сервер:**
+Не импортируйте внутренние файлы `read-file/readFile` или `image/readImageFile`. Они не являются отдельными опубликованными entrypoints:
 
 ```ts
-import { readFile } from "@/shared/lib";
-
-async function uploadDocument(file: File) {
-  const result = await readFile(file, {
-    mode: "array-buffer",
-    maxBytes: 100 * 1024 * 1024, // 100 МБ
-  });
-
-  // result.buffer: ArrayBuffer (тип сужен автоматически)
-  await fetch("/api/upload", {
-    method: "POST",
-    body: result.buffer,
-    headers: { "Content-Type": result.meta.mime },
-  });
-}
+// Неправильно: приватный путь исходников.
+import { readFile } from "@ryuzaki13/react-foundation-lib/src/file/read-file/readFile";
 ```
 
-**Чтение с поддержкой отмены:**
+Модуль поставляется как ESM.
+
+### Нужен ли React
+
+Сам entrypoint `/file` не использует React и подходит обычному browser TypeScript/JavaScript-коду. Однако пакет в целом объявляет React peer dependency. В React-приложении она обычно уже предоставлена host-приложением.
+
+## Runtime и browser boundary
+
+Основные функции чтения используют Web APIs:
+
+- `File`;
+- `FileReader`;
+- `Image`;
+- `AbortController` и `AbortSignal`;
+- `ArrayBuffer`;
+- data URL.
+
+Поэтому `readFile` и `readImageFile` предназначены прежде всего для браузера. Обычная Node.js-среда, server action, SSR loader или тестовый runner могут не иметь полного `FileReader`/`Image` API.
+
+Чистые helpers не зависят от DOM:
+
+- `resolveMimeTypeByExtension`;
+- `sanitizeFileName`;
+- `createAsciiFilenameFallback`;
+- `encodeFilenameRFC5987`;
+- `createContentDispositionHeader`.
+
+Их можно вызывать на серверной boundary, если runtime предоставляет стандартные строковые функции и `encodeURIComponent`.
+
+Важно различать:
+
+- импорт модуля;
+- фактический вызов browser-функции.
+
+Сам импорт не начинает чтение файла. Browser API используется только при вызове соответствующей функции.
+
+## Минимальные понятия
+
+### Что такое `File`
+
+`File` — браузерный объект, который представляет выбранный или созданный файл. Он наследуется от `Blob` и содержит байты плюс metadata:
 
 ```ts
-import { readFile } from "@/shared/lib";
-
-const controller = new AbortController();
-
-// Отмена через 5 секунд
-setTimeout(() => controller.abort(), 5000);
-
-const result = await readFile(file, {
-  signal: controller.signal,
+const file = new File(["Привет"], "hello.txt", {
+	type: "text/plain",
+	lastModified: Date.now()
 });
 ```
 
-**Чтение без ограничений (любой файл):**
+Основные поля:
+
+| Поле                | Значение                                      |
+| ------------------- | --------------------------------------------- |
+| `file.name`         | Имя, например `report.pdf`                    |
+| `file.type`         | Заявленный MIME, например `application/pdf`   |
+| `file.size`         | Размер в байтах                               |
+| `file.lastModified` | Время изменения в миллисекундах от Unix epoch |
+
+`File` обычно получают из `<input type="file">`:
 
 ```ts
-import { readFile } from "@/shared/lib";
+const input = document.querySelector<HTMLInputElement>("#document");
 
-const result = await readFile(file);
-// result.meta.mime — реальный MIME-тип файла
-// result.dataUrl — Data URL для любого типа
+input?.addEventListener("change", () => {
+	const file = input.files?.[0];
+
+	if (!file) {
+		return;
+	}
+
+	console.log(file.name, file.type, file.size);
+});
 ```
 
----
+`files?.[0]` может быть `undefined`, если пользователь закрыл диалог или очистил поле. Проверяйте это до вызова `readFile`.
 
-## `readImageFile` — чтение изображений
+### Что такое MIME-тип
 
-Надстройка над `readFile` для работы с изображениями. Добавляет:
+MIME — строковая metadata о предполагаемом типе содержимого:
 
-- Проверку что файл является изображением (`image/*`)
-- Типизацию `allowedMime` на `ImageMime` (только image-типы)
-- Автоматическое извлечение размеров изображения (`dimensions`) в режиме `data-url`
+| MIME                       | Предполагаемое содержимое |
+| -------------------------- | ------------------------- |
+| `application/pdf`          | PDF                       |
+| `image/png`                | PNG                       |
+| `image/jpeg`               | JPEG                      |
+| `text/plain`               | Обычный текст             |
+| `application/octet-stream` | Неизвестные байты         |
+
+У MIME две части, разделённые `/`:
+
+```text
+image/png
+^^^^^ ^^^
+type  subtype
+```
+
+Значение `File.type` нельзя считать доказательством формата. Оно может быть пустым, ошибочным или подделанным. Клиентская MIME-проверка улучшает UX, но не является security boundary.
+
+### MIME и расширение — не одно и то же
+
+Для файла `photo.jpeg`:
+
+- расширение — `jpeg`;
+- MIME — `image/jpeg`.
+
+Переименование `malware.exe` в `photo.jpeg` не превращает содержимое в изображение. Окончательное решение должен принимать backend или специализированный parser.
+
+### Что такое `FileReader`
+
+`FileReader` — browser API, который асинхронно загружает весь `Blob`/`File` в память. Этот модуль скрывает обработчики `load`, `error` и `abort` за обычным `Promise`.
+
+Вместо ручного кода:
+
+```ts
+const reader = new FileReader();
+
+reader.onload = () => {
+	console.log(reader.result);
+};
+
+reader.readAsArrayBuffer(file);
+```
+
+используется:
+
+```ts
+const result = await readFile(file, { mode: "array-buffer" });
+console.log(result.buffer);
+```
+
+### Что такое `Promise`, `async` и `await`
+
+Чтение не завершается мгновенно. `readFile` возвращает `Promise`:
+
+```ts
+const promise = readFile(file);
+```
+
+`await` ожидает результат внутри `async`-функции:
+
+```ts
+async function handleFile(file: File) {
+	try {
+		const result = await readFile(file);
+		console.log(result.dataUrl);
+	} catch (error) {
+		console.error(error);
+	}
+}
+```
+
+Без `await` переменная содержит не результат, а Promise:
+
+```ts
+// Неправильно.
+const result = readFile(file);
+// result.dataUrl недоступен: result — Promise.
+```
+
+### Что такое data URL
+
+Data URL хранит metadata и данные в одной строке:
+
+```text
+data:image/png;base64,iVBORw0KGgoAAA...
+```
+
+Его удобно передать в `src` изображения:
+
+```ts
+imageElement.src = result.dataUrl;
+```
+
+Base64 увеличивает текстовое представление байтов примерно на треть. Для больших файлов data URL расходует заметно больше памяти, чем исходный `File`.
+
+### Что такое `ArrayBuffer`
+
+`ArrayBuffer` — непрерывный участок памяти с байтами. Сам буфер не предоставляет удобного доступа к отдельным байтам; обычно создают typed view:
+
+```ts
+const result = await readFile(file, { mode: "array-buffer" });
+const bytes = new Uint8Array(result.buffer);
+
+console.log(bytes[0]);
+```
+
+`ArrayBuffer` подходит бинарным parsers, Web APIs и transport-коду, которому нужны именно байты.
+
+### Что такое discriminated union
+
+`ReadFileResult` может иметь одну из двух форм. Поле `mode` является discriminator:
+
+```ts
+function consume(result: ReadFileResult) {
+	if (result.mode === "data-url") {
+		console.log(result.dataUrl);
+		return;
+	}
+
+	console.log(result.buffer);
+}
+```
+
+После проверки `mode` TypeScript понимает, какое поле доступно. Не обращайтесь к `dataUrl` и `buffer` одновременно.
+
+### Размеры в байтах
+
+`maxBytes` задаётся в байтах:
+
+```ts
+const ONE_MEBIBYTE = 1024 * 1024;
+const FIVE_MEBIBYTES = 5 * ONE_MEBIBYTE;
+```
+
+Для ограничения около 5 MiB:
+
+```ts
+await readFile(file, { maxBytes: 5 * 1024 * 1024 });
+```
+
+Проверка сравнивает `file.size > maxBytes`. Файл размером ровно `maxBytes` разрешён.
+
+## Как выбрать API
+
+| Требование                                          | API или режим                         |
+| --------------------------------------------------- | ------------------------------------- |
+| Показать маленькое изображение через `<img src>`    | `readImageFile`, режим `data-url`     |
+| Узнать ширину и высоту изображения                  | `readImageFile`, режим `data-url`     |
+| Передать байты parser/worker/криптографическому API | `readFile`, режим `array-buffer`      |
+| Сохранить выбранный файл в `FormData`               | Использовать исходный `File` напрямую |
+| Ограничить точные MIME                              | `allowedMime`                         |
+| Ограничить размер                                   | `maxBytes`                            |
+| Отменить активное чтение                            | `AbortController`                     |
+| Получить MIME по известному расширению              | `resolveMimeTypeByExtension`          |
+| Сформировать filename в HTTP `Content-Disposition`  | `createContentDispositionHeader`      |
+| Превратить уже полученный base64 в `Blob`           | Соседний модуль `/binary`             |
+| Скачать уже созданный `Blob`                        | Соседний модуль `/dom`                |
+
+Практический default:
+
+- для обычных документов предпочитайте `array-buffer`, если байты действительно нужны;
+- для preview изображения используйте `readImageFile` с небольшим `maxBytes` и явным `allowedMime`;
+- для обычного multipart upload вообще не читайте файл заранее;
+- для проверки типа предпочитайте `allowedMime`, потому что поведение `accept` внутри `readFile` не совпадает с HTML `accept`.
+
+## Быстрый старт
+
+### Прочитать один PDF как `ArrayBuffer`
+
+```ts
+import { ReadFileError, readFile } from "@ryuzaki13/react-foundation-lib/file";
+
+const input = document.querySelector<HTMLInputElement>("#pdf-input");
+
+input?.addEventListener("change", async () => {
+	const file = input.files?.[0];
+
+	if (!file) {
+		return;
+	}
+
+	try {
+		const result = await readFile(file, {
+			mode: "array-buffer",
+			allowedMime: ["application/pdf"],
+			maxBytes: 10 * 1024 * 1024
+		});
+
+		console.log(result.meta.name);
+		console.log(result.buffer.byteLength);
+	} catch (error) {
+		if (error instanceof ReadFileError) {
+			console.error(error.code, error.message);
+			return;
+		}
+
+		throw error;
+	}
+});
+```
+
+HTML:
+
+```html
+<input id="pdf-input" type="file" accept="application/pdf,.pdf" />
+```
+
+HTML `accept` помогает фильтровать диалог выбора. `allowedMime` повторно проверяет выбранный объект перед чтением. Ни одна из этих проверок не заменяет backend.
+
+### Прочитать изображение для preview
+
+```ts
+import { readImageFile } from "@ryuzaki13/react-foundation-lib/file";
+
+async function createPreview(file: File, image: HTMLImageElement) {
+	const result = await readImageFile(file, {
+		allowedMime: ["image/jpeg", "image/png", "image/webp"],
+		maxBytes: 5 * 1024 * 1024
+	});
+
+	image.src = result.dataUrl;
+
+	if (result.dimensions) {
+		console.log(`${result.dimensions.width} × ${result.dimensions.height}`);
+	}
+}
+```
+
+`dimensions` отмечено в публичном типе как optional, поэтому безопасный consumer проверяет его наличие, хотя текущая успешная реализация data URL возвращает объект размеров.
+
+### Сформировать `Content-Disposition`
+
+```ts
+import { createContentDispositionHeader } from "@ryuzaki13/react-foundation-lib/file";
+
+const contentDisposition = createContentDispositionHeader({
+	disposition: "attachment",
+	filename: "Отчёт за август.pdf",
+	asciiFallback: "report-august.pdf"
+});
+
+console.log(contentDisposition);
+```
+
+Результат содержит два параметра:
+
+```text
+attachment; filename="_____ __ ______.pdf"; filename*=UTF-8''%D0%9E%D1%82...
+```
+
+Точное количество `_` зависит от Unicode-символов. Важно: `asciiFallback` не переопределяет ASCII-вариант непустого Unicode-имени. Текущая реализация использует его только тогда, когда имя после первичной обработки пустое либо ASCII-результат оказался пустым.
+
+## `readFile`
+
+`readFile` применяет выбранные ограничения, читает файл через `FileReader` и возвращает исходный `File`, metadata и представление данных выбранного режима. Синтаксические assert helpers автоматически не вызываются.
 
 ### Сигнатуры
 
 ```ts
-// Чтение как Data URL с размерами (по умолчанию)
-readImageFile(file: File, opts?: { mode?: "data-url"; ... }): Promise<ReadImageAsDataUrlResult>
+function readFile(file: File, opts?: Omit<ReadFileOptions, "mode"> & { mode?: "data-url" }): Promise<ReadFileAsDataUrlResult>;
 
-// Чтение как ArrayBuffer
-readImageFile(file: File, opts: { mode: "array-buffer"; ... }): Promise<ReadImageAsArrayBufferResult>
+function readFile(file: File, opts: Omit<ReadFileOptions, "mode"> & { mode: "array-buffer" }): Promise<ReadFileAsArrayBufferResult>;
 ```
 
-### Опции (`ReadImageOptions`)
+Перегрузки связывают литеральный `mode` с точным типом результата:
 
-| Параметр      | Тип                            | По умолчанию | Описание                           |
-| ------------- | ------------------------------ | ------------ | ---------------------------------- |
-| `mode`        | `"data-url" \| "array-buffer"` | `"data-url"` | Режим чтения файла                 |
-| `allowedMime` | `readonly ImageMime[]`         | —            | Разрешённые image MIME-типы        |
-| `maxBytes`    | `number`                       | —            | Максимальный размер файла в байтах |
-| `signal`      | `AbortSignal`                  | —            | Сигнал для отмены операции         |
+```ts
+const dataResult = await readFile(file);
+dataResult.dataUrl;
 
-**`ImageMime`** — допустимые значения:
-`"image/png"`, `"image/jpeg"`, `"image/webp"`, `"image/gif"`, `"image/svg+xml"`, `"image/avif"`
+const bufferResult = await readFile(file, { mode: "array-buffer" });
+bufferResult.buffer;
+```
 
-### Результат
+### Аргументы
 
-**`ReadImageAsDataUrlResult`** расширяет `ReadFileAsDataUrlResult`:
+| Аргумент | Тип               | Назначение                                        |
+| -------- | ----------------- | ------------------------------------------------- |
+| `file`   | `File`            | Обязательный файл для проверки и чтения           |
+| `opts`   | `ReadFileOptions` | Необязательные режим, ограничения и `AbortSignal` |
 
-| Поле         | Тип                | Описание                         |
-| ------------ | ------------------ | -------------------------------- |
-| `mode`       | `"data-url"`       | Дискриминант режима              |
-| `meta`       | `FileMeta`         | Метаданные файла                 |
-| `dataUrl`    | `string`           | Содержимое в формате Data URL    |
-| `file`       | `File`             | Исходный объект `File`           |
-| `dimensions` | `ImageDimensions?` | Ширина и высота изображения (px) |
+Передавайте реальный `File`. Значение `undefined` не является поддерживаемым аргументом:
 
-**`ReadImageAsArrayBufferResult`** — идентичен `ReadFileAsArrayBufferResult`.
+```ts
+const file = input.files?.[0];
+
+if (!file) {
+	return;
+}
+
+await readFile(file);
+```
+
+Несмотря на публичный код ошибки `NO_FILE`, текущая функция сама не проверяет отсутствующий аргумент. При обходе TypeScript runtime может вернуть обычный `TypeError` как rejected Promise.
+
+### Options
+
+| Option        | Тип                 | Default      | Фактическое поведение                                           |
+| ------------- | ------------------- | ------------ | --------------------------------------------------------------- |
+| `mode`        | `ReadMode`          | `"data-url"` | Выбирает `dataUrl` или `buffer`                                 |
+| `allowedMime` | `readonly string[]` | `undefined`  | Точное case-insensitive сравнение с `file.type`                 |
+| `accept`      | `readonly string[]` | `undefined`  | Legacy-проверка по включению суффикса имени; см. предупреждение |
+| `maxBytes`    | `number`            | `undefined`  | Ошибка, если `file.size > maxBytes`                             |
+| `signal`      | `AbortSignal`       | `undefined`  | Отменяет `FileReader`                                           |
+
+### Порядок выполнения
+
+При вызове `readFile` происходит следующее:
+
+1. проверяется, не был ли `signal` уже отменён;
+2. если `allowedMime` непустой, сравнивается `file.type`;
+3. иначе, если `accept` непустой, выполняется legacy-проверка суффикса;
+4. проверяется `maxBytes`;
+5. создаётся snapshot `meta`;
+6. создаётся `FileReader`;
+7. к нему подключается `AbortSignal`;
+8. вызывается `readAsDataURL` или `readAsArrayBuffer`;
+9. listener отмены удаляется после `load`, `error` или `abort`;
+10. возвращается типизированный объект либо отклоняется Promise.
+
+Проверки выполняются до чтения байтов, поэтому неподходящий файл не загружается в память через `FileReader`.
+
+### Общие поля результата
+
+Оба режима возвращают:
+
+```ts
+type CommonResult = {
+	mode: "data-url" | "array-buffer";
+	meta: FileMeta;
+	file: File;
+};
+```
+
+`file` — тот же объект, который был передан функции:
+
+```ts
+const result = await readFile(file);
+
+console.log(result.file === file); // true
+```
+
+`meta` — новый обычный объект со snapshot четырёх полей:
+
+```ts
+type FileMeta = {
+	mime: string;
+	size: number;
+	name: string;
+	lastModified: number;
+};
+```
+
+Соответствие:
+
+| `meta` поле         | Источник            |
+| ------------------- | ------------------- |
+| `meta.mime`         | `file.type`         |
+| `meta.size`         | `file.size`         |
+| `meta.name`         | `file.name`         |
+| `meta.lastModified` | `file.lastModified` |
+
+Metadata не очищается, не нормализуется и не подтверждается по содержимому.
+
+## Режим `data-url`
+
+Это default:
+
+```ts
+const result = await readFile(file);
+```
+
+То же самое явно:
+
+```ts
+const result = await readFile(file, { mode: "data-url" });
+```
+
+Результат:
+
+```ts
+type ReadFileAsDataUrlResult = {
+	mode: "data-url";
+	meta: FileMeta;
+	dataUrl: string;
+	file: File;
+};
+```
+
+### Когда использовать
+
+- preview небольшого изображения;
+- API, которому требуется data URL;
+- локальное встраивание небольших ресурсов;
+- временное отображение содержимого в browser UI.
+
+### Пример
+
+```ts
+const result = await readFile(file, {
+	allowedMime: ["image/png"]
+});
+
+preview.src = result.dataUrl;
+```
+
+### Когда не использовать
+
+- для большого видео;
+- для крупного архива;
+- если downstream принимает `File`, `Blob` или `ArrayBuffer`;
+- только ради обычного `FormData` upload;
+- для долгого хранения в state/cache без необходимости.
+
+Data URL является строкой и обычно содержит base64. Это создаёт дополнительную копию данных и увеличивает размер представления.
+
+## Режим `array-buffer`
+
+Включается только явным литералом:
+
+```ts
+const result = await readFile(file, {
+	mode: "array-buffer"
+});
+```
+
+Результат:
+
+```ts
+type ReadFileAsArrayBufferResult = {
+	mode: "array-buffer";
+	meta: FileMeta;
+	buffer: ArrayBuffer;
+	file: File;
+};
+```
+
+### Когда использовать
+
+- бинарный parser;
+- вычисление checksum через Web Crypto;
+- отправка байтов API, которое не принимает `File`;
+- передача данных Web Worker;
+- анализ заголовка файла.
+
+### Прочитать первые байты
+
+```ts
+const result = await readFile(file, { mode: "array-buffer" });
+const bytes = new Uint8Array(result.buffer);
+
+console.log(bytes.slice(0, 8));
+```
+
+### Переменный режим
+
+Если mode хранится в широкой переменной `ReadMode`, безопаснее разделить вызовы:
+
+```ts
+import type { ReadFileResult, ReadMode } from "@ryuzaki13/react-foundation-lib/file";
+
+async function readByMode(file: File, mode: ReadMode): Promise<ReadFileResult> {
+	if (mode === "array-buffer") {
+		return readFile(file, { mode: "array-buffer" });
+	}
+
+	return readFile(file);
+}
+```
+
+Так каждая перегрузка получает литеральное значение, а не union.
+
+## Проверка типа и размера
+
+### `allowedMime` — рекомендуемая проверка типа
+
+`allowedMime` выполняет точное сравнение MIME после `trim()` и `toLowerCase()`:
+
+```ts
+await readFile(file, {
+	allowedMime: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+});
+```
+
+Примеры:
+
+| `file.type`        | `allowedMime`         | Результат |
+| ------------------ | --------------------- | --------- |
+| `application/pdf`  | `['application/pdf']` | разрешён  |
+| `APPLICATION/PDF`  | `['application/pdf']` | разрешён  |
+| ` application/pdf` | `['application/pdf']` | разрешён  |
+| `image/png`        | `['image/jpeg']`      | ошибка    |
+| пустая строка      | `['application/pdf']` | ошибка    |
+
+Непустой `allowedMime` имеет приоритет над `accept`: если переданы оба, `accept` внутри `readFile` не проверяется.
+
+Пустой массив не ограничивает MIME:
+
+```ts
+await readFile(file, { allowedMime: [] });
+```
+
+Если одновременно передан непустой `accept`, пустой `allowedMime` не блокирует его применение.
+
+### Валидация конфигурации `allowedMime`
+
+`readFile` не вызывает `assertValidAllowedMime` автоматически. Если список строится динамически, проверьте его отдельно:
+
+```ts
+import { assertValidAllowedMime, readFile } from "@ryuzaki13/react-foundation-lib/file";
+
+const allowedMime = ["application/pdf", "image/png"] as const;
+
+assertValidAllowedMime(allowedMime);
+const result = await readFile(file, { allowedMime });
+```
+
+Валидный элемент должен быть полным MIME без wildcard и параметров:
+
+| Значение                    | Валидно |
+| --------------------------- | ------- |
+| `application/pdf`           | да      |
+| `image/png`                 | да      |
+| `image/*`                   | нет     |
+| `text/plain; charset=UTF-8` | нет     |
+| `.pdf`                      | нет     |
+| ` application/pdf`          | нет     |
+
+`assertValidAllowedMime` не обрезает строку и при ошибке бросает обычный `Error`, а не `ReadFileError`.
+
+### `accept` — важное отличие от HTML
+
+В HTML атрибут `accept` является подсказкой нативному file picker:
+
+```html
+<input type="file" accept=".pdf,application/pdf,image/*" />
+```
+
+В `readFile` option `accept` имеет текущую legacy-семантику и не повторяет правила HTML:
+
+1. из `file.name` берётся часть после последней точки;
+2. если она пустая, берётся subtype из `file.type`;
+3. каждый accept-элемент нормализуется;
+4. файл разрешён, если хотя бы одна строка `accept` содержит полученный суффикс через `includes`.
+
+Примеры текущего поведения для `photo.png`:
+
+| `accept`        | Результат | Причина                            |
+| --------------- | --------- | ---------------------------------- |
+| `['.png']`      | разрешён  | строка `.png` содержит `png`       |
+| `['image/png']` | разрешён  | строка `image/png` содержит `png`  |
+| `['image/*']`   | ошибка    | строка `image/*` не содержит `png` |
+| `['.jpg']`      | ошибка    | `.jpg` не содержит `png`           |
+
+Дополнительные особенности:
+
+- имя без точки, например `photo`, трактуется как найденный суффикс `photo`, поэтому MIME fallback обычно не используется;
+- используется substring-проверка, а не строгое сравнение;
+- wildcard `image/*` проходит `assertValidAccept`, но обычно не разрешает файл `photo.png` внутри `readFile`;
+- строка с несколькими specifiers через запятую не поддерживается: каждый specifier должен быть отдельным элементом массива;
+- если непустой `allowedMime` уже передан, `accept` игнорируется.
+
+Поэтому для runtime-проверки файла используйте `allowedMime`. `accept` удобно передавать UI-компоненту или нативному `<input>`, а затем отдельно проверять MIME.
+
+### `assertValidAccept`
+
+Helper проверяет синтаксис массива:
+
+```ts
+assertValidAccept([".pdf", "application/pdf", "image/*"]);
+```
+
+Допускаются:
+
+- расширение с начальной точкой: `.pdf`, `.tar.gz`;
+- полный MIME: `application/pdf`;
+- MIME wildcard: `image/*`.
+
+Не допускаются:
+
+- расширение без точки: `pdf`;
+- запятая внутри одного элемента: `.pdf,.docx`;
+- пробелы;
+- параметры MIME: `text/plain; charset=UTF-8`.
+
+Это только синтаксическая проверка. Она не гарантирует, что `readFile` применит HTML-семантику wildcard.
+
+### `maxBytes`
+
+```ts
+await readFile(file, {
+	maxBytes: 5 * 1024 * 1024
+});
+```
+
+Условие ошибки:
+
+```ts
+file.size > maxBytes;
+```
+
+Следовательно:
+
+- ровно допустимый размер проходит;
+- ограничение применяется до `FileReader`;
+- значение должно задаваться в байтах;
+- функция не проверяет, является ли option положительным конечным числом.
+
+Передавайте осмысленное положительное значение. Отрицательное число отклонит даже пустой файл, `NaN` фактически отключит сравнение, а `Infinity` снимет предел.
+
+### Почему нужны обе границы
+
+Типичный UI использует две разные проверки:
+
+```ts
+const ACCEPT = ".pdf,application/pdf";
+const ALLOWED_MIME = ["application/pdf"] as const;
+```
+
+- `accept` в HTML фильтрует диалог и улучшает UX;
+- `allowedMime` в `readFile` проверяет browser object;
+- backend проверяет реальные байты, политику, права и допустимый размер заново.
+
+## Отмена через `AbortSignal`
+
+`AbortController` создаёт signal, который можно отменить:
+
+```ts
+const controller = new AbortController();
+
+const promise = readFile(file, {
+	mode: "array-buffer",
+	signal: controller.signal
+});
+
+controller.abort();
+
+try {
+	await promise;
+} catch (error) {
+	console.error(error);
+}
+```
+
+Если signal отменён до вызова, `readFile` сразу возвращает rejected Promise с `ReadFileError` и code `READ_ABORTED`.
+
+Если отмена происходит во время работы `FileReader`, helper вызывает `reader.abort()`. Затем Promise отклоняется с `READ_ABORTED`.
+
+### Отменять предыдущее чтение при новом выборе
+
+```ts
+let activeController: AbortController | undefined;
+
+async function selectFile(file: File) {
+	activeController?.abort();
+
+	const controller = new AbortController();
+	activeController = controller;
+
+	try {
+		return await readFile(file, {
+			mode: "array-buffer",
+			signal: controller.signal
+		});
+	} finally {
+		if (activeController === controller) {
+			activeController = undefined;
+		}
+	}
+}
+```
+
+`AbortSignal` отменяет чтение, но не удаляет выбранный `File`, не очищает `<input>` и не отменяет последующий HTTP upload, если он уже запущен другим API.
+
+Для `readImageFile` отмена имеет дополнительное ограничение: signal связан с `FileReader`, но не прерывает ожидание `Image.onload`/`Image.onerror` во время определения размеров. Подробнее это описано в разделе об изображениях.
+
+## Ошибки `readFile`
+
+### Класс `ReadFileError`
+
+```ts
+class ReadFileError extends Error {
+	readonly code: ReadFileErrorCode;
+	readonly cause?: unknown;
+}
+```
+
+Обрабатывайте `unknown`, а не делайте небезопасный cast:
+
+```ts
+try {
+	const result = await readFile(file, options);
+	return result;
+} catch (error) {
+	if (error instanceof ReadFileError) {
+		console.error(error.code, error.message, error.cause);
+		return;
+	}
+
+	throw error;
+}
+```
+
+### Коды
+
+| Code               | Когда фактически возникает в `readFile`                                       |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `MIME_NOT_ALLOWED` | `allowedMime` или legacy `accept` отклонил файл                               |
+| `FILE_TOO_LARGE`   | `file.size > maxBytes`                                                        |
+| `READ_ABORTED`     | signal уже отменён или `FileReader` получил abort                             |
+| `READ_FAILED`      | `FileReader` завершился ошибкой, бросил исключение или дал неожиданный result |
+| `NO_FILE`          | Есть в публичном union, но текущий `readFile` его не создаёт                  |
+
+### `cause`
+
+Для некоторых `READ_FAILED` поле `cause` содержит исходную ошибку `FileReader`. Его удобно отправлять в технический logger, но не показывать пользователю без преобразования:
+
+```ts
+if (error instanceof ReadFileError) {
+	logger.error("Ошибка чтения файла", {
+		code: error.code,
+		cause: error.cause
+	});
+}
+```
+
+### Преобразование в пользовательский текст
+
+```ts
+function getReadFileMessage(error: ReadFileError): string {
+	switch (error.code) {
+		case "MIME_NOT_ALLOWED":
+			return "Выберите файл поддерживаемого формата.";
+		case "FILE_TOO_LARGE":
+			return "Размер файла превышает допустимый.";
+		case "READ_ABORTED":
+			return "Чтение файла отменено.";
+		case "READ_FAILED":
+			return "Браузеру не удалось прочитать файл.";
+		case "NO_FILE":
+			return "Файл не выбран.";
+	}
+}
+```
+
+Не используйте `message` как стабильный программный код. Для ветвления предназначено поле `code`.
+
+### Какие ошибки не являются `ReadFileError`
+
+- `assertValidAllowedMime` и `assertValidAccept` бросают обычный `Error`;
+- передача `undefined` вместо `File` может привести к обычному `TypeError`;
+- ошибочный consumer-код внутри собственного callback тоже не становится `ReadFileError`.
+
+Поэтому неизвестную ошибку нельзя молча считать ошибкой формата файла.
+
+## `readImageFile`
+
+`readImageFile` — надстройка над `readFile` для файлов, чей `file.type` начинается с точной строки `image/`.
+
+### Сигнатуры
+
+```ts
+function readImageFile(file: File, opts?: Omit<ReadImageOptions, "mode"> & { mode?: "data-url" }): Promise<ReadImageAsDataUrlResult>;
+
+function readImageFile(file: File, opts: Omit<ReadImageOptions, "mode"> & { mode: "array-buffer" }): Promise<ReadImageAsArrayBufferResult>;
+```
+
+### Поддерживаемый typed список MIME
+
+```ts
+type ImageMime = "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/svg+xml" | "image/avif";
+```
+
+Этот union ограничивает `allowedMime` на уровне TypeScript:
+
+```ts
+await readImageFile(file, {
+	allowedMime: ["image/jpeg", "image/png"]
+});
+```
+
+Если `allowedMime` не передан или пуст, первичная runtime-проверка разрешает любой MIME, который начинается с `image/`, включая MIME вне `ImageMime`, например `image/bmp`. Возможность успешного определения размеров затем зависит от браузерного decoder.
+
+### Проверка `image/*`
+
+Первичная проверка регистрозависима и не обрезает пробелы:
+
+| `file.type`     | Результат первичной проверки |
+| --------------- | ---------------------------- |
+| `image/png`     | проходит                     |
+| `image/svg+xml` | проходит                     |
+| `IMAGE/PNG`     | `NOT_AN_IMAGE`               |
+| ` image/png`    | `NOT_AN_IMAGE`               |
+| пустая строка   | `NOT_AN_IMAGE`               |
+
+После неё непустой `allowedMime` проверяется внутри `readFile` по точному нормализованному сравнению.
+
+### Options
+
+| Option        | Тип                    | Default      | Поведение                                                              |
+| ------------- | ---------------------- | ------------ | ---------------------------------------------------------------------- |
+| `mode`        | `ReadMode`             | `"data-url"` | Выбирает data URL с dimensions или buffer                              |
+| `allowedMime` | `readonly ImageMime[]` | `undefined`  | Ограничивает точные MIME изображений                                   |
+| `maxBytes`    | `number`               | `undefined`  | Передаётся в `readFile`                                                |
+| `signal`      | `AbortSignal`          | `undefined`  | Передаётся в `readFile`; проверяется до/после decode                   |
+| `accept`      | `readonly string[]`    | `undefined`  | Присутствует в типе, но текущая функция его не передаёт и не применяет |
+
+Не рассчитывайте на `accept` в `readImageFile`. Для фактического ограничения используйте `allowedMime`, а для нативного picker установите HTML `accept` отдельно.
+
+### Режим data URL и dimensions
+
+Default-сценарий:
+
+1. проверить `file.type.startsWith('image/')`;
+2. прочитать файл как data URL;
+3. создать browser `Image`;
+4. назначить `img.src = dataUrl`;
+5. дождаться `onload`;
+6. вернуть `naturalWidth` и `naturalHeight`.
+
+```ts
+const result = await readImageFile(file, {
+	allowedMime: ["image/jpeg", "image/png"],
+	maxBytes: 5 * 1024 * 1024
+});
+
+console.log(result.mode); // "data-url"
+console.log(result.dataUrl);
+
+if (result.dimensions) {
+	console.log(result.dimensions.width);
+	console.log(result.dimensions.height);
+}
+```
+
+Тип результата:
+
+```ts
+type ReadImageAsDataUrlResult = ReadFileAsDataUrlResult & {
+	dimensions?: {
+		width: number;
+		height: number;
+	};
+};
+```
+
+`width` и `height` — естественные размеры изображения в пикселях, а не CSS-размер элемента на странице.
+
+### Режим `array-buffer`
+
+```ts
+const result = await readImageFile(file, {
+	mode: "array-buffer",
+	allowedMime: ["image/png"]
+});
+
+console.log(result.buffer);
+```
+
+В этом режиме:
+
+- файл проверяется как `image/*`;
+- применяются `allowedMime` и `maxBytes`;
+- выполняется только `readFile`;
+- browser `Image` не создаётся;
+- размеры не декодируются и не возвращаются.
+
+Если нужны размеры, выбирайте data URL либо специализированный image decoder.
+
+### Ограничения dimensions
+
+- animated GIF возвращает естественный размер изображения, а не данные каждого кадра;
+- SVG зависит от того, может ли браузер определить intrinsic dimensions;
+- большой сжатый файл может занимать мало байтов, но требовать огромную память после decode;
+- модуль не проверяет максимальные width/height/pixel count;
+- abort во время ожидания `Image.onload` не отменяет сам `Image` и не завершает ожидание немедленно;
+- data URL и decoded bitmap могут одновременно находиться в памяти.
+
+## Ошибки `readImageFile`
+
+Публично экспортирован отдельный класс:
+
+```ts
+class ReadImageError extends Error {
+	readonly code: ReadImageErrorCode;
+	readonly cause?: unknown;
+}
+```
+
+`ReadImageError` не наследуется от `ReadFileError`.
+
+### Фактическое поведение текущей реализации
+
+| Этап                                 | Тип rejected value                        |
+| ------------------------------------ | ----------------------------------------- |
+| `file.type` не начинается с `image/` | `ReadImageError` с code `NOT_AN_IMAGE`    |
+| MIME из `allowedMime` не подошёл     | `ReadFileError` с code `MIME_NOT_ALLOWED` |
+| файл превышает `maxBytes`            | `ReadFileError` с code `FILE_TOO_LARGE`   |
+| чтение отменено                      | `ReadFileError` с code `READ_ABORTED`     |
+| `FileReader` завершился ошибкой      | `ReadFileError` с code `READ_FAILED`      |
+| browser `Image` вызвал `onerror`     | необёрнутое значение browser event        |
+
+`ReadImageErrorCode` также включает `IMAGE_DECODE_FAILED` и коды `ReadFileErrorCode`, но текущая реализация не оборачивает ими ошибки `readFile` и decode. Код `IMAGE_DECODE_FAILED` сейчас самой функцией не создаётся.
+
+Поэтому надёжный consumer обрабатывает оба класса и оставляет fallback для неизвестной ошибки:
+
+```ts
+import { ReadFileError, ReadImageError, readImageFile } from "@ryuzaki13/react-foundation-lib/file";
+
+try {
+	const result = await readImageFile(file, {
+		allowedMime: ["image/jpeg", "image/png"],
+		maxBytes: 5 * 1024 * 1024
+	});
+
+	return result;
+} catch (error) {
+	if (error instanceof ReadImageError) {
+		console.error("Проверка изображения", error.code);
+		return;
+	}
+
+	if (error instanceof ReadFileError) {
+		console.error("Чтение файла", error.code);
+		return;
+	}
+
+	console.error("Браузер не смог декодировать изображение", error);
+}
+```
+
+Не пишите обработчик, который ловит только `ReadImageError`: он пропустит ограничения MIME/размера и ошибки `FileReader`.
+
+## `resolveMimeTypeByExtension`
+
+Функция принимает только расширение без имени файла и без начальной точки:
+
+```ts
+function resolveMimeTypeByExtension(extension: string): string;
+```
 
 ### Примеры
 
-**Загрузка фото с ограничениями:**
+```ts
+resolveMimeTypeByExtension("pdf");
+// "application/pdf"
+
+resolveMimeTypeByExtension(" JPG ");
+// "image/jpeg"
+
+resolveMimeTypeByExtension("unknown");
+// "application/octet-stream"
+```
+
+Неправильная форма входа:
 
 ```ts
-import { readImageFile, ReadImageError } from "@/shared/lib";
+resolveMimeTypeByExtension(".pdf");
+// "application/octet-stream"
 
-async function selectPhoto(file: File) {
-  try {
-    const result = await readImageFile(file, {
-      allowedMime: ["image/jpeg", "image/png", "image/webp"],
-      maxBytes: 10 * 1024 * 1024, // 10 МБ
-    });
+resolveMimeTypeByExtension("report.pdf");
+// "application/octet-stream"
+```
 
-    console.log(result.dimensions); // { width: 1920, height: 1080 }
-    preview.src = result.dataUrl;
-  } catch (error) {
-    if (error instanceof ReadImageError) {
-      switch (error.code) {
-        case "NOT_AN_IMAGE":
-          alert("Выберите изображение");
-          break;
-        case "MIME_NOT_ALLOWED":
-          alert("Формат не поддерживается");
-          break;
-        case "FILE_TOO_LARGE":
-          alert("Файл слишком большой");
-          break;
-      }
-    }
-  }
+Чтобы взять расширение из имени:
+
+```ts
+function getExtension(fileName: string): string {
+	const dotIndex = fileName.lastIndexOf(".");
+
+	if (dotIndex < 0 || dotIndex === fileName.length - 1) {
+		return "";
+	}
+
+	return fileName.slice(dotIndex + 1);
 }
+
+const mime = resolveMimeTypeByExtension(getExtension("report.PDF"));
 ```
 
-**Чтение изображения как ArrayBuffer:**
+### Поддерживаемая таблица
 
-```ts
-import { readImageFile } from "@/shared/lib";
+| Расширение    | MIME                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| `pdf`         | `application/pdf`                                                           |
+| `doc`         | `application/msword`                                                        |
+| `docx`        | `application/vnd.openxmlformats-officedocument.wordprocessingml.document`   |
+| `xls`         | `application/vnd.ms-excel`                                                  |
+| `xlsx`        | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`         |
+| `ppt`         | `application/vnd.ms-powerpoint`                                             |
+| `pptx`        | `application/vnd.openxmlformats-officedocument.presentationml.presentation` |
+| `txt`         | `text/plain; charset=UTF-8`                                                 |
+| `rtf`         | `application/rtf`                                                           |
+| `odt`         | `application/vnd.oasis.opendocument.text`                                   |
+| `zip`         | `application/zip`                                                           |
+| `rar`         | `application/vnd.rar`                                                       |
+| `jpg`, `jpeg` | `image/jpeg`                                                                |
+| `png`         | `image/png`                                                                 |
+| `gif`         | `image/gif`                                                                 |
+| `webp`        | `image/webp`                                                                |
 
-const result = await readImageFile(file, { mode: "array-buffer" });
-// result.buffer: ArrayBuffer
-// dimensions не извлекаются в этом режиме
+Любое другое значение возвращает `application/octet-stream`. Функция:
+
+- обрезает внешние пробелы;
+- приводит регистр к lowercase;
+- не бросает ошибку для неизвестного расширения;
+- не анализирует имя файла;
+- не читает байты;
+- не использует `File.type`;
+- не доказывает реальный формат.
+
+Обратите внимание: `ImageMime` и таблица расширений не идентичны. Например, `image/avif` и `image/svg+xml` есть в `ImageMime`, но расширения `avif` и `svg` отсутствуют в resolver и дадут fallback.
+
+## Helpers для `Content-Disposition`
+
+### Что такое `Content-Disposition`
+
+HTTP-заголовок сообщает клиенту, как обрабатывать response body:
+
+```text
+Content-Disposition: attachment; filename="report.pdf"
 ```
 
----
+Основные варианты:
 
-## Обработка ошибок
+- `attachment` — предложить скачивание;
+- `inline` — предложить показать содержимое внутри браузера, если он умеет.
 
-### `ReadFileError`
+Это рекомендация браузеру, а не абсолютная команда. Итоговое поведение зависит от browser, MIME, security policy и response headers.
 
-Базовый класс ошибок для `readFile`.
-
-| Код                | Когда возникает                                      |
-| ------------------ | ---------------------------------------------------- |
-| `NO_FILE`          | Файл не передан                                      |
-| `MIME_NOT_ALLOWED` | MIME-тип файла не входит в `allowedMime`             |
-| `FILE_TOO_LARGE`   | Размер файла превышает `maxBytes`                    |
-| `READ_ABORTED`     | Чтение прервано через `AbortSignal` или `FileReader` |
-| `READ_FAILED`      | Ошибка `FileReader` при чтении                       |
-
-### `ReadImageError`
-
-Класс ошибок для `readImageFile`. Наследует все коды из `ReadFileErrorCode` и добавляет:
-
-| Код                   | Когда возникает                                            |
-| --------------------- | ---------------------------------------------------------- |
-| `NOT_AN_IMAGE`        | MIME-тип файла не начинается с `image/`                    |
-| `IMAGE_DECODE_FAILED` | Не удалось декодировать изображение для получения размеров |
-
-### Пример обработки ошибок
+### `createContentDispositionHeader`
 
 ```ts
-import { readFile, ReadFileError } from "@/shared/lib";
+type ContentDispositionKind = "inline" | "attachment";
+
+type ContentDispositionOptions = {
+	readonly disposition: ContentDispositionKind;
+	readonly filename: string;
+	readonly asciiFallback?: string;
+};
+
+function createContentDispositionHeader(options: ContentDispositionOptions): string;
+```
+
+Пример для server response:
+
+```ts
+const filename = "Отчёт № 42.pdf";
+
+const headers = new Headers({
+	"Content-Type": "application/pdf",
+	"Content-Disposition": createContentDispositionHeader({
+		disposition: "attachment",
+		filename,
+		asciiFallback: "report-42.pdf"
+	})
+});
+
+return new Response(pdfBytes, { headers });
+```
+
+Функция создаёт оба параметра:
+
+```text
+attachment; filename="_____ _ 42.pdf"; filename*=UTF-8''%D0%9E%D1%82%D1%87%D1%91%D1%82%20%E2%84%96%2042.pdf
+```
+
+- `filename=` нужен старым/ограниченным клиентам и содержит ASCII;
+- `filename*=` содержит UTF-8 имя, percent-encoded по RFC 5987-подобному формату.
+
+Default `asciiFallback` равен `file.bin`. Это резерв для пустого/неполучившегося имени, а не принудительная замена legacy-параметра для любого Unicode filename.
+
+### `sanitizeFileName`
+
+```ts
+function sanitizeFileName(value: string, fallback = "file"): string;
+```
+
+Функция:
+
+1. заменяет `\r` и `\n` на пробел;
+2. заменяет двойную кавычку `"` на одинарную `'`;
+3. вызывает `trim()`;
+4. возвращает fallback, если строка стала пустой.
+
+```ts
+sanitizeFileName('  "report"\n.pdf  ');
+// "'report' .pdf"
+
+sanitizeFileName("\n\r", "document.bin");
+// "document.bin"
+```
+
+Это узкий helper для header filename. Он не является полноценным sanitizer пути или имени файла операционной системы:
+
+- не удаляет `/`;
+- не удаляет `..`;
+- не удаляет все системные запрещённые символы;
+- не предотвращает path traversal при записи на диск;
+- не гарантирует уникальность;
+- не ограничивает длину.
+
+Никогда не используйте результат как доверенный server filesystem path. На backend создавайте собственное безопасное имя/ID и храните пользовательское имя только как metadata.
+
+### `createAsciiFilenameFallback`
+
+```ts
+function createAsciiFilenameFallback(value: string, fallback = "file.bin"): string;
+```
+
+Функция:
+
+- заменяет CR/LF пробелом;
+- заменяет `"` и `\` символом `_`;
+- заменяет каждый символ вне printable ASCII `0x20–0x7E` на `_`;
+- схлопывает последовательности whitespace в один пробел;
+- обрезает края;
+- возвращает fallback для пустого результата.
+
+```ts
+createAsciiFilenameFallback("Отчёт 42.pdf");
+// "_____ 42.pdf"
+
+createAsciiFilenameFallback('report\\"42.pdf');
+// "report__42.pdf"
+```
+
+Unicode не транслитерируется. Кириллица не превращается в латиницу, а заменяется `_`.
+
+Параметр `fallback` используется только тогда, когда итоговая строка пуста. Он не заменяет непустой результат из подчёркиваний:
+
+```ts
+createAsciiFilenameFallback("   ", "contract.pdf");
+// "contract.pdf"
+
+createAsciiFilenameFallback("Договор.pdf", "contract.pdf");
+// "_______.pdf", а не "contract.pdf"
+```
+
+Поэтому текущий `createContentDispositionHeader` не позволяет одновременно принудительно задать отдельное красивое legacy-имя и сохранить другое Unicode-имя в `filename*`. Для Unicode filename legacy-параметр обычно содержит `_`, а современный клиент должен использовать корректный `filename*`.
+
+### `encodeFilenameRFC5987`
+
+```ts
+function encodeFilenameRFC5987(value: string): string;
+```
+
+Helper использует `encodeURIComponent`, дополнительно percent-encode символы `'`, `(`, `)`, `*` и оставляет percent hex в uppercase для этих дополнительных замен.
+
+```ts
+encodeFilenameRFC5987("Отчёт (1).pdf");
+// percent-encoded UTF-8 строка
+```
+
+Функция возвращает только encoded filename, без префикса `UTF-8''` и без `filename*=`. Для готового заголовка почти всегда выбирайте `createContentDispositionHeader`.
+
+Как и `encodeURIComponent`, helper может бросить `URIError` для некорректной Unicode-строки с одиночным surrogate code unit.
+
+### Порядок сборки заголовка
+
+`createContentDispositionHeader`:
+
+1. вызывает `sanitizeFileName(filename, asciiFallback)`;
+2. создаёт ASCII-вариант;
+3. encode исходное очищенное Unicode-имя;
+4. собирает `disposition`, `filename` и `filename*`.
+
+Значение `disposition` ограничено TypeScript union, но runtime-функция отдельно не валидирует вход. Не обходите тип через `as` и не принимайте это поле напрямую из недоверенного request.
+
+## Низкоуровневые helpers
+
+Большинству приложений достаточно `readFile` и `readImageFile`. Следующие функции экспортированы для инфраструктуры, UI primitives и тестов.
+
+### `buildMeta`
+
+```ts
+function buildMeta(file: File): FileMeta;
+```
+
+Создаёт новый объект из четырёх полей `File`:
+
+```ts
+const meta = buildMeta(file);
+
+console.log(meta.name);
+console.log(meta.mime);
+console.log(meta.size);
+console.log(meta.lastModified);
+```
+
+Функция не читает байты и не валидирует metadata.
+
+### `assertNotAborted`
+
+```ts
+function assertNotAborted(signal?: AbortSignal): void;
+```
+
+- ничего не делает без signal;
+- ничего не делает для активного signal;
+- бросает `ReadFileError('READ_ABORTED')`, если `signal.aborted === true`.
+
+```ts
+const controller = new AbortController();
+controller.abort();
+
+assertNotAborted(controller.signal);
+// throw ReadFileError
+```
+
+### `attachAbort`
+
+```ts
+function attachAbort(signal: AbortSignal | undefined, reader: FileReader): (() => void) | undefined;
+```
+
+Функция подписывает signal на `reader.abort()` и возвращает cleanup:
+
+```ts
+const reader = new FileReader();
+const detach = attachAbort(controller.signal, reader);
 
 try {
-  const result = await readFile(file, { maxBytes: 5 * 1024 * 1024 });
-} catch (error) {
-  if (error instanceof ReadFileError) {
-    // error.code — строковый код ошибки
-    // error.message — описание на русском
-    // error.cause — оригинальная ошибка (если есть)
-    console.error(`[${error.code}] ${error.message}`);
-  }
+	reader.readAsArrayBuffer(file);
+} finally {
+	detach?.();
 }
 ```
 
----
+Важные детали:
 
-## Утилиты
+- без signal возвращается `undefined`;
+- listener использует `{ once: true }`;
+- исключение от `reader.abort()` игнорируется;
+- helper сам не проверяет уже отменённый signal;
+- при прямом использовании сначала вызовите `assertNotAborted(signal)`;
+- вызывающий код отвечает за cleanup после success/error, если использует helper отдельно.
 
-Экспортируются из `read-file` для переиспользования в надстройках:
+### Assert helpers
 
-| Функция                       | Описание                                                             |
-| ----------------------------- | -------------------------------------------------------------------- |
-| `buildMeta(file)`             | Извлекает `FileMeta` из объекта `File`                               |
-| `assertNotAborted(signal?)`   | Бросает `ReadFileError("READ_ABORTED")` если сигнал отменён          |
-| `attachAbort(signal, reader)` | Привязывает `AbortSignal` к `FileReader`, возвращает функцию отписки |
+```ts
+function assertValidAllowedMime(allowedMime?: readonly string[]): void;
+function assertValidAccept(accept?: readonly string[]): void;
+```
+
+Они проверяют конфигурацию и бросают обычный `Error`. Они не проверяют `File`, не читают байты и автоматически не вызываются из `readFile`.
+
+## Готовые рецепты
+
+### Обычный multipart upload без предварительного чтения
+
+Если backend принимает `multipart/form-data`, используйте исходный `File`:
+
+```ts
+async function uploadDocument(file: File) {
+	const body = new FormData();
+	body.append("document", file, file.name);
+
+	const response = await fetch("/api/documents", {
+		method: "POST",
+		body
+	});
+
+	if (!response.ok) {
+		throw new Error(`Upload failed: ${response.status}`);
+	}
+}
+```
+
+`readFile` нужен только если перед upload требуется client-side представление, preview или специальный бинарный contract.
+
+### Проверить файл и оставить исходный `File`
+
+```ts
+const result = await readFile(file, {
+	allowedMime: ["application/pdf"],
+	maxBytes: 10 * 1024 * 1024,
+	mode: "array-buffer"
+});
+
+const body = new FormData();
+body.append("document", result.file, result.meta.name);
+```
+
+Но помните: чтение буфера уже создало полную дополнительную копию файла в памяти. Не делайте этого без необходимости.
+
+### Безопасно разобрать union результата
+
+```ts
+function describeResult(result: ReadFileResult): string {
+	if (result.mode === "data-url") {
+		return `Data URL length: ${result.dataUrl.length}`;
+	}
+
+	return `Buffer bytes: ${result.buffer.byteLength}`;
+}
+```
+
+### Preview изображения с проверкой размеров
+
+```ts
+async function validateAvatar(file: File) {
+	const result = await readImageFile(file, {
+		allowedMime: ["image/jpeg", "image/png", "image/webp"],
+		maxBytes: 2 * 1024 * 1024
+	});
+
+	if (!result.dimensions) {
+		throw new Error("Не удалось определить размеры изображения");
+	}
+
+	const { width, height } = result.dimensions;
+
+	if (width < 256 || height < 256) {
+		throw new Error("Изображение должно быть не меньше 256 × 256 пикселей");
+	}
+
+	if (width * height > 16_000_000) {
+		throw new Error("Изображение содержит слишком много пикселей");
+	}
+
+	return result;
+}
+```
+
+Проверка после decode полезна для UX, но backend всё равно должен проверять файл сам.
+
+### Последовательная обработка нескольких файлов
+
+```ts
+async function readDocuments(files: readonly File[]) {
+	const results: ReadFileResult[] = [];
+
+	for (const file of files) {
+		try {
+			const result = await readFile(file, {
+				mode: "array-buffer",
+				allowedMime: ["application/pdf"],
+				maxBytes: 10 * 1024 * 1024
+			});
+
+			results.push(result);
+		} catch (error) {
+			console.error(`Не удалось прочитать ${file.name}`, error);
+		}
+	}
+
+	return results;
+}
+```
+
+Последовательное чтение ограничивает пик одновременной памяти. `Promise.all(files.map(...))` запускает все `FileReader` сразу и может быть тяжёлым для больших файлов.
+
+### MIME и `Content-Disposition` для response
+
+```ts
+function createDownloadHeaders(fileName: string): Headers {
+	const dotIndex = fileName.lastIndexOf(".");
+	const extension = dotIndex >= 0 ? fileName.slice(dotIndex + 1) : "";
+
+	return new Headers({
+		"Content-Type": resolveMimeTypeByExtension(extension),
+		"Content-Disposition": createContentDispositionHeader({
+			disposition: "attachment",
+			filename: fileName,
+			asciiFallback: "download.bin"
+		})
+	});
+}
+```
+
+Это определяет MIME только по имени. Для server response надёжнее использовать подтверждённый MIME из trusted storage/parser, если он доступен.
+
+### Скачать прочитанный файл
+
+Модуль `/file` читает, но не скачивает. Для `Blob` используйте `/dom`:
+
+```ts
+import { downloadFileFromBlob } from "@ryuzaki13/react-foundation-lib/dom";
+import { readFile } from "@ryuzaki13/react-foundation-lib/file";
+
+const result = await readFile(file, { mode: "array-buffer" });
+const blob = new Blob([result.buffer], { type: result.meta.mime });
+
+downloadFileFromBlob(blob, result.meta.name);
+```
+
+Если у вас уже есть исходный `File`, он сам является `Blob`, поэтому повторное чтение обычно не нужно:
+
+```ts
+downloadFileFromBlob(file, file.name);
+```
+
+## Безопасность
+
+### Client-side проверка не является защитой backend
+
+Пользователь контролирует browser request. Он может:
+
+- изменить filename;
+- изменить MIME;
+- обойти UI;
+- отправить request напрямую;
+- поместить недопустимые байты в разрешённое расширение.
+
+Backend обязан повторно проверить:
+
+- authentication и authorization;
+- размер request/file;
+- реальный формат;
+- допустимый MIME;
+- структуру содержимого;
+- имя и storage key;
+- антивирусную/контентную policy, если она нужна продукту.
+
+### `File.type` недоверенный
+
+`allowedMime` сравнивает только `file.type`. Модуль не открывает заголовок файла, чтобы подтвердить PNG/PDF/ZIP signature.
+
+### Расширение недоверенное
+
+`resolveMimeTypeByExtension('pdf')` всегда вернёт `application/pdf`, даже если реальные байты являются executable. Это mapping, не detector.
+
+### SVG требует отдельной policy
+
+`ImageMime` включает `image/svg+xml`. SVG является активным XML-based форматом и может содержать ссылки и поведение, опасное в некоторых контекстах embedding/rendering. Не считайте разрешённый MIME достаточной sanitization.
+
+Если продукту не нужен SVG, не добавляйте его в `allowedMime`. Если нужен — применяйте отдельную доверенную sanitization и строгую content security policy.
+
+### Размер файла не равен размеру после decode
+
+Маленький compressed image может развернуться в огромный bitmap. Например, приблизительная память RGBA:
+
+```text
+width × height × 4 bytes
+```
+
+Изображение 10 000 × 10 000 может потребовать около 400 MB только для пикселей. Ограничивайте не только `maxBytes`, но и dimensions/pixel count после decode; backend должен делать собственную проверку до тяжёлой обработки.
+
+### Filename и header injection
+
+`sanitizeFileName` заменяет CR/LF и кавычки для header-сценария. Это снижает риск сырого переноса строки в создаваемом filename, но не делает значение безопасным filesystem path.
+
+Передавайте короткий управляемый `asciiFallback` на случай пустого имени. Не ожидайте, что он переопределит legacy-вариант непустого Unicode filename. Не разрешайте внешнему input управлять `disposition` через unsafe cast.
+
+### Data URL может содержать чувствительные данные
+
+Не отправляйте data URL в analytics, logs или error reports. Он содержит весь файл. Не вставляйте произвольный data URL в опасные execution contexts.
+
+## Производительность и память
+
+### `FileReader` читает файл целиком
+
+Оба режима создают полное представление данных в памяти:
+
+- `array-buffer` — буфер размером примерно с файл;
+- `data-url` — большая строка с base64;
+- результат также сохраняет ссылку на исходный `File`.
+
+Для очень больших файлов нужен streaming/chunked API, которого в этом модуле нет.
+
+### Data URL дороже
+
+Base64 обычно увеличивает payload примерно на 33%, затем JavaScript engine хранит строку в своём внутреннем формате. Не держите несколько больших data URLs в React state, query cache или global store.
+
+### Изображение декодируется дополнительно
+
+`readImageFile` в data URL режиме одновременно может удерживать:
+
+- исходный `File`;
+- data URL;
+- decoded image bitmap;
+- объект результата.
+
+Устанавливайте небольшой `maxBytes`, ограничивайте dimensions и освобождайте ненужные ссылки.
+
+### Несколько файлов
+
+Не запускайте неограниченный `Promise.all` для большого списка. Используйте последовательную или ограниченно-параллельную обработку.
+
+### Upload без чтения
+
+`fetch`/`FormData` умеют отправить `File` напрямую. Это часто быстрее и экономнее, чем `File → ArrayBuffer → Blob → upload`.
+
+## Тестирование
+
+### Что тестировать у consumer
+
+- отсутствие выбранного файла;
+- допустимый MIME;
+- запрещённый MIME;
+- размер меньше, равный и больше `maxBytes`;
+- оба режима результата;
+- abort до начала и во время чтения;
+- обработку каждого `ReadFileError.code`;
+- отдельную обработку `ReadImageError` и `ReadFileError`;
+- decode failure изображения;
+- Unicode filename в `Content-Disposition`;
+- неизвестное расширение MIME resolver.
+
+### Создание `File` в browser-like тесте
+
+```ts
+const file = new File([new Uint8Array([1, 2, 3])], "example.bin", {
+	type: "application/octet-stream",
+	lastModified: 1_700_000_000_000
+});
+```
+
+### Проверка `readFile`
+
+```ts
+it("читает файл как ArrayBuffer", async () => {
+	const file = new File([new Uint8Array([1, 2, 3])], "example.bin", {
+		type: "application/octet-stream"
+	});
+
+	const result = await readFile(file, { mode: "array-buffer" });
+
+	expect(result.mode).toBe("array-buffer");
+	expect([...new Uint8Array(result.buffer)]).toEqual([1, 2, 3]);
+	expect(result.file).toBe(file);
+	expect(result.meta.name).toBe("example.bin");
+});
+```
+
+### Проверка ошибки размера
+
+```ts
+it("отклоняет слишком большой файл", async () => {
+	const file = new File([new Uint8Array([1, 2, 3])], "example.bin");
+
+	await expect(readFile(file, { maxBytes: 2 })).rejects.toMatchObject({
+		name: "ReadFileError",
+		code: "FILE_TOO_LARGE"
+	});
+});
+```
+
+### Проверка pure helpers
+
+```ts
+expect(resolveMimeTypeByExtension(" PDF ")).toBe("application/pdf");
+expect(resolveMimeTypeByExtension("csv")).toBe("application/octet-stream");
+
+const contentDisposition = createContentDispositionHeader({
+	disposition: "attachment",
+	filename: "Отчёт.pdf",
+	asciiFallback: "report.pdf"
+});
+
+expect(contentDisposition).toContain('filename="_____.pdf"');
+expect(contentDisposition).toContain("filename*=UTF-8''%D0%9E");
+```
+
+### Особенности test environment
+
+- в Node environment может не быть `FileReader`;
+- jsdom может реализовать не все детали browser decode;
+- `readImageFile` использует глобальный `Image`, который обычно требуется mock;
+- не подменяйте только типы: тест должен иметь runtime implementation;
+- browser integration test надёжнее проверяет реальный `Image.onload` и data URL.
+
+Для unit test `readImageFile` можно подменить `globalThis.Image` контролируемым fake, который вызывает `onload`/`onerror` и задаёт `naturalWidth`/`naturalHeight`.
+
+## Известные ограничения
+
+Это не скрытые детали, а часть фактического поведения, которую consumer должен учитывать:
+
+1. `accept` внутри `readFile` использует substring-проверку суффикса и не реализует HTML wildcard semantics.
+2. Непустой `allowedMime` имеет приоритет и отключает проверку `accept`.
+3. `readImageFile` игнорирует option `accept`, хотя поле присутствует в унаследованном типе.
+4. `readImageFile` проверяет `file.type.startsWith('image/')` регистрозависимо и без `trim()`.
+5. `ReadImageError` создаётся только для `NOT_AN_IMAGE`; file errors остаются `ReadFileError`.
+6. Browser decode error сейчас отклоняет Promise необёрнутым event, а не `IMAGE_DECODE_FAILED`.
+7. Коды `NO_FILE` и `IMAGE_DECODE_FAILED` публичны, но текущие основные функции их не создают.
+8. Abort не прерывает ожидание `Image.onload`/`Image.onerror` после завершения `FileReader`.
+9. `assertValidAllowedMime` и `assertValidAccept` не вызываются автоматически.
+10. `maxBytes` не валидируется как положительное конечное число.
+11. Файл читается целиком; progress и streaming отсутствуют.
+12. MIME и extension не сверяются с реальными bytes.
+13. Resolver принимает только расширение без точки и поддерживает ограниченную таблицу.
+14. Filename helpers предназначены для header, а не для безопасного filesystem path.
+
+Для нового consumer-кода рекомендуемый безопасный baseline:
+
+```ts
+const result = await readFile(file, {
+	mode: "array-buffer",
+	allowedMime: ["application/pdf"],
+	maxBytes: 10 * 1024 * 1024,
+	signal
+});
+```
+
+А для изображения:
+
+```ts
+const result = await readImageFile(file, {
+	allowedMime: ["image/jpeg", "image/png", "image/webp"],
+	maxBytes: 5 * 1024 * 1024,
+	signal
+});
+```
+
+## Краткий справочник API
+
+### Функции чтения
+
+| API             | Назначение                                                        |
+| --------------- | ----------------------------------------------------------------- |
+| `readFile`      | Проверяет и читает `File` как data URL или `ArrayBuffer`          |
+| `readImageFile` | Проверяет `image/*`, читает файл и в data URL режиме даёт размеры |
+
+### Проверка и инфраструктура чтения
+
+| API                      | Назначение                                                   |
+| ------------------------ | ------------------------------------------------------------ |
+| `assertValidAllowedMime` | Проверяет синтаксис полных MIME без wildcard                 |
+| `assertValidAccept`      | Проверяет синтаксис extension/MIME/wildcard specifiers       |
+| `assertNotAborted`       | Бросает `READ_ABORTED` для уже отменённого signal            |
+| `attachAbort`            | Связывает signal с `FileReader.abort()` и возвращает cleanup |
+| `buildMeta`              | Копирует четыре metadata-поля `File` в новый объект          |
+
+### MIME и HTTP filename
+
+| API                              | Назначение                                                      |
+| -------------------------------- | --------------------------------------------------------------- |
+| `resolveMimeTypeByExtension`     | Известное расширение без точки → MIME или octet-stream          |
+| `sanitizeFileName`               | Узкая очистка CR/LF/кавычек для header filename                 |
+| `createAsciiFilenameFallback`    | Printable ASCII fallback для legacy `filename=`                 |
+| `encodeFilenameRFC5987`          | Percent-encode Unicode filename                                 |
+| `createContentDispositionHeader` | Готовая строка `inline/attachment; filename=...; filename*=...` |
+
+### Error classes
+
+| API              | Назначение                                                            |
+| ---------------- | --------------------------------------------------------------------- |
+| `ReadFileError`  | Typed ошибка MIME, размера, отмены или `FileReader`                   |
+| `ReadImageError` | Отдельная image-ошибка; сейчас основной runtime code — `NOT_AN_IMAGE` |
+
+### Публичные типы чтения файла
+
+| Тип                            | Назначение                               |
+| ------------------------------ | ---------------------------------------- |
+| `ReadMode`                     | Литералы `"data-url"` и `"array-buffer"` |
+| `FileMeta`                     | MIME, size, name, lastModified           |
+| `ReadFileOptionsBase`          | Общие accept/MIME/size/signal options    |
+| `ReadFileAsDataUrlOptions`     | Options режима data URL                  |
+| `ReadFileAsArrayBufferOptions` | Options режима ArrayBuffer               |
+| `ReadFileOptions`              | Union обоих вариантов options            |
+| `ReadFileAsDataUrlResult`      | Результат с `dataUrl`                    |
+| `ReadFileAsArrayBufferResult`  | Результат с `buffer`                     |
+| `ReadFileResult`               | Union обоих результатов                  |
+| `ReadFileErrorCode`            | Union кодов `ReadFileError`              |
+
+### Публичные image-типы
+
+| Тип                             | Назначение                                    |
+| ------------------------------- | --------------------------------------------- |
+| `ImageMime`                     | Разрешённый TypeScript union MIME изображений |
+| `ImageDimensions`               | `{ width, height }`                           |
+| `ReadImageOptionsBase`          | Общие image options                           |
+| `ReadImageAsDataUrlOptions`     | Image options data URL режима                 |
+| `ReadImageAsArrayBufferOptions` | Image options ArrayBuffer режима              |
+| `ReadImageOptions`              | Union image options                           |
+| `ReadImageAsDataUrlResult`      | Data URL result с optional dimensions         |
+| `ReadImageAsArrayBufferResult`  | Alias ArrayBuffer file result                 |
+| `ReadImageResult`               | Union image results                           |
+| `ReadImageErrorCode`            | File error codes плюс image-specific codes    |
+
+### Публичные типы `Content-Disposition`
+
+| Тип                         | Назначение                                                           |
+| --------------------------- | -------------------------------------------------------------------- |
+| `ContentDispositionKind`    | Литералы `"inline"` и `"attachment"`                                 |
+| `ContentDispositionOptions` | disposition, Unicode filename, fallback для пустого ASCII-результата |
+
+## Вопросы и ответы
+
+### Почему `readFile` не видит выбранный файл?
+
+Сначала получите элемент `[0]` и проверьте его:
+
+```ts
+const file = event.currentTarget.files?.[0];
+
+if (!file) {
+	return;
+}
+```
+
+Не передавайте весь `FileList` и не используйте non-null assertion без проверки.
+
+### Почему TypeScript не даёт прочитать `buffer`?
+
+В default режиме возвращается data URL. Передайте литеральный mode:
+
+```ts
+const result = await readFile(file, { mode: "array-buffer" });
+console.log(result.buffer);
+```
+
+Для union сначала проверьте `result.mode`.
+
+### Почему `image/*` не работает в `readFile({ accept })`?
+
+Текущая runtime-проверка `accept` не повторяет HTML semantics. Для `photo.png` она ищет строку `png` внутри каждого specifier, а `image/*` её не содержит. Используйте HTML `accept="image/*"` только в picker, а в `readFile` передайте точный `allowedMime`.
+
+### Почему `readImageFile` отклонил `IMAGE/PNG`?
+
+Первичная проверка регистрозависимо ожидает начало `image/`. Обычный браузер обычно создаёт lowercase MIME, но вручную созданный `File` может содержать другое значение.
+
+### Почему `readImageFile` бросил `ReadFileError`, а не `ReadImageError`?
+
+Потому что функция делегирует MIME, size, abort и чтение в `readFile` без оборачивания. Обрабатывайте оба error class.
+
+### Почему decode failure не имеет code `IMAGE_DECODE_FAILED`?
+
+Этот code присутствует в публичном типе, но текущий browser `Image.onerror` отклоняет Promise исходным event. Оставляйте fallback-ветку для неизвестной ошибки.
+
+### Нужно ли читать `File` перед отправкой через `FormData`?
+
+Нет. `File` уже является `Blob` и может быть добавлен напрямую. Читайте файл только для preview, client-side анализа или другого API contract.
+
+### Можно ли доверять `file.type`?
+
+Нет. Это полезная browser metadata для UX, но не security proof. Backend должен проверить реальное содержимое.
+
+### Почему `resolveMimeTypeByExtension('.pdf')` вернул octet-stream?
+
+Функция ожидает `pdf`, без точки. Она также не принимает полное имя `report.pdf`.
+
+### Можно ли использовать `sanitizeFileName` перед записью на серверный диск?
+
+Нет. Helper предназначен для узкой подготовки header filename. Для storage создавайте server-controlled key и применяйте отдельную filesystem policy.
+
+### Что выбрать для preview: data URL или object URL?
+
+Этот модуль возвращает data URL и через него умеет получить dimensions. Для больших файлов object URL обычно экономнее, но его нужно создать через `URL.createObjectURL(file)` и обязательно освободить через `URL.revokeObjectURL`. Это отдельный lifecycle, который `readFile` не управляет.
+
+### Можно ли читать очень большие файлы?
+
+Технически `FileReader` попробует загрузить файл целиком, но это может привести к зависанию или нехватке памяти. Для больших данных используйте streaming/chunked решение и устанавливайте `maxBytes` до чтения.
+
+### Нужно ли вручную удалять listener `AbortSignal`?
+
+При обычном использовании `readFile` — нет: функция снимает listener после `load`, `error` или `abort`. При прямом использовании `attachAbort` вызывайте возвращённый cleanup самостоятельно.
+
+### Возвращается копия `File`?
+
+Нет. Поле `result.file` ссылается на тот же `File`. Новый объект создаётся только для `meta` и прочитанного представления данных.

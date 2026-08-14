@@ -456,7 +456,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `file` и `binary`
 
-Файлы: [`file/index.ts`](./src/file/index.ts), README: [`file/README.md`](./src/file/README.md); [`binary/index.ts`](./src/binary/index.ts), README: [`binary/README.md`](./src/binary/README.md).
+Файлы: [`file/index.ts`](./src/file/index.ts), подробный README: [`file/README.md`](./src/file/README.md); [`binary/index.ts`](./src/binary/index.ts), README: [`binary/README.md`](./src/binary/README.md).
 
 `file`:
 

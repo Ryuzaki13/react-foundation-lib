@@ -1,275 +1,455 @@
-# Value State Resolver
+# Value state
 
-Модуль для определения визуального состояния (`State`) ячейки таблицы по значению.
-Поддерживает два типа резолверов: **пороговый** (диапазоны числовых значений) и **фиксированный** (точное совпадение).
-
-## Архитектура
-
-```
-valueStateRegistry.ts        — общий реестр, resolveValueState, хеш-функция
-valueStateResolver.ts        — пороговый резолвер (числовые диапазоны)
-fixedValueStateResolver.ts   — фиксированный резолвер (точное совпадение)
-```
-
-Все резолверы живут в **едином реестре** и вызываются через `resolveValueState(id, value)`.
-Ячейке таблицы не нужно знать тип резолвера — достаточно `id`.
-
-## Быстрый старт
-
-### Пороговый резолвер (числовые диапазоны)
+`valueState` преобразует обычное значение в семантическое состояние интерфейса:
 
 ```ts
-import { registerThresholdResolver, resolveValueState } from "@/shared/lib";
-
-const id = registerThresholdResolver({
-	thresholds: [60, 95],
-	states: ["warning", "success", "error"]
-});
-
-resolveValueState(id, 45); // → "warning"
-resolveValueState(id, 75); // → "success"
-resolveValueState(id, 100); // → "error"
+type State = "" | "none" | "information" | "success" | "warning" | "error";
 ```
 
-### Фиксированный резолвер (точное совпадение)
+Например, статус `DONE` можно связать с `success`, а число меньше 50 — с `error`. Модуль ничего не рисует: он вычисляет state, предоставляет CSS class/token helpers и используется formatter pipeline.
+
+Функции импортируются из `formatters`, а общий тип `State` — из `types`:
 
 ```ts
-import { registerFixedResolver, resolveValueState } from "@/shared/lib";
+import { createFixedResolver, createThresholdResolver, resolveValueState } from "@ryuzaki13/react-foundation-lib/formatters";
+import type { State } from "@ryuzaki13/react-foundation-lib/types";
+```
 
-const id = registerFixedResolver({
-	entries: { "01": "success", "02": "warning", "03": "error" },
+Отдельного package subpath `formatters/valueState` нет.
+
+## Быстрый выбор
+
+| Данные                          | API                                                  | Пример                    |
+| ------------------------------- | ---------------------------------------------------- | ------------------------- |
+| Точные коды/строки              | `createFixedResolver`                                | `DONE → success`          |
+| Числовые диапазоны              | `createThresholdResolver`                            | `< 50 → error`            |
+| Нужен сериализуемый короткий id | `registerFixedResolver`, `registerThresholdResolver` | id для runtime-конфига    |
+| Применить resolver по id        | `resolveValueState`                                  | `(id, value) → State`     |
+| Получить CSS class              | `resolveValueStateClassName`                         | `success → statusSuccess` |
+| Получить цветовой token         | `VALUE_STATE_COLOR_TOKENS`                           | `success → CSS variable`  |
+
+## Что означает каждый `State`
+
+| State         | Обычный смысл                                   |
+| ------------- | ----------------------------------------------- |
+| `""`          | Пустое состояние; поддержано базовым контрактом |
+| `none`        | Нейтральное значение без специального статуса   |
+| `information` | Информационное состояние                        |
+| `success`     | Успех или нормальное положительное значение     |
+| `warning`     | Предупреждение, требующее внимания              |
+| `error`       | Ошибка или критическое значение                 |
+
+Смысл остаётся семантическим. Конкретный цвет, иконку и доступный текст определяет UI.
+
+## Fixed resolver: точное сопоставление
+
+### `createFixedResolver(config)`
+
+Возвращает функцию `(value: unknown) => State`:
+
+```ts
+const resolveStatus = createFixedResolver({
+	entries: {
+		DONE: "success",
+		WAITING: "warning",
+		FAILED: "error"
+	},
 	fallbackState: "none"
 });
 
-resolveValueState(id, "01"); // → "success"
-resolveValueState(id, "02"); // → "warning"
-resolveValueState(id, "99"); // → "none" (fallback)
+resolveStatus("DONE"); // "success"
+resolveStatus("WAITING"); // "warning"
+resolveStatus("UNKNOWN"); // "none"
 ```
 
-### Прямое использование (без явного id)
+`fallbackState` по умолчанию равен `none`.
+
+### Как сравниваются значения
+
+Для `null` и `undefined` сразу возвращается fallback. Остальные значения превращаются через `String(value)` и ищутся по точному ключу `entries`:
+
+```ts
+const resolve = createFixedResolver({
+	entries: {
+		"1": "success",
+		true: "information",
+		" DONE ": "warning"
+	}
+});
+
+resolve(1); // "success"
+resolve("1"); // "success"
+resolve(true); // "information"
+resolve("DONE"); // "none"
+resolve(" DONE "); // "warning"
+```
+
+Trim, изменение регистра и глубокая сериализация объектов не выполняются. Объект обычно превращается в `"[object Object]"`, поэтому fixed resolver предназначен прежде всего для scalar-кодов.
+
+### Snapshot entries
+
+При создании resolver-а entries копируются во внутренний `Map`. Последующая мутация исходного объекта не меняет уже созданную функцию:
+
+```ts
+const entries = { A: "success" as const };
+const resolve = createFixedResolver({ entries });
+
+entries.A = "error"; // если тип был насильно ослаблен
+resolve("A"); // всё ещё исходный state
+```
+
+## Threshold resolver: числовые сегменты
+
+### Простые пороги
+
+```ts
+const resolveProgress = createThresholdResolver({
+	thresholds: [50, 80],
+	states: ["error", "warning", "success"],
+	invalidState: "none"
+});
+
+resolveProgress(20); // "error"
+resolveProgress(50); // "warning"
+resolveProgress(79); // "warning"
+resolveProgress(80); // "success"
+resolveProgress(100); // "success"
+```
+
+Пороги сортируются по возрастанию. Для `N` thresholds всегда нужно передать `N + 1` states:
+
+```text
+(-∞, threshold 1) → states[0]
+[threshold 1, threshold 2) → states[1]
+[threshold 2, +∞) → states[2]
+```
+
+Если количество не совпадает, создание/регистрация выбрасывает `Error`.
+
+### Граница `upper` и `lower`
+
+Число в `thresholds` эквивалентно объекту с `boundary: "upper"`:
+
+```ts
+50
+// то же самое:
+{ value: 50, boundary: "upper" }
+```
+
+- `upper`: само пороговое значение относится к верхнему сегменту;
+- `lower`: само пороговое значение остаётся в нижнем сегменте.
+
+```ts
+const upper = createThresholdResolver({
+	thresholds: [{ value: 50, boundary: "upper" }],
+	states: ["error", "success"]
+});
+
+upper(49); // "error"
+upper(50); // "success"
+```
+
+```ts
+const lower = createThresholdResolver({
+	thresholds: [{ value: 50, boundary: "lower" }],
+	states: ["error", "success"]
+});
+
+lower(50); // "error"
+lower(51); // "success"
+```
+
+### Преобразование входа в число
+
+Пустая строка, `null` и `undefined` сразу дают `invalidState`. Остальное преобразуется унарным `+` и должно стать конечным числом:
 
 ```ts
 const resolve = createThresholdResolver({
-	thresholds: [60, 95],
-	states: ["warning", "success", "error"]
+	thresholds: [10],
+	states: ["warning", "success"],
+	invalidState: "error"
 });
-resolve(75); // → "success"
 
-const resolveFixed = createFixedResolver({
+resolve("9"); // "warning"
+resolve("10"); // "success"
+resolve(""); // "error"
+resolve("abc"); // "error"
+resolve(Infinity); // "error"
+resolve(false); // "warning", потому что +false === 0
+```
+
+Это JavaScript-преобразование, а не SAP-like `parseNumber`: строка `"1 234,5"` не будет прочитана как число. Нормализуйте внешний источник заранее, если это требуется.
+
+### Сортировка и states
+
+Thresholds сортируются, но массив `states` не переставляется. Он уже должен описывать сегменты в возрастающем порядке:
+
+```ts
+createThresholdResolver({
+	thresholds: [80, 50], // будет отсортировано как [50, 80]
+	states: ["error", "warning", "success"] // порядок сегментов остаётся таким
+});
+```
+
+Дублирующиеся числовые пороги допускаются, но приводят к `console.warn`. Лучше не использовать их: между одинаковыми границами получается пустой сегмент.
+
+Threshold values не проверяются отдельно на finite. Передавайте только конечные числа.
+
+## Прямая функция и регистрация по id
+
+У обоих видов есть две формы API:
+
+```ts
+const fn = createFixedResolver(config);
+const id = registerFixedResolver(config);
+```
+
+### Когда использовать `create*`
+
+Когда resolver нужен непосредственно в коде:
+
+```ts
+const state = resolveStatus(row.status);
+```
+
+### Когда использовать `register*`
+
+Когда нужно хранить короткий id и разрешать функцию через общий runtime:
+
+```ts
+const resolverId = registerThresholdResolver(config);
+const state = resolveValueState(resolverId, row.value);
+```
+
+Обе формы регистрируют resolver в общем module-level реестре. `create*` не является изолированной функцией вне реестра.
+
+## Дедупликация
+
+Идентичные конфигурации используют одну регистрацию:
+
+```ts
+const firstId = registerFixedResolver({
 	entries: { A: "success", B: "error" }
 });
-resolveFixed("A"); // → "success"
-```
 
-## API
-
-### Общий реестр (`valueStateRegistry.ts`)
-
-| Функция                                                      | Описание                                              |
-| ------------------------------------------------------------ | ----------------------------------------------------- |
-| `resolveValueState(id, value): State`                        | Применить резолвер по `id`. Если не найден — `"none"` |
-| `getValueStateResolver(id): ValueStateResolver \| undefined` | Получить функцию-резолвер напрямую                    |
-| `getValueStateResolverIds(): string[]`                       | Список всех зарегистрированных `id`                   |
-| `resetValueStateResolvers()`                                 | Очистка реестра (для тестов)                          |
-
-### Пороговый резолвер (`valueStateResolver.ts`)
-
-| Функция                                               | Описание                                        |
-| ----------------------------------------------------- | ----------------------------------------------- |
-| `registerThresholdResolver(config): string`           | Зарегистрировать, вернуть `id`                  |
-| `createThresholdResolver(config): ValueStateResolver` | Создать напрямую (также регистрирует в реестре) |
-
-**Конфигурация:**
-
-| Параметр        | Тип                                    | Описание                                          |
-| --------------- | -------------------------------------- | ------------------------------------------------- |
-| `thresholds`    | `Array<number \| ThresholdDefinition>` | Пороговые значения                                |
-| `states`        | `State[]`                              | Состояния сегментов (`thresholds.length + 1` шт.) |
-| `invalidState?` | `State`                                | Для невалидных значений. По умолчанию `"none"`    |
-
-### Фиксированный резолвер (`fixedValueStateResolver.ts`)
-
-| Функция                                           | Описание                                        |
-| ------------------------------------------------- | ----------------------------------------------- |
-| `registerFixedResolver(config): string`           | Зарегистрировать, вернуть `id`                  |
-| `createFixedResolver(config): ValueStateResolver` | Создать напрямую (также регистрирует в реестре) |
-
-**Конфигурация:**
-
-| Параметр         | Тип                     | Описание                                         |
-| ---------------- | ----------------------- | ------------------------------------------------ |
-| `entries`        | `Record<string, State>` | Маппинг: значение → State                        |
-| `fallbackState?` | `State`                 | Для значений вне маппинга. По умолчанию `"none"` |
-
-## Типы
-
-```ts
-// Общие
-type ValueStateResolver = (value: unknown) => State;
-
-// Пороговый резолвер
-type ThresholdBoundary = "lower" | "upper";
-
-interface ThresholdDefinition {
-	value: number;
-	boundary?: ThresholdBoundary; // по умолчанию "upper"
-}
-
-interface ThresholdValueStateResolverConfig {
-	thresholds: Array<number | ThresholdDefinition>;
-	states: State[];
-	invalidState?: State;
-}
-
-// Фиксированный резолвер
-interface FixedValueStateResolverConfig {
-	entries: Record<string, State>;
-	fallbackState?: State;
-}
-```
-
-## Пороговый резолвер: алгоритм
-
-Пороги делят числовую ось на `N + 1` сегмент, где `N` — количество порогов.
-Каждому сегменту соответствует один `State` из массива `states`.
-
-```
-          порог 60           порог 95
-             │                   │
-  сегмент 0  │    сегмент 1      │  сегмент 2
-  "warning"  │    "success"      │  "error"
-─────────────┼───────────────────┼──────────────→ числовая ось
-```
-
-Шаги:
-
-1. `""`, `null`, `undefined` → `invalidState`
-2. Приведение к числу через `+value`
-3. Не `isFinite` → `invalidState`
-4. Проход по порогам:
-    - `boundary: "upper"` (по умолчанию): `value < порог` → нижний сегмент
-    - `boundary: "lower"`: `value <= порог` → нижний сегмент
-5. Ни один порог не сработал → последний сегмент
-
-## Фиксированный резолвер: алгоритм
-
-1. `null`, `undefined` → `fallbackState`
-2. Приведение к строке через `String(value)`
-3. Lookup в `Map<string, State>` → найден → соответствующий State
-4. Не найден → `fallbackState`
-
-## Настройка границ (boundary)
-
-По умолчанию пороговое значение включено в **верхний** сегмент (`boundary: "upper"`).
-
-```ts
-// Сегменты: (−∞, 60) и [60, +∞)
-const resolve = createThresholdResolver({
-	thresholds: [60],
-	states: ["warning", "success"]
+const secondId = registerFixedResolver({
+	entries: { B: "error", A: "success" }
 });
-resolve(60); // → "success" ← включён в верхний
 
-// Сегменты: (−∞, 60] и (60, +∞)
-const resolve2 = createThresholdResolver({
-	thresholds: [{ value: 60, boundary: "lower" }],
-	states: ["warning", "success"]
-});
-resolve2(60); // → "warning" ← включён в нижний
+firstId === secondId; // true
 ```
 
-Границы можно комбинировать:
+Для fixed resolver ключи entries сортируются. Для threshold resolver пороги нормализуются и сортируются. В канонический ключ также входят states, границы и fallback/invalid state.
+
+Идентичные вызовы `create*` возвращают одну и ту же function reference:
 
 ```ts
-const resolve = createThresholdResolver({
-	thresholds: [{ value: 60, boundary: "lower" }, 95],
-	states: ["warning", "success", "error"]
-});
-resolve(60); // → "warning"
-resolve(95); // → "error"
+createFixedResolver(config) === createFixedResolver(config); // true
 ```
 
-## Примеры
+## Реестр resolver-ов
 
-### Типичный сценарий с таблицей
+### `resolveValueState(id, value)`
+
+Находит функцию и применяет её. Неизвестный id безопасно возвращает `none`:
 
 ```ts
-// 1. Конфигуратор при загрузке регистрирует резолверы из JSON-конфига
-for (const [columnId, config] of Object.entries(columnConfigs)) {
-	if (config.type === "threshold") {
-		columnResolverIds[columnId] = registerThresholdResolver(config);
-	} else if (config.type === "fixed") {
-		columnResolverIds[columnId] = registerFixedResolver(config);
+resolveValueState("unknown", 10); // "none"
+```
+
+### `getValueStateResolver(id)`
+
+Возвращает функцию либо `undefined`:
+
+```ts
+const resolver = getValueStateResolver(id);
+const state = resolver?.(value) ?? "none";
+```
+
+### `getValueStateResolverIds()`
+
+Возвращает новый массив всех id в порядке регистрации.
+
+### `resetValueStateResolvers()`
+
+Полностью очищает оба индекса. Функция предназначена прежде всего для тестов.
+
+После сброса:
+
+- старый id больше не разрешается через `resolveValueState`;
+- уже полученная function reference продолжает работать;
+- повторная регистрация снова создаст запись.
+
+Не очищайте реестр в работающем приложении, если pipeline executors зависят от id.
+
+## Низкоуровневый registry API
+
+### `computeShortHash(input)`
+
+Вычисляет детерминированный djb2-подобный 32-bit hash и кодирует его в base36 с префиксом `id_`:
+
+```ts
+const id = computeShortHash("fixed|A:success|none");
+```
+
+Это не криптографический hash. Он не подходит для паролей, подписей, контроля целостности и security-решений.
+
+Коллизии отдельно не разрешаются: два разных canonical keys теоретически могут получить одинаковый id. Поэтому id — runtime-деталь дедупликации, а не долговечный бизнес-идентификатор или ключ БД.
+
+### `registerResolver(canonicalKey, compileFunction)`
+
+Низкоуровневая регистрация произвольного `ValueStateResolver`:
+
+```ts
+const registration = registerResolver("custom|v1", () => (value) => (value === "ok" ? "success" : "none"));
+
+registration.id;
+registration.isNew;
+```
+
+Если canonical key уже известен, `compileFunction` не вызывается и возвращается `{ isNew: false }`.
+
+Выбирайте canonical key детерминированно и включайте в него все параметры, влияющие на результат. В обычном приложении предпочитайте `registerFixedResolver` или `registerThresholdResolver`.
+
+### `findResolverByCanonicalKey(canonicalKey)`
+
+Возвращает существующую функцию по точному canonical key либо `undefined`. Это инфраструктурный helper для дедупликации.
+
+## Presentation API
+
+### `DEFAULT_VALUE_STATES`
+
+```ts
+["none", "information", "success", "warning", "error"];
+```
+
+Список подходит для UI выбора state. Пустой state `""` намеренно не включён.
+
+### `VALUE_STATE_COLOR_TOKENS`
+
+```ts
+{
+	"": "transparent",
+	none: "var(--content-1)",
+	information: "var(--status-info-text)",
+	success: "var(--status-success-text)",
+	warning: "var(--status-warning-text)",
+	error: "var(--status-error-text)"
+}
+```
+
+Объект экспортируется как изменяемый `Record`, но его следует считать общей read-only таблицей. Не мутируйте токены глобально; тему меняйте через значения CSS variables.
+
+```ts
+const color = VALUE_STATE_COLOR_TOKENS[state];
+```
+
+### `resolveValueStateClassName(state, fallbackClassName?)`
+
+| State           | Результат                 |
+| --------------- | ------------------------- |
+| `success`       | `statusSuccess`           |
+| `warning`       | `statusWarning`           |
+| `error`         | `statusError`             |
+| `information`   | `statusInfo`              |
+| `none` или `""` | fallback либо `undefined` |
+
+```ts
+resolveValueStateClassName("success"); // "statusSuccess"
+resolveValueStateClassName("none"); // undefined
+resolveValueStateClassName("none", "neutral"); // "neutral"
+```
+
+Функция возвращает имена классов, но не импортирует CSS и не гарантирует наличие стилей в consumer.
+
+## Использование с formatter pipeline
+
+```ts
+const pipeline = {
+	version: 1,
+	plan: {
+		steps: [
+			{
+				id: "state",
+				type: "resolveValueState",
+				config: {
+					resolver: {
+						kind: "threshold",
+						thresholds: [50, 80],
+						states: ["error", "warning", "success"]
+					},
+					icon: {
+						enabled: true,
+						showValue: true,
+						position: "left"
+					}
+				}
+			}
+		]
 	}
-}
-
-// 2. В ячейке таблицы — единый вызов, тип резолвера не важен
-const state = resolveValueState(column.valueStateResolverId, cellValue);
+} as const;
 ```
 
-### Разрыв между диапазонами
+Pipeline регистрирует resolver на этапе компиляции, вычисляет state до typed formatting и возвращает state/icon-параметры UI. Подробности: [pipeline/README.md](../pipeline/README.md#шаг-resolvevaluestate).
+
+## Тестирование
+
+Изолируйте глобальный реестр:
 
 ```ts
-const id = registerThresholdResolver({
-	thresholds: [60, 70, 80, 95],
-	states: ["warning", "success", "none", "success", "error"]
+import { beforeEach } from "vitest";
+import { resetValueStateResolvers } from "@ryuzaki13/react-foundation-lib/formatters";
+
+beforeEach(() => {
+	resetValueStateResolvers();
 });
-// 70–80 — нейтральная зона ("none")
 ```
 
-### Фиксированный резолвер с числовыми значениями
+Для threshold resolver обязательно проверяйте:
 
-```ts
-const id = registerFixedResolver({
-	entries: { "1": "success", "2": "warning", "3": "error" },
-	fallbackState: "information"
-});
-resolveValueState(id, 1); // → "success" (число 1 → String → "1")
-resolveValueState(id, 999); // → "information" (fallback)
-```
+- значение меньше первого порога;
+- точное равенство каждому порогу;
+- значение между порогами;
+- значение выше последнего порога;
+- пустые и невалидные входы;
+- `lower` и `upper`, если граница настраивается.
 
-## Реестр и идентификаторы
+Для fixed resolver проверяйте точный регистр, пробелы, numeric/string keys и fallback.
 
-### Генерация id
+## Частые ошибки
 
-`id` — хеш (djb2 → base36) от канонической строки конфигурации с префиксом `id_`.
-Формат: `id_<символы>`, например `id_1kf5g2r`.
+### Ожидать trim и case-insensitive fixed lookup
 
-Канонические строки разделены по типу резолвера:
+`"DONE"`, `"done"` и `" DONE "` — разные ключи. Нормализуйте значение отдельно, только если это часть вашего контракта.
 
-- Пороговый: `"threshold|60:upper,95:upper|warning,success,error|none"`
-- Фиксированный: `"fixed|01:success,02:warning,03:error|none"`
+### Перепутать количество states
 
-### Дедупликация
+Два порога образуют три сегмента, поэтому нужны три states.
 
-- Идентичные конфигурации → один `id` и одна функция-резолвер
-- Порядок порогов не важен (автосортировка)
-- Порядок ключей в `entries` не важен (алфавитная сортировка)
-- `register*` и `create*` разделяют один реестр
+### Неправильно понять boundary
 
-### Стабильность
+`upper` означает, что точный threshold уже относится к верхнему сегменту. Для включения порога в нижний используйте `lower`.
 
-`id` детерминирован — при повторной инициализации из того же конфига генерируются те же `id`.
+### Сохранить hash id как вечный бизнес-ключ
 
-## Нюансы реализации
+Алгоритм не криптографический и не обрабатывает коллизии. Храните сериализуемую resolver-конфигурацию, а id считайте runtime-производной.
 
-### Приведение типов (пороговый)
+### Очищать реестр после компиляции
 
-Резолвер принимает `unknown` и приводит к числу через `+value`.
-`""`, `null`, `undefined` перехватываются **до** приведения (т.к. `+""` и `+null` дают `0`).
+Pipeline executor хранит id и после reset начнёт получать `none`.
 
-### Приведение типов (фиксированный)
+## API-справка
 
-Значение приводится к строке через `String(value)`.
-`null` и `undefined` возвращают `fallbackState` без приведения.
+| Семейство     | Публичный API                                                                                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fixed         | `createFixedResolver`, `registerFixedResolver`, `FixedValueStateResolverConfig`                                                                                            |
+| Threshold     | `createThresholdResolver`, `registerThresholdResolver`, `ThresholdBoundary`, `ThresholdDefinition`, `ThresholdValueStateResolverConfig`                                    |
+| Registry      | `computeShortHash`, `registerResolver`, `findResolverByCanonicalKey`, `resolveValueState`, `getValueStateResolver`, `getValueStateResolverIds`, `resetValueStateResolvers` |
+| Presentation  | `DEFAULT_VALUE_STATES`, `VALUE_STATE_COLOR_TOKENS`, `resolveValueStateClassName`                                                                                           |
+| Function type | `ValueStateResolver`                                                                                                                                                       |
 
-### Валидация (пороговый)
+## Связанная документация
 
-- `states.length !== thresholds.length + 1` → `Error`
-- Дублирующиеся пороги → `console.warn`
-
-### Производительность
-
-- Пороговый: замыкание с примитивными массивами, `O(N)` по порогам
-- Фиксированный: `Map.get()`, `O(1)`
-- `resolveValueState`: один lookup в `Map` + вызов замыкания
+- [Обзор `formatters`](../README.md)
+- [Formatter pipeline](../pipeline/README.md)
+- [Числовые форматтеры](../number/README.md)

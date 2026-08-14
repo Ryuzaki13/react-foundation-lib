@@ -1,123 +1,538 @@
-# Модуль форматирования чисел (presets)
+# Числовые форматтеры
 
-Утилитарный модуль для форматирования чисел с системой предустановок.
-Оптимизирован для массового вызова (500+ раз) — форматирование ячеек таблицы.
+Модуль форматирует числа для интерфейса, читает распространённые SAP-подобные числовые строки и управляет реестром именованных presets.
 
-## Архитектура
-
-- **Locale `ru-RU`** — неразрывный пробел для группировки, запятая для дробной части
-- **Быстрый путь** (99% вызовов): `Intl.NumberFormat.format()` напрямую, без постобработки
-- **Кеш** `Intl.NumberFormat` по ключу `(decimals, grouping)` — конструктор вызывается один раз
-- **SAP-совместимость**: строки, пустые значения, ведущие нули
-- **Неразрывный пробел** — числа не переносятся при рендере в DOM
-- **Компактные пресеты** — короткое представление значений от `1 000` через `тыс`, `млн`, `млрд`, `трлн`
-
-## Использование
+Все API доступны через один публичный entrypoint:
 
 ```ts
-import { formatNumber, registerPreset } from "@/shared/lib";
-
-formatNumber(1234567, "Integer"); // "1 234 567" (неразрывные пробелы)
-formatNumber(1234567.891, "Decimal"); // "1 234 567,9"
-formatNumber(99.1, "Percent"); // "99,10"
-formatNumber(1534000, "compact-currency"); // "1,5 млн"
-formatNumber("00123.4", "Decimal"); // "123,4"
+import {
+	formatNumber,
+	formatNumberAsDecimal2,
+	formatNumberAsInteger,
+	isZeroValue,
+	parseNumber,
+	toFiniteNumber
+} from "@ryuzaki13/react-foundation-lib/formatters";
 ```
 
-## API
+Импорта `@ryuzaki13/react-foundation-lib/formatters/number` нет.
 
-### `formatNumber(value, presetOrName)`
-
-| Параметр       | Тип                            | Описание                                           |
-| -------------- | ------------------------------ | -------------------------------------------------- |
-| `value`        | `number \| string`             | Число или строковое представление (SAP-совместимо) |
-| `presetOrName` | `string \| NumberFormatPreset` | Имя предустановки или объект с параметрами         |
-
-Можно передать объект напрямую, без регистрации:
+## Быстрый старт
 
 ```ts
-formatNumber(1234567.891, {
-	name: "custom",
-	decimals: 3,
-	decimalSeparator: ".",
+import {
+	formatNumberAsDecimal2,
+	formatNumberAsInteger,
+	formatNumberAsPercent,
+	toFiniteNumber
+} from "@ryuzaki13/react-foundation-lib/formatters";
+
+formatNumberAsInteger(1234.6); // "1 235"
+formatNumberAsDecimal2(1234.5); // "1 234,50"
+formatNumberAsPercent(12.345); // "12,35"
+
+toFiniteNumber("1 234,50"); // 1234.5
+```
+
+Пробел между группами в результате обычно неразрывный (`U+00A0` или `U+202F` в зависимости от JavaScript-среды). Внешне он выглядит как обычный пробел.
+
+## Два разных пути обработки
+
+В модуле есть важное разделение:
+
+```text
+внешняя строка SAP/UI ──→ toFiniteNumber / parseNumber ──→ number
+готовое JS-значение ────→ formatNumber ──────────────────→ string для UI
+```
+
+`formatNumber` не вызывает SAP-like parser. Она использует обычный `Number(value)`. Поэтому:
+
+```ts
+formatNumber("1234.5", "decimal-2"); // "1 234,50"
+formatNumber("1 234,5", "decimal-2"); // "0"
+```
+
+Если строка пришла от пользователя или SAP и содержит разделители, сначала парсите её:
+
+```ts
+const value = toFiniteNumber("1 234,5");
+const text = value === undefined ? "Некорректно" : formatNumber(value, "decimal-2");
+```
+
+## Встроенные presets
+
+| Имя                      | Дробных знаков | Назначение                                                 |
+| ------------------------ | -------------: | ---------------------------------------------------------- |
+| `integer`                |              0 | Целое число                                                |
+| `decimal`                |              1 | Обычное дробное число                                      |
+| `decimal-2`              |              2 | Два знака после запятой                                    |
+| `decimal-3`              |              3 | Три знака после запятой                                    |
+| `currency`               |              0 | Денежное число без символа валюты                          |
+| `price`                  |              0 | Цена без символа валюты                                    |
+| `percent`                |              2 | Процентное число без автоматического умножения и знака `%` |
+| `tonnage`                |              1 | Тоннаж                                                     |
+| `compact-currency`       |              0 | Компактное число, усечение                                 |
+| `compact-currency-round` |              0 | Компактное число, округление                               |
+| `compact-percent`        |           до 2 | Компактный процент, усечение                               |
+| `compact-percent-round`  |           до 2 | Компактный процент, округление                             |
+| `compact-tonnage`        |           до 1 | Компактный тоннаж, усечение                                |
+| `compact-tonnage-round`  |           до 1 | Компактный тоннаж, округление                              |
+
+Имена регистрозависимы и записываются в нижнем регистре:
+
+```ts
+formatNumber(10, "integer"); // корректно
+// formatNumber(10, "Integer"); // Error: preset не найден
+```
+
+Константа `DEFAULT_NUMBER_PRESET_NAMES` позволяет не дублировать строки:
+
+```ts
+import { DEFAULT_NUMBER_PRESET_NAMES, formatNumber } from "@ryuzaki13/react-foundation-lib/formatters";
+
+formatNumber(1234.5, DEFAULT_NUMBER_PRESET_NAMES.decimal2);
+```
+
+## `formatNumber(value, presetOrName)`
+
+```ts
+function formatNumber(value: unknown, presetOrName: string | NumberFormatPreset): string;
+```
+
+Функция:
+
+1. отдельно превращает пустую/пробельную строку в `"0"`;
+2. вызывает `Number(value)`;
+3. для `NaN` и бесконечности возвращает `"0"`;
+4. находит preset по имени или использует переданный объект;
+5. округляет и форматирует число;
+6. применяет compact-семантику, если она задана.
+
+```ts
+formatNumber(1234.56, "decimal-2"); // "1 234,56"
+formatNumber(1234.56, "integer"); // "1 235"
+formatNumber("", "decimal"); // "0"
+formatNumber("abc", "decimal"); // "0"
+```
+
+### Неожиданная JavaScript-семантика `Number`
+
+Поскольку вход имеет тип `unknown`, обычное преобразование JavaScript допускает случаи:
+
+```ts
+formatNumber(null, "integer"); // "0"
+formatNumber(false, "integer"); // "0"
+formatNumber(true, "integer"); // "1"
+formatNumber([], "integer"); // "0"
+```
+
+Не используйте эти преобразования как бизнес-валидацию. Проверяйте внешние данные до форматирования.
+
+Если значение не преобразовалось в конечное число, функция возвращает `"0"` ещё до поиска preset. Поэтому неизвестный preset для невалидного значения может не выбросить ошибку:
+
+```ts
+formatNumber("abc", "unknown"); // "0"
+formatNumber(10, "unknown"); // Error
+```
+
+### Округление
+
+Обычные presets используют `Intl.NumberFormat`, то есть округляют до заданного количества знаков:
+
+```ts
+formatNumber(1.26, "decimal"); // "1,3"
+```
+
+Старое предположение об усечении для обычных presets неверно. Усечение используется по умолчанию только внутри compact-настроек.
+
+## Готовые wrappers
+
+| Функция                  | Preset      |
+| ------------------------ | ----------- |
+| `formatNumberAsInteger`  | `integer`   |
+| `formatNumberAsCurrency` | `currency`  |
+| `formatNumberAsDecimal`  | `decimal`   |
+| `formatNumberAsDecimal2` | `decimal-2` |
+| `formatNumberAsDecimal3` | `decimal-3` |
+| `formatNumberAsPercent`  | `percent`   |
+| `formatNumberAsPrice`    | `price`     |
+| `formatNumberAsTonnage`  | `tonnage`   |
+
+```ts
+formatNumberAsDecimal(12); // "12,0"
+formatNumberAsDecimal2(12); // "12,00"
+formatNumberAsDecimal3(12); // "12,000"
+```
+
+`currency`, `price` и `percent` не добавляют обозначение единицы. Они задают только числовой вид:
+
+```ts
+formatNumberAsCurrency(1250); // "1 250", без ₽
+formatNumberAsPercent(12.5); // "12,50", без %
+```
+
+Если нужен суффикс, добавляйте его на UI-уровне или используйте специализированный модуль единиц измерения.
+
+## Wrappers `OrEmpty`
+
+Для каждого wrapper существует вариант, который скрывает семантический ноль:
+
+- `formatNumberAsIntegerOrEmpty`;
+- `formatNumberAsCurrencyOrEmpty`;
+- `formatNumberAsDecimalOrEmpty`;
+- `formatNumberAsDecimal2OrEmpty`;
+- `formatNumberAsDecimal3OrEmpty`;
+- `formatNumberAsPercentOrEmpty`;
+- `formatNumberAsPriceOrEmpty`;
+- `formatNumberAsTonnageOrEmpty`.
+
+```ts
+formatNumberAsDecimalOrEmpty(0); // ""
+formatNumberAsDecimalOrEmpty("0,00"); // ""
+formatNumberAsDecimalOrEmpty(" "); // "0"
+formatNumberAsDecimalOrEmpty("abc"); // "0"
+```
+
+Последние два результата объясняются тем, что `isZeroValue` не считает пустой или невалидный ввод числовым нулём, после чего обычный formatter даёт свой fallback `"0"`.
+
+## Compact-форматирование
+
+Compact presets сокращают большие значения:
+
+- `тыс` — тысячи;
+- `млн` — миллионы;
+- `млрд` — миллиарды;
+- `трлн` — триллионы.
+
+По умолчанию compact включается при абсолютном значении от `1000`. Знак отрицательного числа сохраняется.
+
+```ts
+formatNumber(1_500, "compact-tonnage"); // компактное представление с "тыс"
+formatNumber(2_000_000, "compact-currency"); // представление с "млн"
+```
+
+Если `maxDecimals` не задан, нормализованные значения меньше `10` получают до одного дробного знака, а значения от `10` — целое представление.
+
+### Усечение и округление
+
+Presets без `-round` используют `roundingMode: "trunc"`. Парные presets с `-round` используют математическое `round`.
+
+Для положительного числа усечение просто отбрасывает остаток; для отрицательного оно движется к нулю. Это отличается от `floor`, который движется к минус бесконечности.
+
+### Собственные compact units
+
+```ts
+import type { NumberFormatPreset } from "@ryuzaki13/react-foundation-lib/formatters";
+
+const preset: NumberFormatPreset = {
+	name: "custom-compact",
+	decimals: 1,
+	decimalSeparator: ",",
 	grouping: true,
-	groupingSeparator: ",",
-	groupingSize: 3
-});
-// "1,234,567.891"
-```
-
-### `registerPreset(config)` / `getPreset(name)` / `getPresetNames()`
-
-```ts
-registerPreset({ name: "Weight", decimals: 3, decimalSeparator: "." });
-formatNumber(9876.5, "Weight"); // "9 876.500"
-```
-
-### `resetPresets()` / `clearFormatCache()`
-
-Сброс реестра и кеша соответственно.
-
-## Типовые предустановки
-
-| Имя                      | decimals | decimalSeparator | Пример        |
-| ------------------------ | -------- | ---------------- | ------------- |
-| `Integer`                | 0        | —                | `1 234 567`   |
-| `Decimal`                | 1        | `,`              | `1 234 567,9` |
-| `Currency`               | 0        | —                | `5 000 000`   |
-| `Price`                  | 0        | —                | `42 000`      |
-| `Percent`                | 2        | `,`              | `99,10`       |
-| `Tonnage`                | 1        | `,`              | `15 000,8`    |
-| `compact-currency`       | 0        | —                | `1,5 млн`     |
-| `compact-currency-round` | 0        | —                | `35 тыс`      |
-| `compact-percent`        | 2        | `,`              | `12,34 тыс`   |
-| `compact-percent-round`  | 2        | `,`              | `12,35 тыс`   |
-| `compact-tonnage`        | 1        | `,`              | `9,5 млн`     |
-| `compact-tonnage-round`  | 1        | `,`              | `9,6 млн`     |
-
-Все типовые предустановки используют `grouping: true`, `groupingSeparator` — неразрывный пробел из `ru-RU`, `groupingSize: 3`.
-
-Предустановки без суффикса `-round` усекают компактную часть к нулю. Это
-поведение подходит для консервативных подписей шкалы. Парные предустановки
-`compact-*-round` математически округляют компактную часть и предназначены
-для случаев, где подпись должна отражать ближайшее значение.
-
-## Значения по умолчанию (`FORMAT_DEFAULTS`)
-
-| Свойство            | Значение        | Описание                  |
-| ------------------- | --------------- | ------------------------- |
-| `decimals`          | `1`             | Количество десятичных     |
-| `decimalSeparator`  | `","`           | Разделитель дробной части |
-| `grouping`          | `true`          | Группировка разрядов      |
-| `groupingSeparator` | NBSP из `ru-RU` | Неразрывный пробел        |
-| `groupingSize`      | `3`             | Размер группы             |
-
-## Типы
-
-```ts
-interface NumberFormatPreset {
-	name: string;
-	decimals: number;
-	decimalSeparator: string;
-	grouping: boolean;
-	groupingSeparator: string;
-	groupingSize: number;
-	compact?: NumberFormatCompactOptions;
-}
-
-type NumberFormatCompactOptions = {
-	minCompactValue?: number;
-	maxDecimals?: number;
-	roundingMode?: "round" | "floor" | "ceil" | "trunc";
-	suffixSeparator?: string;
-	units?: readonly { value: number; suffix: string }[];
+	groupingSeparator: " ",
+	groupingSize: 3,
+	compact: {
+		minCompactValue: 10_000,
+		maxDecimals: 1,
+		roundingMode: "round",
+		suffixSeparator: " ",
+		units: [
+			{ value: 1_000_000, suffix: "M" },
+			{ value: 1_000, suffix: "K" }
+		]
+	}
 };
 
-type NumberFormatPresetConfig = Partial<Omit<NumberFormatPreset, "name">> & Pick<NumberFormatPreset, "name">;
+formatNumber(1_250_000, preset); // "1,3 M"
 ```
 
-## Три ветки форматирования
+Располагайте units от большей к меньшей: выбирается первая единица, чей `value` не превышает абсолютное число.
 
-1. **Стандартный ru-RU** (NBSP + запятая, groupingSize=3): `format()` напрямую
-2. **Кастомные разделители** (groupingSize=3): `formatToParts()` + подстановка
-3. **Нестандартный groupingSize**: Intl-округление + ручная группировка
+## Чтение числовых строк
+
+### `toFiniteNumber(value)`
+
+```ts
+function toFiniteNumber(value: unknown): number | undefined;
+```
+
+Возвращает только конечное число или `undefined`.
+
+Поддерживаются:
+
+- готовый `number`;
+- стандартная числовая строка JavaScript;
+- пробел, NBSP, narrow NBSP и апостроф как разделители групп;
+- запятая как десятичный разделитель, если в строке нет точки;
+- формат `1,234.56`, где запятые считаются группировкой.
+
+```ts
+toFiniteNumber(12.5); // 12.5
+toFiniteNumber(" 12.5 "); // 12.5
+toFiniteNumber("1 234,56"); // 1234.56
+toFiniteNumber("1\u00a0234,56"); // 1234.56
+toFiniteNumber("1'234,56"); // 1234.56
+toFiniteNumber("1,234.56"); // 1234.56
+toFiniteNumber(""); // undefined
+toFiniteNumber("abc"); // undefined
+toFiniteNumber(Infinity); // undefined
+toFiniteNumber(null); // undefined
+```
+
+Стандартный `Number(trimmed)` выполняется первым, поэтому поддерживаются и его синтаксисы, включая exponent и шестнадцатеричную строку:
+
+```ts
+toFiniteNumber("1e3"); // 1000
+toFiniteNumber("0x10"); // 16
+```
+
+### Важное ограничение двух разделителей
+
+Если присутствуют и запятая, и точка, все запятые считаются группировкой:
+
+```ts
+toFiniteNumber("1,234.56"); // 1234.56
+toFiniteNumber("1.234,56"); // 1.23456, не 1234.56
+```
+
+То есть европейская запись с точкой-группировкой и запятой-дробью не поддерживается. Нормализуйте такой источник по его явной locale-схеме до вызова.
+
+### `parseNumber(value)`
+
+```ts
+function parseNumber(value: unknown): number;
+```
+
+Это `toFiniteNumber(value) ?? 0`:
+
+```ts
+parseNumber("1 234,5"); // 1234.5
+parseNumber("abc"); // 0
+parseNumber(undefined); // 0
+```
+
+Используйте её для арифметики, где невалидный вход действительно должен считаться нулём. Если отсутствие данных важно отличать от нуля, используйте `toFiniteNumber`.
+
+### `isPositiveValue(value)`
+
+Возвращает `true`, только если значение успешно разобрано и строго больше нуля:
+
+```ts
+isPositiveValue("0,1"); // true
+isPositiveValue(0); // false
+isPositiveValue(-1); // false
+isPositiveValue("abc"); // false
+```
+
+### `toPositiveInteger(value)`
+
+Возвращает положительное целое число либо `undefined`:
+
+```ts
+toPositiveInteger("12"); // 12
+toPositiveInteger("12,5"); // undefined
+toPositiveInteger(0); // undefined
+toPositiveInteger(-2); // undefined
+```
+
+### `isZeroValue(value)`
+
+Возвращает `true`, если `toFiniteNumber` успешно получил ровно `0`:
+
+```ts
+isZeroValue(0); // true
+isZeroValue(-0); // true
+isZeroValue("0,00"); // true
+isZeroValue(" 0 "); // true
+isZeroValue(""); // false
+isZeroValue(null); // false
+isZeroValue("abc"); // false
+```
+
+BigInt фактически не проходит через `toFiniteNumber`, поэтому `0n` также возвращает `false` в текущем публичном поведении.
+
+## Реестр presets
+
+### `getNumberPreset(name)`
+
+Возвращает preset или `undefined`:
+
+```ts
+const preset = getNumberPreset("decimal-2");
+```
+
+Возвращается сам объект из глобального реестра, а не clone. Не мутируйте его.
+
+### `getNumberPresetNames()`
+
+Возвращает новый массив имён в порядке регистрации. Подходит для UI выбора preset.
+
+### `registerNumberPreset(config)`
+
+Регистрирует или перезаписывает preset. Все отсутствующие поля поверхностно берутся из `NUMBER_FORMAT_DEFAULTS`:
+
+```ts
+registerNumberPreset({
+	name: "accounting-2",
+	decimals: 2,
+	groupingSeparator: " ",
+	decimalSeparator: ","
+});
+
+formatNumber(1234.5, "accounting-2"); // "1 234,50"
+```
+
+Регистрация глобальна для текущего экземпляра модуля. Выполняйте её один раз при старте приложения до компиляции formatter pipeline.
+
+Имя не trim-ится и поля не валидируются. Передавайте непустое устойчивое имя, не меняйте встроенные presets без явной необходимости и проверяйте числовые параметры.
+
+### `resetNumberPresets()`
+
+Очищает реестр и восстанавливает только встроенные presets. Основной сценарий — изоляция тестов. Пользовательские presets после сброса исчезают.
+
+### `NUMBER_FORMAT_DEFAULTS`
+
+```ts
+{
+	decimals: 1,
+	decimalSeparator: ",",
+	grouping: true,
+	groupingSeparator: /* ru-RU group char */,
+	groupingSize: 3
+}
+```
+
+Объект экспортируется, но не заморожен. Относитесь к нему как к read-only константе: мутация изменит будущие регистрации и сделает поведение глобально непредсказуемым.
+
+## Объектный preset без регистрации
+
+`formatNumber` принимает готовый `NumberFormatPreset`:
+
+```ts
+formatNumber(1234567.89, {
+	name: "inline",
+	decimals: 2,
+	decimalSeparator: ".",
+	grouping: true,
+	groupingSeparator: "_",
+	groupingSize: 3
+});
+// "1_234_567.89"
+```
+
+Такой объект не попадает в реестр. Он полезен для локального стабильного правила; переиспользуемый формат лучше зарегистрировать централизованно.
+
+Параметры не валидируются. Используйте:
+
+- `decimals` — целое неотрицательное число в диапазоне, допустимом `Intl.NumberFormat`;
+- `groupingSize` — положительное целое число;
+- конечные положительные `unit.value`;
+- известный `roundingMode`.
+
+Нулевой или отрицательный `groupingSize` в ручной ветке группировки может привести к незавершающемуся циклу. Не передавайте непроверенный пользовательский объект напрямую.
+
+## `truncateNumber(num, decimals)`
+
+Низкоуровневая математическая функция усекает дробную часть без округления:
+
+```ts
+truncateNumber(123.789, 1); // 123.7
+truncateNumber(-123.789, 1); // -123.7
+truncateNumber(123.789, 0); // 123
+truncateNumber(123.789, -1); // 120
+```
+
+Функция не валидирует параметры и не используется обычным `formatNumber` для standard presets.
+
+## Кеш `Intl.NumberFormat`
+
+Модуль кеширует formatter по комбинации `decimals + grouping`, что важно для сотен ячеек таблицы.
+
+```ts
+clearFormatCache();
+```
+
+`clearFormatCache` очищает только кеш `Intl.NumberFormat`. Она не очищает и не сбрасывает реестр presets. В прикладном коде вызывать её обычно не нужно.
+
+## Практические рецепты
+
+### Безопасный вывод значения API
+
+```ts
+const parsed = toFiniteNumber(response.amount);
+const amountText = parsed === undefined ? "—" : formatNumberAsDecimal2(parsed);
+```
+
+### Поле, где ноль нужно скрыть
+
+```ts
+const text = formatNumberAsIntegerOrEmpty(row.count);
+```
+
+### Проверка положительного page size
+
+```ts
+const pageSize = toPositiveInteger(search.pageSize) ?? 20;
+```
+
+### Собственный preset на старте приложения
+
+```ts
+export function configureFormatters(): void {
+	registerNumberPreset({
+		name: "quantity-4",
+		decimals: 4,
+		grouping: false
+	});
+}
+```
+
+## Частые ошибки
+
+### Передавать локализованную строку прямо в `formatNumber`
+
+```ts
+// Неправильно
+formatNumber("1 234,5", "decimal-2"); // "0"
+
+// Правильно
+const parsed = toFiniteNumber("1 234,5");
+const text = parsed === undefined ? "—" : formatNumber(parsed, "decimal-2");
+```
+
+### Считать `percent` математическим процентом
+
+Preset не умножает `0.25` на 100 и не добавляет `%`. Он выведет `0,25`.
+
+### Ожидать валютный символ
+
+`currency` и `price` форматируют число, но не знают валюту.
+
+### Мутировать полученный preset
+
+`getNumberPreset` возвращает реестровый объект. Создайте новый объект или вызовите `registerNumberPreset` с полной новой конфигурацией.
+
+### Регистрировать preset во время рендера
+
+Это глобальное изменение. Настраивайте реестр один раз до построения runtime.
+
+## API-справка
+
+| Семейство                    | Публичный API                                                                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Универсальное форматирование | `formatNumber`                                                                                                                                                                                          |
+| Готовые форматы              | `formatNumberAsInteger`, `formatNumberAsCurrency`, `formatNumberAsDecimal`, `formatNumberAsDecimal2`, `formatNumberAsDecimal3`, `formatNumberAsPercent`, `formatNumberAsPrice`, `formatNumberAsTonnage` |
+| Ноль как пустое              | все перечисленные wrappers с суффиксом `OrEmpty`                                                                                                                                                        |
+| Парсинг                      | `toFiniteNumber`, `parseNumber`, `isPositiveValue`, `toPositiveInteger`                                                                                                                                 |
+| Проверка нуля                | `isZeroValue`                                                                                                                                                                                           |
+| Presets                      | `DEFAULT_NUMBER_PRESET_NAMES`, `NUMBER_FORMAT_DEFAULTS`, `getNumberPreset`, `getNumberPresetNames`, `registerNumberPreset`, `resetNumberPresets`                                                        |
+| Низкоуровневое               | `truncateNumber`, `clearFormatCache`                                                                                                                                                                    |
+| Типы                         | `NumberFormatPreset`, `NumberFormatPresetConfig`, `NumberFormatCompactOptions`, `NumberFormatCompactUnit`, `NumberFormatCompactRoundingMode`                                                            |
+
+`formatCompactNumber`, `formatNumberAsChartAxis` и `resolveNumberPreset` не входят в публичный entrypoint. Compact-поведение доступно через встроенные или собственные presets.
+
+## Связанная документация
+
+- [Обзор `formatters`](../README.md)
+- [Строковая нормализация](../strings/README.md)
+- [Formatter pipeline](../pipeline/README.md)

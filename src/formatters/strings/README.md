@@ -1,0 +1,438 @@
+# Строковые форматтеры
+
+Модуль содержит небольшие предсказуемые функции для подготовки пользовательского текста: обрезки пробелов, безопасного преобразования в строку, удаления ведущих нулей, сокращения длинного текста и выбора русской формы слова.
+
+Все функции экспортируются через один публичный entrypoint:
+
+```ts
+import {
+	formatRussianPlural,
+	normalizeRequiredText,
+	normalizeText,
+	normalizeTextSpaces,
+	normalizeTextToLower,
+	normalizeTextWithFallback,
+	selectRussianPluralForm,
+	startsWithIgnoringZeros,
+	stripInnerSpaces,
+	stripLeadingZeros,
+	toSafeString,
+	truncateText
+} from "@ryuzaki13/react-foundation-lib/formatters";
+```
+
+Импорта `@ryuzaki13/react-foundation-lib/formatters/strings` нет: каталог `strings` — внутренняя организация исходников, а не отдельный package subpath.
+
+## Быстрый выбор функции
+
+| Задача                                      | Функция                     | Пример результата                          |
+| ------------------------------------------- | --------------------------- | ------------------------------------------ |
+| Получить непустой текст или `undefined`     | `normalizeText`             | `"  Иван  "` → `"Иван"`                    |
+| Получить текст с fallback                   | `normalizeTextWithFallback` | `null` → заданный fallback                 |
+| Получить обязательную строку                | `normalizeRequiredText`     | `null` → `""`                              |
+| Нормализовать и привести к нижнему регистру | `normalizeTextToLower`      | `"  Admin "` → `"admin"`                   |
+| Безопасно выполнить `String(value)`         | `toSafeString`              | `null` → `""`, `42` → `"42"`               |
+| Схлопнуть разные пробелы                    | `normalizeTextSpaces`       | `"  Иван\u00a0 Иванов "` → `"Иван Иванов"` |
+| Удалить пробелы из значения                 | `stripInnerSpaces`          | `"1 234\u00a0567"` → `"1234567"`           |
+| Удалить ведущие нули у целого числа         | `stripLeadingZeros`         | `"-00042"` → `"-42"`                       |
+| Сравнить начало без ведущих нулей           | `startsWithIgnoringZeros`   | `("000123", "12")` → `true`                |
+| Обрезать длинный текст                      | `truncateText`              | `("abcdef", 3)` → `"abc..."`               |
+| Выбрать русскую форму слова                 | `selectRussianPluralForm`   | `22` → форма `few`                         |
+| Получить число вместе со словом             | `formatRussianPlural`       | `22` → `"22 файла"`                        |
+
+## Базовые понятия для начинающих
+
+### `unknown` не означает строку
+
+Значение типа `unknown` может оказаться строкой, числом, объектом, `null` или чем угодно ещё. Функции этого модуля обрабатывают такие значения по-разному:
+
+- `normalizeText*` считают текстом только настоящее значение типа `string`;
+- `toSafeString` преобразует почти любое значение через встроенную функцию `String`;
+- `stripLeadingZeros` предназначена для строки, которая изображает целое число.
+
+Не подменяйте одну операцию другой. Например, `normalizeText(42)` вернёт `undefined`, а `toSafeString(42)` — строку `"42"`.
+
+### `undefined`, `null` и пустая строка различаются
+
+- `undefined` обычно означает «значение не задано»;
+- `null` обычно означает «значение явно отсутствует»;
+- `""` — строка, но в ней нет символов;
+- `"   "` — непустая строка на уровне JavaScript, однако после `trim()` она становится пустой.
+
+`normalizeText` объединяет эти случаи в удобный результат: содержательная строка либо `undefined`.
+
+## Нормализация текста
+
+### `normalizeText(value)`
+
+```ts
+function normalizeText(value: unknown): string | undefined;
+```
+
+Функция:
+
+1. проверяет, что значение является строкой;
+2. удаляет пробелы в начале и конце через `trim()`;
+3. возвращает `undefined`, если после этого строка пуста.
+
+```ts
+normalizeText("  документ  "); // "документ"
+normalizeText(""); // undefined
+normalizeText("   "); // undefined
+normalizeText(null); // undefined
+normalizeText(100); // undefined
+```
+
+Она не схлопывает пробелы внутри строки и не меняет регистр:
+
+```ts
+normalizeText("  Иван   Иванов  "); // "Иван   Иванов"
+```
+
+Типичный сценарий — подготовка необязательного поля перед сохранением:
+
+```ts
+const description = normalizeText(form.description);
+
+// description имеет тип string | undefined
+```
+
+### `normalizeTextWithFallback(value, fallback?)`
+
+```ts
+function normalizeTextWithFallback(value: unknown, fallback?: string): string;
+```
+
+Возвращает результат `normalizeText(value)`. Если содержательного текста нет, возвращает `fallback`. По умолчанию fallback равен пустой строке.
+
+```ts
+normalizeTextWithFallback("  Готово  "); // "Готово"
+normalizeTextWithFallback(null); // ""
+normalizeTextWithFallback("   ", "Не указано"); // "Не указано"
+```
+
+Важно: fallback возвращается буквально. Функция не обрезает и не проверяет сам fallback.
+
+### `normalizeRequiredText(value)`
+
+```ts
+function normalizeRequiredText(value: unknown): string;
+```
+
+Это короткая форма `normalizeTextWithFallback(value, "")`:
+
+```ts
+normalizeRequiredText("  Отчёт  "); // "Отчёт"
+normalizeRequiredText(undefined); // ""
+normalizeRequiredText(42); // ""
+```
+
+Используйте её там, где вызывающему коду всегда нужна строка. Название `Required` не выполняет валидацию обязательности: пустой ввод всё равно превращается в `""`.
+
+### `normalizeTextToLower(value)`
+
+```ts
+function normalizeTextToLower(value: unknown): string;
+```
+
+Обрезает внешние пробелы, затем вызывает `toLowerCase()`. Если вход не является содержательной строкой, возвращает `""`.
+
+```ts
+normalizeTextToLower("  AdMiN  "); // "admin"
+normalizeTextToLower(null); // ""
+```
+
+Функция использует обычный `toLowerCase`, а не locale-aware `toLocaleLowerCase`. Для большинства технических ключей это ожидаемое поведение.
+
+### `toSafeString(value)`
+
+```ts
+function toSafeString(value: unknown): string;
+```
+
+`null` и `undefined` становятся пустой строкой. Остальные значения передаются встроенной функции `String`.
+
+```ts
+toSafeString(null); // ""
+toSafeString(undefined); // ""
+toSafeString(42); // "42"
+toSafeString(false); // "false"
+toSafeString([1, 2]); // "1,2"
+toSafeString({ id: 1 }); // "[object Object]"
+```
+
+Последние два примера показывают ограничение: функция гарантирует строковый тип, но не создаёт красивое представление сложных объектов. Для объектов нужен осмысленный formatter или сериализатор.
+
+### `normalizeTextSpaces(value)`
+
+```ts
+function normalizeTextSpaces(value: unknown): string;
+```
+
+Функция сначала применяет семантику `normalizeRequiredText`, затем заменяет любую последовательность следующих пробельных символов одним обычным пробелом:
+
+- стандартные пробельные символы JavaScript (`\s`), включая табуляцию и перенос строки;
+- неразрывный пробел `U+00A0`;
+- узкий неразрывный пробел `U+202F`.
+
+```ts
+normalizeTextSpaces("  Иван\t\nИванов  "); // "Иван Иванов"
+normalizeTextSpaces("1\u00a0234\u202f567"); // "1 234 567"
+normalizeTextSpaces(123); // ""
+```
+
+Используйте функцию для обычного пользовательского текста. Для машинных идентификаторов схлопывание пробелов может менять смысл значения.
+
+## Удаление пробелов и ведущих нулей
+
+### `stripInnerSpaces(value)`
+
+```ts
+function stripInnerSpaces(value: string): string;
+```
+
+Удаляет из всей строки:
+
+- обычный пробел;
+- неразрывный пробел `U+00A0`;
+- узкий неразрывный пробел `U+202F`.
+
+```ts
+stripInnerSpaces("1 234 567"); // "1234567"
+stripInnerSpaces("1\u00a0234\u202f567"); // "1234567"
+```
+
+Несмотря на слово `Inner` в имени, удаляются все перечисленные пробелы, в том числе в начале и конце. Табуляция и перевод строки не удаляются:
+
+```ts
+stripInnerSpaces("\t1 2\n"); // "\t12\n"
+```
+
+### `stripLeadingZeros(value)`
+
+```ts
+function stripLeadingZeros(value: string): string;
+```
+
+Функция предназначена для строкового представления целого числа:
+
+1. обрезает внешние пробелы;
+2. проверяет формат `необязательный минус + цифры`;
+3. удаляет лишние нули в начале цифровой части;
+4. оставляет один ноль, если число состояло только из нулей.
+
+```ts
+stripLeadingZeros("00042"); // "42"
+stripLeadingZeros("-00042"); // "-42"
+stripLeadingZeros("0000"); // "0"
+stripLeadingZeros("-0000"); // "-0"
+stripLeadingZeros("   "); // "0"
+```
+
+Если строка не похожа на целое число, она возвращается только с обрезанными внешними пробелами:
+
+```ts
+stripLeadingZeros("+00042"); // "+00042"
+stripLeadingZeros("001.50"); // "001.50"
+stripLeadingZeros("000A12"); // "000A12"
+```
+
+Не используйте эту функцию для дробей, артикулов или кодов, где ведущие нули значимы.
+
+### `startsWithIgnoringZeros(value, searchText)`
+
+```ts
+function startsWithIgnoringZeros(value: string, searchText: string): boolean;
+```
+
+Обе строки приводятся к нижнему регистру, из их начала удаляются все нули, затем выполняется обычный `startsWith`.
+
+```ts
+startsWithIgnoringZeros("000ABC123", "abc"); // true
+startsWithIgnoringZeros("00012345", "0012"); // true
+startsWithIgnoringZeros("00123", "24"); // false
+```
+
+Функция не вызывает `trim()`:
+
+```ts
+startsWithIgnoringZeros(" 00123", "123"); // false
+```
+
+Если искомая строка состоит только из нулей, после удаления нулей получается `""`. Любая строка начинается с пустой строки, поэтому результат будет `true`:
+
+```ts
+startsWithIgnoringZeros("ABC", "000"); // true
+```
+
+Если такое поведение не подходит поисковому интерфейсу, заранее проверяйте нормализованный поисковый запрос.
+
+## Обрезка длинного текста
+
+### `truncateText(value, maxLength)`
+
+```ts
+function truncateText(value: unknown, maxLength: number): string | undefined;
+```
+
+Сначала применяется `normalizeText`. Если строка длиннее `maxLength`, берутся первые `maxLength` кодовых единиц и добавляется `...`.
+
+```ts
+truncateText("  abcdef  ", 3); // "abc..."
+truncateText("abc", 3); // "abc"
+truncateText("   ", 10); // undefined
+truncateText(123, 10); // undefined
+```
+
+`maxLength` ограничивает только исходную часть. Три точки добавляются сверху, поэтому длина результата может быть `maxLength + 3`.
+
+Передавайте целое неотрицательное число. Функция не валидирует параметр. Кроме того, JavaScript `slice` считает UTF-16 code units, поэтому граница может разрезать emoji или сложный Unicode-символ. Для строгого UI-ограничения по визуальным символам нужен отдельный Unicode-aware механизм.
+
+## Русские формы множественного числа
+
+### Модель `one`, `few`, `many`, `other`
+
+Русский язык использует разные формы слова:
+
+- `one`: `1 файл`, `21 файл`;
+- `few`: `2 файла`, `24 файла`;
+- `many`: `5 файлов`, `11 файлов`, `100 файлов`;
+- `other`: обычно дробные значения, например `1.5 файла`.
+
+Модуль использует `Intl.PluralRules("ru-RU")`, поэтому не нужно самостоятельно писать правила с остатками от деления.
+
+```ts
+type RussianPluralForms = {
+	one: string;
+	few: string;
+	many: string;
+	other?: string;
+};
+```
+
+Поле `other` необязательно. Если оно не задано, для категории `other` используется форма `few`.
+
+### `selectRussianPluralForm(value, forms)`
+
+```ts
+function selectRussianPluralForm(value: number, forms: RussianPluralForms): string;
+```
+
+```ts
+const fileForms = {
+	one: "файл",
+	few: "файла",
+	many: "файлов",
+	other: "файла"
+};
+
+selectRussianPluralForm(1, fileForms); // "файл"
+selectRussianPluralForm(2, fileForms); // "файла"
+selectRussianPluralForm(5, fileForms); // "файлов"
+selectRussianPluralForm(1.5, fileForms); // "файла"
+```
+
+Для `NaN`, `Infinity` и `-Infinity` функция выбрасывает `RangeError`, потому что выбрать грамматическую форму для нечислового количества нельзя.
+
+### `formatRussianPlural(value, forms)`
+
+```ts
+function formatRussianPlural(value: number, forms: RussianPluralForms): string;
+```
+
+Добавляет число перед выбранной формой через пробел:
+
+```ts
+formatRussianPlural(1, fileForms); // "1 файл"
+formatRussianPlural(22, fileForms); // "22 файла"
+formatRussianPlural(100, fileForms); // "100 файлов"
+```
+
+Само число вставляется через обычное строковое преобразование JavaScript. Локализованное форматирование числа не выполняется:
+
+```ts
+formatRussianPlural(1.5, fileForms); // "1.5 файла", не "1,5 файла"
+```
+
+Если нужно локализовать число, объедините `selectRussianPluralForm` с числовым форматтером:
+
+```ts
+import { formatNumber, selectRussianPluralForm } from "@ryuzaki13/react-foundation-lib/formatters";
+
+const count = 1234.5;
+const label = `${formatNumber(count, "decimal")} ${selectRussianPluralForm(count, fileForms)}`;
+```
+
+## Практический пример: нормализация формы
+
+```ts
+import { normalizeText, normalizeTextSpaces, normalizeTextToLower, stripLeadingZeros } from "@ryuzaki13/react-foundation-lib/formatters";
+
+const draft = {
+	name: "  Иван   Иванов  ",
+	login: "  IVANOV  ",
+	comment: "   ",
+	sequence: "00042"
+};
+
+const snapshot = {
+	name: normalizeTextSpaces(draft.name), // "Иван Иванов"
+	login: normalizeTextToLower(draft.login), // "ivanov"
+	comment: normalizeText(draft.comment), // undefined
+	sequence: stripLeadingZeros(draft.sequence) // "42"
+};
+```
+
+Такая нормализация подходит для явно выбранной границы сохранения. Не применяйте её автоматически на каждом нажатии клавиши: пользовательский draft обычно должен сохранять введённый текст буквально до сохранения.
+
+## Частые ошибки
+
+### Использовать `toSafeString` как универсальный formatter
+
+`toSafeString({ id: 1 })` возвращает `"[object Object]"`. Функция защищает от `null` и `undefined`, но не знает, как должен выглядеть доменный объект.
+
+### Ожидать, что `stripInnerSpaces` удалит все whitespace
+
+Она удаляет только три конкретных вида пробела. Для схлопывания табуляций и переносов строки используйте `normalizeTextSpaces`.
+
+### Удалять нули у идентификаторов
+
+Коды `"000123"` и `"123"` могут быть разными бизнес-идентификаторами. `stripLeadingZeros` меняет значение и должна применяться только там, где строка действительно означает целое число.
+
+### Считать, что `truncateText` возвращает строку заданной длины
+
+Три точки не входят в `maxLength`. При `maxLength = 10` итоговая строка может содержать 13 кодовых единиц.
+
+### Передавать строку в plural API
+
+```ts
+// Неправильно: функция ожидает number.
+// formatRussianPlural("5", fileForms);
+
+formatRussianPlural(Number("5"), fileForms);
+```
+
+Перед преобразованием внешней строки убедитесь, что получилось конечное число.
+
+## Краткая API-справка
+
+| API                         | Вход                 | Результат             | Может выбросить ошибку                                 |
+| --------------------------- | -------------------- | --------------------- | ------------------------------------------------------ |
+| `normalizeText`             | `unknown`            | `string \| undefined` | нет                                                    |
+| `normalizeTextWithFallback` | `unknown`, `string?` | `string`              | нет                                                    |
+| `normalizeRequiredText`     | `unknown`            | `string`              | нет                                                    |
+| `normalizeTextToLower`      | `unknown`            | `string`              | нет                                                    |
+| `toSafeString`              | `unknown`            | `string`              | теоретически `String(value)` для экзотического объекта |
+| `normalizeTextSpaces`       | `unknown`            | `string`              | нет                                                    |
+| `stripInnerSpaces`          | `string`             | `string`              | нет для корректного типа                               |
+| `stripLeadingZeros`         | `string`             | `string`              | нет для корректного типа                               |
+| `startsWithIgnoringZeros`   | `string`, `string`   | `boolean`             | нет для корректных типов                               |
+| `truncateText`              | `unknown`, `number`  | `string \| undefined` | нет при обычных значениях                              |
+| `selectRussianPluralForm`   | `number`, формы      | `string`              | `RangeError` для не-конечного числа                    |
+| `formatRussianPlural`       | `number`, формы      | `string`              | `RangeError` для не-конечного числа                    |
+
+## Связанная документация
+
+- [Обзор всего модуля `formatters`](../README.md)
+- [Числа и числовые строки](../number/README.md)
+- [Форматтеры boolean и ABAP-флагов](../boolean/README.md)

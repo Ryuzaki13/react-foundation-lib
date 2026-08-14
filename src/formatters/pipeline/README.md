@@ -1,0 +1,625 @@
+# Formatter pipeline
+
+Formatter pipeline — конфигурируемая последовательность преобразований значения ячейки. Она умеет:
+
+- взять значение из другого поля строки или вычислить его row-based формулой;
+- нормализовать ведущие нули;
+- назначить семантическое состояние `success`, `warning`, `error` и другие;
+- настроить статусную иконку;
+- выполнить финальное форматирование по OData-типу колонки;
+- скомпилировать сериализуемую конфигурацию один раз и быстро применять её ко многим строкам.
+
+Pipeline не является React-компонентом и не рисует UI. На выходе он возвращает данные, которые UI может отобразить.
+
+Все функции и типы импортируются из единственного публичного entrypoint:
+
+```ts
+import {
+	compileFormattersPipelineExecutor,
+	compileFormattersPipelineRuntime,
+	formatPipelineDisplayValue,
+	normalizeFormattersPipelineConfig,
+	validateFormattersPipelineConfig,
+	type FormattersPipelineConfig,
+	type FormattersPipelineRuntimeField
+} from "@ryuzaki13/react-foundation-lib/formatters";
+```
+
+Импорта `@ryuzaki13/react-foundation-lib/formatters/pipeline` нет.
+
+## Для кого какой уровень API
+
+| Задача                                  | Основной API                             |
+| --------------------------------------- | ---------------------------------------- |
+| Хранить конфигурацию                    | `FormattersPipelineConfig`               |
+| Принять конфиг из JSON/БД               | `normalizeFormattersPipelineConfig`      |
+| Показать ошибки редактора               | `validateFormattersPipelineConfig`       |
+| Скомпилировать один pipeline вручную    | `compileFormattersPipelineExecutor`      |
+| Подготовить поля таблицы                | `compileFormattersPipelineRuntimeFields` |
+| Форматировать ячейку в обычном consumer | `formatPipelineDisplayValue`             |
+| Собрать дополнительные поля запроса     | `collectRuntimeFieldDependencyIds`       |
+| Скопировать конфиг для store            | `cloneFormattersPipelineConfig`          |
+| Переиздать технические id копии         | `rekeyFormattersPipelineConfig`          |
+| Построить UI-каталог шагов              | `getFormattersPipelineDefinitions`       |
+
+Большинству приложений нужен путь «нормализовать → валидировать → скомпилировать поля → форматировать ячейки». Низкоуровневый executor полезен инфраструктурному коду.
+
+## Модель данных
+
+### Конфигурация версии 1
+
+```ts
+type FormattersPipelineConfig = {
+	version: 1;
+	graph?: FormattersPipelineGraph;
+	plan?: FormattersPipelinePlan;
+};
+```
+
+- `version` обязана быть ровно `1`;
+- `plan` — линейная последовательность runtime-шагов;
+- `graph` — полное представление для визуального редактора;
+- должен присутствовать хотя бы `plan` или `graph`.
+
+Pipeline поддерживает только линейное выполнение. Graph не допускает ветвлений и в итоге также превращается в plan.
+
+### Plan
+
+```ts
+const config: FormattersPipelineConfig = {
+	version: 1,
+	plan: {
+		steps: [
+			{
+				id: "zeros",
+				type: "normalizeLeadingZeros",
+				config: { fixed: 6 }
+			},
+			{
+				id: "format",
+				type: "typedValueFormat",
+				config: { numberPresetName: "integer" }
+			}
+		]
+	}
+};
+```
+
+`id` — технический уникальный идентификатор шага. `type` выбирает один из четырёх видов formatter-а. Порядок элементов массива — порядок выполнения.
+
+### Graph
+
+Graph хранит:
+
+- `nodes`: узлы `source`, `sink` и formatter-узлы;
+- `edges`: связи `{ id, source, target }`;
+- необязательный `viewport` редактора `{ x, y, zoom }`.
+
+Корректный граф имеет вид:
+
+```text
+source → formatter → formatter → sink
+```
+
+У него должен быть ровно один `source` и один `sink`; все formatter-узлы имеют по одному входу и выходу; все узлы входят в единственный путь; циклы запрещены.
+
+### Приоритет plan и graph
+
+При валидации корректный `plan` имеет приоритет. Если plan семантически невалиден, но присутствует graph, validator пытается построить plan из graph и добавляет warning `path_broken` о fallback.
+
+Для сохранённого конфига разумно держать оба представления синхронизированными в редакторе. Runtime не объединяет шаги из двух источников.
+
+## Рекомендуемый порядок шагов
+
+```text
+rowBasedOverride
+        ↓
+normalizeLeadingZeros
+        ↓
+resolveValueState
+        ↓
+typedValueFormat
+```
+
+Так state вычисляется по ещё не превращённому в красивую строку значению, а типизированный formatter завершает pipeline.
+
+Validator запрещает только один критичный вариант: `typedValueFormat` не может стоять раньше `resolveValueState`. Остальной смысл порядка остаётся ответственностью автора конфига.
+
+Каждый из четырёх типов может присутствовать не более одного раза.
+
+## Шаг `rowBasedOverride`
+
+Подменяет текущее значение данными текущей строки.
+
+### Режим `field`
+
+```ts
+{
+	id: "override",
+	type: "rowBasedOverride",
+	config: {
+		mode: "field",
+		fieldKey: "displayAmount",
+		fallbackToRaw: true
+	}
+}
+```
+
+Для строк `plain`, `tree` и `group` шаг читает `rowData[fieldKey]`. Для строки `totals` field-режим не применяется.
+
+Если поле вернуло `null` или `undefined`:
+
+- `fallbackToRaw: true` или отсутствие настройки сохраняет текущее значение;
+- `fallbackToRaw: false` заменяет его на `undefined`.
+
+Пустая строка, `0` и `false` являются настоящими значениями и не запускают fallback.
+
+### Режим `formula`
+
+```ts
+{
+	id: "override",
+	type: "rowBasedOverride",
+	config: {
+		mode: "formula",
+		formulaId: "completion-percent",
+		dependencyIds: ["planned", "actual"],
+		fallbackToRaw: true
+	}
+}
+```
+
+Формула берётся из глобального row-based реестра. В отличие от field-режима, она выполняется для всех `rowKind`, включая `totals`.
+
+`dependencyIds` становятся индексами контекста формулы: `ctx.num(0)` читает `planned`, `ctx.num(1)` — `actual`. Если формула вернула `null`/`undefined` или выбросила ошибку, применяется политика `fallbackToRaw`.
+
+До валидации и компиляции нужно настроить реестр. Подробный контракт описан в [rowBased/README.md](../rowBased/README.md).
+
+## Шаг `normalizeLeadingZeros`
+
+```ts
+{
+	id: "zeros",
+	type: "normalizeLeadingZeros",
+	config: { fixed: 6 }
+}
+```
+
+Вызывает `normalizeLeadingZeros(currentValue, fixed)`. Например, числовая строка `"42"` при `fixed: 6` превращается в `"000042"`.
+
+Передавайте положительное целое `fixed`. Structural validator проверяет только тип `number`, а сама функция имеет широкую JavaScript-семантику преобразования. Все ограничения разобраны в [обзоре formatters](../README.md#ведущие-нули).
+
+## Шаг `resolveValueState`
+
+Вычисляет состояние по текущему значению. Поддержаны fixed- и threshold-резолверы.
+
+### Fixed
+
+```ts
+{
+	id: "state",
+	type: "resolveValueState",
+	config: {
+		resolver: {
+			kind: "fixed",
+			entries: {
+				DONE: "success",
+				WAITING: "warning",
+				FAILED: "error"
+			},
+			fallbackState: "none"
+		},
+		icon: {
+			enabled: true,
+			showValue: true,
+			position: "left"
+		}
+	}
+}
+```
+
+Fixed-сопоставление выполняется по точному `String(value)`, без trim и изменения регистра.
+
+### Threshold
+
+```ts
+{
+	id: "state",
+	type: "resolveValueState",
+	config: {
+		resolver: {
+			kind: "threshold",
+			thresholds: [50, 80],
+			states: ["error", "warning", "success"],
+			invalidState: "none"
+		},
+		icon: { enabled: true, showValue: false, position: "right" }
+	}
+}
+```
+
+Для `N` порогов требуется ровно `N + 1` состояний. Подробности границ `lower`/`upper` приведены в [valueState/README.md](../valueState/README.md).
+
+### Настройки иконки
+
+Значения по умолчанию:
+
+- `enabled: false`;
+- `showValue: true`;
+- `position: "left"`.
+
+Иконка создаётся только для `information`, `success`, `warning`, `error`. Состояния `""` и `none` не имеют icon value.
+
+Если указать `enabled: false` и `showValue: false`, UI не сможет показать ни текст, ни иконку; validator сообщает warning `step_value_hidden_without_icon`.
+
+## Шаг `typedValueFormat`
+
+```ts
+{
+	id: "typed",
+	type: "typedValueFormat",
+	config: {
+		numberPresetName: "decimal-2",
+		datePresetName: "date-long"
+	}
+}
+```
+
+Runtime определяет базовый тип из OData metadata поля:
+
+- число → `formatNumber`, по умолчанию preset `decimal`;
+- дата → `parseDate`, затем `formatDate`, по умолчанию preset `date`;
+- остальные типы → безопасное строковое представление;
+- `null`/`undefined` → `""`.
+
+Для числового preset validator требует непустое зарегистрированное имя. На runtime неизвестное имя всё равно заменяется на `decimal`. Для неизвестного date preset runtime использует `date`; текущая валидация отдельно его не отклоняет.
+
+Если pipeline не содержит `typedValueFormat`, верхнеуровневый runtime автоматически выполняет стандартное форматирование по типу после executor-а.
+
+## Валидация
+
+### `validateFormattersPipelineConfig(config)`
+
+```ts
+const result = validateFormattersPipelineConfig(config);
+
+if (!result.ok) {
+	for (const error of result.errors) {
+		console.error(error.code, error.message);
+	}
+}
+
+for (const warning of result.warnings) {
+	console.warn(warning.code, warning.message);
+}
+```
+
+Результат:
+
+```ts
+type FormattersPipelineValidationResult = {
+	ok: boolean;
+	errors: FormattersPipelineValidationMessage[];
+	warnings: FormattersPipelineValidationMessage[];
+	plan?: FormattersPipelinePlan;
+};
+```
+
+`ok` зависит от ошибок, но warnings не делают результат невалидным. При успехе используйте возвращённый `plan`: для graph он уже построен в правильном порядке.
+
+Низкоуровневые `validateFormattersPipelinePlan(plan)` и `validateFormattersPipelineGraph(graph)` нужны редактору, который проверяет представления отдельно.
+
+### Основные группы ошибок
+
+| Группа          | Примеры code                                                                                         |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
+| Конфиг          | `config_not_defined`, `unsupported_version`, `graph_or_plan_required`                                |
+| Идентификаторы  | `node_id_duplicate`, `edge_id_duplicate`, `step_id_duplicate`                                        |
+| Структура graph | `source_count_invalid`, `node_degree_invalid`, `path_cycle_detected`, `path_disconnected_nodes`      |
+| Повтор шагов    | `step_*_multiple`                                                                                    |
+| Порядок         | `step_typed_before_value_state`                                                                      |
+| Row-based       | `step_row_based_override_formula_not_found`, `step_row_based_override_dependency_index_out_of_range` |
+| Value state     | `step_threshold_states_count_invalid`                                                                |
+| Preset          | `step_typed_value_format_preset_empty`, `step_typed_value_format_preset_not_found`                   |
+
+Validator запускает row-based формулу дважды на синтетических положительных и отрицательных значениях. Так он обнаруживает обращение за границы dependencies, неиспользуемые зависимости и некоторые runtime-ошибки. Формула обязана быть чистой и синхронной.
+
+Проверка тестовыми данными не доказывает корректность всех условных веток; бизнес-формулы всё равно требуют собственных тестов.
+
+## Нормализация внешнего JSON
+
+### `normalizeFormattersPipelineConfig(value)`
+
+```ts
+const config = normalizeFormattersPipelineConfig(JSON.parse(payload));
+
+if (!config) {
+	// payload имеет неправильную форму или семантически невалиден
+}
+```
+
+Функция:
+
+1. принимает `unknown`;
+2. проверяет структуру и типы всех известных полей;
+3. поддерживает только версию `1`;
+4. выполняет семантическую валидацию;
+5. возвращает глубокую копию известных конфигурационных структур;
+6. возвращает `undefined` при любой невалидности.
+
+Она не исправляет значения, не trim-ит id и не мигрирует версии. Для UI с подробными сообщениями сначала нужен отдельный structural parser либо уже типизированный config + `validateFormattersPipelineConfig`.
+
+## Компиляция одного executor-а
+
+### `compileFormattersPipelineExecutor(args)`
+
+```ts
+const compiled = compileFormattersPipelineExecutor({
+	config,
+	column: {
+		role: "Data",
+		type: "Edm.Decimal"
+	}
+});
+
+if (!compiled.ok) {
+	console.error(compiled.reason);
+} else {
+	const result = compiled.executor.execute({
+		value: 72.5,
+		rowData: { planned: 100, actual: 72.5 },
+		rowKind: "plain",
+		isGroupRow: false,
+		isTotalsRow: false,
+		rowLevel: 0,
+		groupingIds: [],
+		columnId: "progress"
+	});
+}
+```
+
+Ошибка компиляции имеет одну из причин:
+
+- `pipeline_invalid`;
+- `row_based_formula_not_found`.
+
+Executor сообщает флаги `hasRowBasedOverride` и `hasTypedValueFormat`. Поля `isGroupRow` и `isTotalsRow` в execution context устарели; новый код передаёт достоверный `rowKind` и производные флаги только для совместимости контракта.
+
+## Высокоуровневый runtime полей
+
+### Контракт поля
+
+```ts
+type FormattersPipelineRuntimeField = {
+	id: string;
+	role: ColumnRole;
+	type: ODataMetaType;
+	formattersPipeline?: FormattersPipelineConfig;
+	formulaId?: string;
+	formulaDependencies?: readonly string[];
+	purelyDerived?: boolean;
+	emptyWhenZero?: boolean;
+	overflowTooltip?: boolean;
+	formulaExecutor?: TableFormulaCompiledExecutor;
+	formattersPipelineExecutor?: FormattersPipelineExecutor;
+};
+```
+
+`formulaId` здесь относится к общему модулю table formulas и выполняется до formatter pipeline. Это не то же самое, что row-based formula внутри шага `rowBasedOverride`.
+
+### `compileFormattersPipelineRuntime(field)`
+
+Компилирует formula и pipeline и записывает executors прямо в исходный объект:
+
+```ts
+const sameField = compileFormattersPipelineRuntime(field);
+
+sameField === field; // true
+```
+
+Это намеренная мутация construction-stage. Вызывайте функцию до помещения полей в readonly context, memoized snapshot или cache. Не вызывайте её на замороженном объекте и не воспринимайте как чистый clone-helper.
+
+Если pipeline невалиден, executor удаляется, и дальнейшее отображение использует стандартный typed fallback. Поэтому для диагностики обязательно валидируйте пользовательский конфиг отдельно: runtime деградирует безопасно и не возвращает подробные ошибки.
+
+### `compileFormattersPipelineRuntimeFields(fieldsById)`
+
+```ts
+const runtimeFields = compileFormattersPipelineRuntimeFields(fieldsById);
+```
+
+Возвращает новую record-карту, пропускает `undefined`, но сами поля не копирует: каждое исходное поле компилируется с описанной выше мутацией.
+
+### `formatPipelineDisplayValue(args)`
+
+```ts
+const display = formatPipelineDisplayValue({
+	field: runtimeFields.amount,
+	rawValue: row.amount,
+	rowData: row,
+	rowKind: "plain",
+	rowLevel: 0,
+	groupingIds: []
+});
+```
+
+Результат содержит:
+
+```ts
+type FormattersPipelineDisplayValue = {
+	value: unknown;
+	state: State;
+	icon?: "information" | "success" | "warning" | "error";
+	showIcon: boolean;
+	showValue: boolean;
+	iconPosition: "left" | "right";
+	overflowTooltip?: boolean;
+};
+```
+
+Порядок верхнеуровневого runtime:
+
+```text
+rawValue
+  ↓ table formula, если задана
+  ↓ formatter pipeline, если скомпилирован
+  ↓ typed fallback, если pipeline сам не форматировал тип
+  ↓ purelyDerived / emptyWhenZero post-processing
+display result
+```
+
+Если formula завершилась ошибкой:
+
+- `purelyDerived: true` даёт пустое отображение;
+- иначе используется исходный `rawValue`.
+
+`emptyWhenZero` проверяет source value после table formula, а не позднюю подмену `rowBasedOverride`. Оно очищает только `display.value`; state и настройки иконки сохраняются.
+
+Если `field` не передан, `rawValue` безопасно преобразуется в строку с состоянием `none`.
+
+## Зависимости полей
+
+### `collectFormattersPipelineDependencyIds(config)`
+
+Возвращает уникальные непустые зависимости `rowBasedOverride` в порядке первого появления:
+
+- `fieldKey` из field-режима;
+- каждый `dependencyId` из formula-режима.
+
+Для невалидного pipeline возвращается пустой массив.
+
+### `collectRuntimeFieldDependencyIds(fieldIds, fieldsById)`
+
+Дополнительно учитывает `cellRenderer.bindings` и разделяет найденные id:
+
+```ts
+const dependencies = collectRuntimeFieldDependencyIds(visibleIds, fieldsById);
+
+dependencies.requiredColumnIds; // существующие поля, которые нужны runtime
+dependencies.missingColumnIds; // ссылки на неизвестные поля
+```
+
+Используйте результат при построении серверного select/query, иначе formatter может получить неполную строку.
+
+## Клонирование и новые id
+
+### `cloneFormattersPipelineConfig(config)`
+
+Создаёт независимые копии plan, graph, positions, edges, массивов dependencies, threshold definitions, states, entries, icon и viewport. `undefined` остаётся `undefined`.
+
+Функция только клонирует: она не валидирует и не нормализует значения.
+
+Более узкие helpers:
+
+- `cloneTypedValueFormatConfig`;
+- `cloneNormalizeLeadingZerosConfig`;
+- `cloneRowBasedOverrideConfig`;
+- `cloneResolveValueStateConfig`;
+- `cloneFormatterPipelinePlanStep`;
+- `cloneFormatterPipelinePlanStepToNode`.
+
+### `rekeyFormattersPipelineConfig(config, idFactory?)`
+
+Создаёт копию с новыми техническими id пользовательских formatter-узлов, plan steps и edges. `source` и `sink` сохраняют исходные id как служебные якоря.
+
+По умолчанию id создаёт `uuidv4`. В тесте можно передать детерминированную фабрику:
+
+```ts
+let id = 0;
+const copy = rekeyFormattersPipelineConfig(config, () => `new-${++id}`);
+```
+
+Если новый graph валиден, plan перестраивается из него. Иначе переиздаётся существующий plan.
+
+## Каталог шагов
+
+```ts
+const definitions = getFormattersPipelineDefinitions();
+const typed = getFormattersPipelineDefinitionById("typedValueFormat");
+```
+
+Каталог содержит `id`, русское `name` и `description` для четырёх поддерживаемых типов. Он удобен для редактора, но не заменяет конфигурационные типы каждого шага.
+
+## `formatTypedCellValue`
+
+Низкоуровневая функция форматирует одно значение по `{ role, type }` и optional typed config. Её можно применять без полного pipeline:
+
+```ts
+const text = formatTypedCellValue(1234.5, { role: "Data", type: "Edm.Decimal" }, { numberPresetName: "decimal-2" });
+```
+
+Для обычной таблицы используйте `formatPipelineDisplayValue`, чтобы не пропустить formulas, states и post-processing.
+
+## Частые ошибки
+
+### Компилировать pipeline для каждой ячейки
+
+Компиляция валидирует конфиг, разрешает presets/formulas и создаёт resolvers. Выполняйте её один раз при построении набора полей, а не в цикле рендера строк.
+
+### Считать runtime validation UI-диагностикой
+
+`compileFormattersPipelineRuntime` молча удаляет executor невалидного pipeline и включает fallback. Сначала вызовите validator и покажите `errors` пользователю редактора.
+
+### Забыть row-based реестр
+
+Formula-режим не скомпилируется, пока host не вызвал `configureRowBasedFormatterRegistry`.
+
+### Вычислять state после превращения числа в строку
+
+Если typed formatter выполнен раньше state, резолвер увидит локализованную строку. Validator запрещает этот порядок; придерживайтесь рекомендуемой последовательности.
+
+### Мутировать поле после публикации snapshot
+
+Runtime compiler изменяет объект поля. Компилируйте до заморозки и передачи потребителям.
+
+### Считать graph произвольным workflow
+
+Ветвления, циклы и несколько независимых цепочек не поддерживаются. Graph — редактируемое представление строго линейного pipeline.
+
+## Полная карта публичного API
+
+| Семейство      | API                                                                                                        |
+| -------------- | ---------------------------------------------------------------------------------------------------------- |
+| Исполнение     | `compileFormattersPipelineExecutor`, `formatTypedCellValue`                                                |
+| Runtime полей  | `compileFormattersPipelineRuntime`, `compileFormattersPipelineRuntimeFields`, `formatPipelineDisplayValue` |
+| Валидация      | `validateFormattersPipelineConfig`, `validateFormattersPipelinePlan`, `validateFormattersPipelineGraph`    |
+| Внешние данные | `normalizeFormattersPipelineConfig`                                                                        |
+| Зависимости    | `collectFormattersPipelineDependencyIds`, `collectRuntimeFieldDependencyIds`                               |
+| Клонирование   | `cloneFormattersPipelineConfig` и узкие clone helpers                                                      |
+| Переиздание id | `rekeyFormattersPipelineConfig`                                                                            |
+| Каталог        | `getFormattersPipelineDefinitions`, `getFormattersPipelineDefinitionById`                                  |
+
+### Каталог публичных типов
+
+Все типы импортируются из `@ryuzaki13/react-foundation-lib/formatters`.
+
+| Область             | Типы                                                                                                                                                                                                                                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Идентификаторы и UI | `FormattersPipelineFormatterId`, `FormattersPipelineIconPosition`, `FormattersPipelineValueIcon`, `FormattersPipelineValueStateIconSettings`                                                                                                                                                   |
+| Общий config        | `FormattersPipelineConfig`, `FormattersPipelineGraph`, `FormattersPipelinePlan`, `FormattersPipelineStep`                                                                                                                                                                                      |
+| Graph               | `FormattersPipelineNode`, `FormattersPipelineEdge`, `FormattersPipelineSourceNode`, `FormattersPipelineSinkNode`, `FormattersPipelineNormalizeLeadingZerosNode`, `FormattersPipelineRowBasedOverrideNode`, `FormattersPipelineResolveValueStateNode`, `FormattersPipelineTypedValueFormatNode` |
+| Plan steps          | `FormattersPipelineNormalizeLeadingZerosStep`, `FormattersPipelineRowBasedOverrideStep`, `FormattersPipelineResolveValueStateStep`, `FormattersPipelineTypedValueFormatStep`                                                                                                                   |
+| Leading zeros       | `FormattersPipelineNormalizeLeadingZerosConfig`                                                                                                                                                                                                                                                |
+| Row override        | `FormattersPipelineRowBasedOverrideConfig`, `FormattersPipelineRowBasedOverrideFieldConfig`, `FormattersPipelineRowBasedOverrideFormulaConfig`                                                                                                                                                 |
+| Value state         | `FormattersPipelineResolveValueStateConfig`, `FormattersPipelineValueStateResolverConfig`, `FormattersPipelineFixedValueStateConfig`, `FormattersPipelineThresholdValueStateConfig`                                                                                                            |
+| Typed formatting    | `FormattersPipelineTypedValueContext`, `FormattersPipelineTypedValueFormatConfig`                                                                                                                                                                                                              |
+| Execution           | `FormattersPipelineRowKind`, `FormattersPipelineExecutionContext`, `FormattersPipelineExecutionResult`, `FormattersPipelineExecutor`                                                                                                                                                           |
+| Runtime             | `FormattersPipelineRuntimeField`, `FormattersPipelineRuntimeFields`, `FormattersPipelineDisplayValue`, `FormatPipelineDisplayValueArgs`                                                                                                                                                        |
+| Dependencies        | `RuntimeDependencyField`, `RuntimeFieldDependenciesPlan`                                                                                                                                                                                                                                       |
+| Validation          | `FormattersPipelineValidationCode`, `FormattersPipelineValidationMessage`, `FormattersPipelineValidationResult`                                                                                                                                                                                |
+
+```ts
+import type {
+	FormattersPipelineConfig,
+	FormattersPipelineRuntimeField,
+	FormattersPipelineValidationResult
+} from "@ryuzaki13/react-foundation-lib/formatters";
+```
+
+## Связанная документация
+
+- [Обзор всего модуля `formatters`](../README.md)
+- [Row-based формулы и реестр](../rowBased/README.md)
+- [Value state](../valueState/README.md)
+- [Числовые форматтеры](../number/README.md)
+- [Даты](../date/README.md)
+- [Строковые форматтеры](../strings/README.md)

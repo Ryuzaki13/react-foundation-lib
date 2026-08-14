@@ -96,6 +96,8 @@ npm run pack:dry-run
 
 ## Форматирование и значения
 
+Полный пользовательский путеводитель находится в [`formatters/README.md`](./src/formatters/README.md). Он объясняет общие правила, публичную границу единственного entrypoint `@ryuzaki13/react-foundation-lib/formatters` и ведёт к подробным документам каждой предметной области. Разделы ниже дают только краткую карту пакета и не заменяют API-документацию.
+
 ### `formatters/date`
 
 Файлы: [`formatters/date/index.ts`](./src/formatters/date/index.ts), подробный README: [`formatters/date/README.md`](./src/formatters/date/README.md).
@@ -137,7 +139,7 @@ npm run pack:dry-run
 | `formatNumber(value, presetOrName)`                                                                                                                  | Универсальный formatter по имени preset или объекту preset. |
 | `formatNumberAsInteger`, `formatNumberAsDecimal*`, `formatNumberAsCurrency`, `formatNumberAsPercent`, `formatNumberAsPrice`, `formatNumberAsTonnage` | Типовые UI-форматы.                                         |
 | `formatNumberAs*OrEmpty`                                                                                                                             | То же, но semantic zero отображается пустой строкой.        |
-| `formatCompactNumber`, `formatNumberAsChartAxis`, `formatNumberAsChartTooltip`, `formatNumberAsCurrencyChartAxis`                                    | Compact-формат для осей и tooltip графиков.                 |
+| Встроенные `compact-*` presets и собственный `NumberFormatPreset.compact`                                                                            | Compact-формат с `тыс`, `млн`, `млрд`, `трлн`.              |
 | `parseNumber`, `toFiniteNumber`, `toPositiveInteger`, `isPositiveValue`, `isZeroValue`                                                               | Чтение SAP-like чисел из `unknown`.                         |
 | `registerNumberPreset`, `getNumberPreset`, `getNumberPresetNames`, `resetNumberPresets`, `clearFormatCache`                                          | Реестр presets и кеш formatter-ов.                          |
 
@@ -153,7 +155,7 @@ npm run pack:dry-run
 
 ### `formatters/strings`
 
-Файлы: [`formatters/strings/index.ts`](./src/formatters/strings/index.ts).
+Файлы: [`formatters/strings/index.ts`](./src/formatters/strings/index.ts), подробный README: [`formatters/strings/README.md`](./src/formatters/strings/README.md).
 
 | API                                                  | Поведение                                                       |
 | ---------------------------------------------------- | --------------------------------------------------------------- |
@@ -183,7 +185,7 @@ npm run pack:dry-run
 
 ### `formatters/boolean`
 
-Файлы: [`formatters/boolean/index.ts`](./src/formatters/boolean/index.ts), тест: [`boolean.test.ts`](./src/formatters/boolean/boolean.test.ts).
+Файлы: [`formatters/boolean/index.ts`](./src/formatters/boolean/index.ts), подробный README: [`formatters/boolean/README.md`](./src/formatters/boolean/README.md), тест: [`boolean.test.ts`](./src/formatters/boolean/boolean.test.ts).
 
 | API                | Поведение                                                     |
 | ------------------ | ------------------------------------------------------------- |
@@ -211,7 +213,7 @@ npm run pack:dry-run
 
 ### `formatters/pipeline`
 
-Файлы: [`formatters/pipeline/index.ts`](./src/formatters/pipeline/index.ts).
+Файлы: [`formatters/pipeline/index.ts`](./src/formatters/pipeline/index.ts), подробный README: [`formatters/pipeline/README.md`](./src/formatters/pipeline/README.md).
 
 Pipeline — runtime форматирования ячейки. Он принимает сериализуемый `FormattersPipelineConfig` версии `1`, валидирует `plan` или строит линейный plan из `graph`, компилирует executor и возвращает display-result.
 
@@ -250,7 +252,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `formatters/rowBased`
 
-Файлы: [`formatters/rowBased/index.ts`](./src/formatters/rowBased/index.ts), тест: [`rowBased.test.ts`](./src/formatters/rowBased/rowBased.test.ts).
+Файлы: [`formatters/rowBased/index.ts`](./src/formatters/rowBased/index.ts), подробный README: [`formatters/rowBased/README.md`](./src/formatters/rowBased/README.md), тест: [`rowBased.test.ts`](./src/formatters/rowBased/rowBased.test.ts).
 
 Это маленький реестр формул для row-based override внутри pipeline.
 

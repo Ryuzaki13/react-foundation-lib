@@ -1,0 +1,465 @@
+# `@ryuzaki13/react-foundation-lib/formatters`
+
+`formatters` — большой модуль подготовки значений для интерфейса и transport-контрактов. Он работает с датами, числами, строками, boolean/ABAP-флагами, ФИО, российскими телефонами, ведущими нулями и семантическими состояниями. Для таблиц модуль также предоставляет конфигурируемый formatter pipeline и row-based формулы.
+
+Документация разделена по предметным областям, чтобы разработчику не приходилось читать один огромный файл. Этот README объясняет общие правила, помогает выбрать API и подробно описывает небольшие helpers верхнего уровня.
+
+## Установка
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+Пакет является ESM. Корневого импорта пакета нет. Все formatter functions и их типы импортируются из точечного entrypoint:
+
+```ts
+import { formatDateAsDate, formatNumberAsDecimal2, normalizeText } from "@ryuzaki13/react-foundation-lib/formatters";
+```
+
+Некоторые общие типы принадлежат `/types`:
+
+```ts
+import type { AbapBoolean, State } from "@ryuzaki13/react-foundation-lib/types";
+```
+
+Вложенные каталоги исходников не являются package subpaths:
+
+```ts
+// Неправильно: таких exports нет.
+// import { formatDate } from "@ryuzaki13/react-foundation-lib/formatters/date";
+// import { formatNumber } from "@ryuzaki13/react-foundation-lib/formatters/number";
+
+// Правильно.
+import { formatDate, formatNumber } from "@ryuzaki13/react-foundation-lib/formatters";
+```
+
+## Карта документации
+
+| Область              | README                                         | Что внутри                                                        |
+| -------------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
+| Boolean и ABAP-флаги | [boolean/README.md](./boolean/README.md)       | `parseAbapBoolean`, `parseBoolean`, `toAbapBoolean`, truthy/falsy |
+| Даты и диапазоны     | [date/README.md](./date/README.md)             | parsing, formatting, timezone, presets, calendar, education dates |
+| Числа                | [number/README.md](./number/README.md)         | presets, parsing SAP-like строк, compact, zero semantics          |
+| Строки               | [strings/README.md](./strings/README.md)       | trim, spaces, leading zeros, truncate, русские plural forms       |
+| Value state          | [valueState/README.md](./valueState/README.md) | fixed/threshold resolvers, registry, CSS presentation             |
+| Row-based формулы    | [rowBased/README.md](./rowBased/README.md)     | formula context, registry, dependencies и purity                  |
+| Formatter pipeline   | [pipeline/README.md](./pipeline/README.md)     | plan/graph, validation, compilation, runtime ячеек                |
+
+Все эти области остаются частью одного публичного `/formatters` entrypoint. Деление относится к документации и организации исходников, а не к способу импорта.
+
+## Быстрый выбор функции
+
+| Нужно                                       | Использовать                                              |
+| ------------------------------------------- | --------------------------------------------------------- |
+| Показать дату                               | `formatDateAsDate`, `formatDate`                          |
+| Прочитать календарную дату                  | `parseDate`, `parseDateValue`                             |
+| Прочитать абсолютный timestamp с timezone   | `parseDateTZ`, `parseDateValueTZ`                         |
+| Показать число                              | `formatNumberAs*`, `formatNumber`                         |
+| Прочитать строку `"1 234,5"` как число      | `toFiniteNumber` или `parseNumber`                        |
+| Нормализовать необязательный текст          | `normalizeText`                                           |
+| Схлопнуть пробелы в пользовательском тексте | `normalizeTextSpaces`                                     |
+| Выбрать `файл/файла/файлов`                 | `selectRussianPluralForm`, `formatRussianPlural`          |
+| Прочитать ABAP `X`                          | `parseAbapBoolean`                                        |
+| Сформировать ABAP boolean                   | `toAbapBoolean`                                           |
+| Нормализовать ФИО                           | `formatFullName`, `formatShortName`                       |
+| Показать российский телефон                 | `formatPhone`                                             |
+| Получить условно очищенный телефон          | `clearPhone`                                              |
+| Дополнить числовую строку нулями            | `normalizeLeadingZeros` или `normalizeLeadingZerosStrict` |
+| Вычислить visual state                      | `createFixedResolver`, `createThresholdResolver`          |
+| Форматировать ячейку по сериализуемой схеме | formatter pipeline                                        |
+
+## Общие правила
+
+### Formatter обычно не является validator-ом
+
+Функция может иметь fallback для невалидного значения, но это не делает данные валидными:
+
+```ts
+formatNumber("abc", "decimal"); // "0"
+formatDateAsDate("abc"); // ""
+```
+
+Если нужно сообщить пользователю об ошибке, сначала валидируйте или парсите вход, а затем форматируйте успешный результат.
+
+### `unknown` требует понимания coercion
+
+Некоторые функции принимают `unknown`, чтобы безопасно работать с внешними данными, но внутри используют разные правила:
+
+- `formatNumber` применяет `Number(value)`;
+- `toFiniteNumber` принимает только number или строку и понимает SAP-like separators;
+- `parseBoolean` использует whitelist для строк и truthy/falsy для остальных значений;
+- fixed value state сравнивает `String(value)`;
+- `normalizeText` принимает только настоящий string.
+
+Не переносите ожидания от одной функции на другую.
+
+### Нормализуйте на явной границе
+
+Функции меняют значения: обрезают пробелы, меняют регистр, удаляют нули или форматируют числа. Для формы обычно разумно хранить пользовательский draft буквально, а нормализацию выполнять при сохранении/восстановлении или другом явно выбранном переходе.
+
+### Глобальные реестры настраиваются один раз
+
+Date/number presets, value-state resolvers и row-based formulas хранятся на уровне загруженного модуля. Регистрируйте их в bootstrap-коде до построения formatter pipeline:
+
+```ts
+export function configureApplicationFormatters(): void {
+	registerNumberPreset({ name: "quantity-4", decimals: 4 });
+	registerDatePreset({ name: "document-date", pattern: "dd.MM.yyyy" });
+
+	configureRowBasedFormatterRegistry(createRowBasedFormatterRegistry(rowBasedDefinitions));
+}
+```
+
+Функции `reset*` предназначены в основном для тестов. Они могут инвалидировать runtime, который уже хранит ссылки или ids.
+
+### Компилируйте горячий runtime заранее
+
+Presets и formatter pipeline рассчитаны на множество ячеек. Не регистрируйте правила и не компилируйте pipeline в цикле рендера. Подготовьте стабильные объекты один раз, затем вызывайте готовый formatter/executor.
+
+## ФИО
+
+### `formatFullName(fullName)`
+
+```ts
+function formatFullName(fullName: string): string;
+```
+
+Функция пытается привести ФИО к виду `Фамилия Имя Отчество`:
+
+```ts
+formatFullName("  иВАНОВ   иВАН   иВАНОВИЧ  ");
+// "Иванов Иван Иванович"
+
+formatFullName("петров"); // "Петров"
+```
+
+Обработка:
+
+1. falsy string возвращает `""`;
+2. внешние пробелы удаляются;
+3. последовательности whitespace схлопываются;
+4. строка приводится к нижнему регистру;
+5. у каждой из первых трёх частей первая code unit переводится в верхний регистр.
+
+Функция предполагает порядок `фамилия имя отчество` и учитывает максимум три space-separated части. Всё после третьей части игнорируется.
+
+```ts
+formatFullName("Иванов Иван Иванович младший");
+// "Иванов Иван Иванович"
+```
+
+Она не знает сложные правила имён, дефисы, частицы, locale и правильный регистр вроде `МакДональд`. `toLowerCase` + первая заглавная может испортить нестандартное написание. Используйте только для данных с ожидаемой простой русской структурой.
+
+Инициалы обрабатываются минимально, без восстановления полного имени:
+
+```ts
+formatFullName("Иванов И.И."); // "Иванов И И."
+```
+
+Поэтому функция не является parser-ом формата `Фамилия И.О.` в полноценное ФИО.
+
+### `formatShortName(fullName)`
+
+```ts
+function formatShortName(fullName: string): string;
+```
+
+Создаёт вид `Фамилия И.О.` из первых трёх частей:
+
+```ts
+formatShortName("иванов иван иванович"); // "Иванов И.И."
+formatShortName("петров петр"); // "Петров П."
+formatShortName("сидоров"); // "Сидоров"
+```
+
+Требуется корректный порядок частей. Готовая строка с двумя инициалами в одном token не разбирается полноценно:
+
+```ts
+formatShortName("Иванов И.И."); // "Иванов И."
+```
+
+Пустой token после необычной пунктуации может привести к неожиданному результату; передавайте обычную строку ФИО, а не произвольный текст.
+
+### Когда не использовать helpers ФИО
+
+- для международных имён с другим порядком;
+- для юридически значимого написания;
+- для восстановления ФИО из инициалов;
+- когда четвёртая и последующие части значимы;
+- когда регистр должен сохраняться буквально.
+
+Для структурированных данных предпочтительнее хранить `surname`, `name`, `patronymic` отдельно и собирать нужное представление явно.
+
+## Российский телефон
+
+### `clearPhone(number)`
+
+```ts
+function clearPhone(number: string): string;
+```
+
+Функция:
+
+1. удаляет все нецифровые символы;
+2. оставляет первые 11 цифр;
+3. удаляет первый символ, если это `7` или `8`;
+4. добавляет префикс `+7`.
+
+```ts
+clearPhone("8 (912) 345-67-89"); // "+79123456789"
+clearPhone("+7 912 345-67-89 доб. 42"); // "+79123456789"
+```
+
+Название `clearPhone` не означает строгую очистку до валидного E.164. Функция всегда добавляет `+7` и не проверяет количество цифр:
+
+```ts
+clearPhone(""); // "+7"
+clearPhone("123"); // "+7123"
+```
+
+Если передать 11 цифр, которые начинаются не с `7` и не с `8`, все 11 останутся после добавленного `+7`, то есть результат не будет валидным российским номером.
+
+### `formatPhone(number)`
+
+Форматирует только результат, который строго совпал с `+7` и десятью цифрами:
+
+```ts
+formatPhone("8 (912) 345-67-89");
+// "+7 (912) 345-67-89"
+```
+
+Если после `clearPhone` не получился полный шаблон, возвращается исходная строка `number`, а не частично очищённое значение:
+
+```ts
+formatPhone("123"); // "123"
+```
+
+Это display helper, а не validator. Для формы телефона отдельно проверяйте контракт номера и храните явное transport-представление.
+
+## Ведущие нули
+
+В модуле есть две функции с различной семантикой.
+
+### `normalizeLeadingZeros(value, fixed?)`
+
+```ts
+function normalizeLeadingZeros(value: unknown, fixed?: number): unknown;
+```
+
+Сначала функция приводит значение к числу через `Number(value)`. Если результат не finite, исходное значение возвращается без изменений. Затем число снова превращается в строку, поэтому исходное форматирование теряется.
+
+При положительном `fixed` целая часть дополняется слева:
+
+```ts
+normalizeLeadingZeros("42", 5); // "00042"
+normalizeLeadingZeros(-12.3, 4); // "-0012.3"
+normalizeLeadingZeros("00042", 5); // "00042"
+```
+
+При отсутствии положительного `fixed` возвращается `String(Number(value))`:
+
+```ts
+normalizeLeadingZeros("00042"); // "42"
+normalizeLeadingZeros("00042", 0); // "42"
+normalizeLeadingZeros("00042", -1); // "42"
+```
+
+Это важное отличие от комментария «ничего не делает»: для parseable входа функция всё равно нормализует его через number/string.
+
+JavaScript coercion также означает:
+
+```ts
+normalizeLeadingZeros(null); // "0"
+normalizeLeadingZeros(""); // "0"
+normalizeLeadingZeros(false); // "0"
+normalizeLeadingZeros(true); // "1"
+normalizeLeadingZeros(undefined); // undefined
+```
+
+Используйте положительное целое `fixed`. Дробное, бесконечное или экстремально большое значение не является поддержанным пользовательским контрактом.
+
+### `normalizeLeadingZerosStrict(value, fixed?)`
+
+```ts
+function normalizeLeadingZerosStrict<T>(value: T, fixed?: number): T;
+```
+
+Эта версия предназначена для строк с SAP-like grouping/decimal separators и старается сохранить тип входа.
+
+Если `fixed` отсутствует, равен `0`, `NaN` или бесконечности, возвращается строго исходное значение:
+
+```ts
+const input = " 001 234,50 ";
+normalizeLeadingZerosStrict(input); // та же строка с пробелами
+```
+
+Для строк:
+
+- проверяется наличие хотя бы одной цифры;
+- число должно успешно читаться через `toFiniteNumber`;
+- внешние пробелы удаляются;
+- grouping spaces из целой части удаляются;
+- первый `.` или `,` и дробная часть сохраняются;
+- `fixed < 0` удаляет ведущие нули;
+- `fixed > 0` дополняет целую часть до длины.
+
+```ts
+normalizeLeadingZerosStrict(" 00012,50 ", -1); // "12,50"
+normalizeLeadingZerosStrict("12,50", 5); // "00012,50"
+normalizeLeadingZerosStrict("1 234,50", 6); // "001234,50"
+normalizeLeadingZerosStrict("not-a-number", 5); // исходная строка
+```
+
+Для number функция возвращает number. Поэтому видимые ведущие нули исчезают при обратном преобразовании:
+
+```ts
+normalizeLeadingZerosStrict(12, 5); // 12, не "00012"
+```
+
+Остальные типы (`null`, object, boolean и т. п.) возвращаются без изменений.
+
+Внутри `fixed` приводится к 32-bit integer через bitwise operation. Передавайте небольшое целое число; дробные и очень большие значения могут быть преобразованы неожиданно.
+
+### Как выбрать
+
+| Ситуация                                          | Выбор                                                   |
+| ------------------------------------------------- | ------------------------------------------------------- |
+| Простое значение, допустим `Number(value)`        | `normalizeLeadingZeros`                                 |
+| Нужно сохранить строковый `,` и fraction          | `normalizeLeadingZerosStrict`                           |
+| Есть grouping spaces                              | `normalizeLeadingZerosStrict`                           |
+| Number должен остаться number                     | `normalizeLeadingZerosStrict`                           |
+| Нужен гарантированный display с нулями для number | сначала явно `String`, затем strict или обычная функция |
+
+Не применяйте ведущие нули к бизнес-идентификаторам без уверенности: `00123` может быть отдельным значимым кодом, а не числом.
+
+## Boolean
+
+Три функции имеют намеренно разные контракты:
+
+| API                | Краткое правило                                                              |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `parseAbapBoolean` | `true` только для точного `"X"`                                              |
+| `parseBoolean`     | строки `true`, `x`, `1` без учёта регистра; прочие values через truthy/falsy |
+| `toAbapBoolean`    | `"X"` или `" "`; среди строк только точное `"0"` считается false             |
+
+Последнее правило особенно неочевидно: `toAbapBoolean("")` и `toAbapBoolean("false")` возвращают `"X"`. Полная таблица и безопасные recipes приведены в [boolean/README.md](./boolean/README.md).
+
+## Строки
+
+Строковое семейство включает:
+
+- `normalizeText*` и `toSafeString`;
+- `normalizeTextSpaces` и `stripInnerSpaces`;
+- `stripLeadingZeros` и `startsWithIgnoringZeros`;
+- `truncateText`;
+- русские plural forms.
+
+Точные различия пустой строки, fallback, whitespace и Unicode описаны в [strings/README.md](./strings/README.md).
+
+## Даты
+
+Date API различает floating calendar и instant timezone parsing, поддерживает ABAP/OData, Intl/pattern presets, ranges, periods и учебный календарь. Начните с [date/README.md](./date/README.md), особенно с раздела о timezone.
+
+## Числа
+
+Числовой API различает `formatNumber` с обычным `Number(value)` и SAP-like parser `toFiniteNumber`. Presets, compact formatting, `OrEmpty` и registry lifecycle подробно разобраны в [number/README.md](./number/README.md).
+
+## Value state
+
+Fixed resolver сопоставляет точные строковые keys, threshold resolver делит число на сегменты. Registry ids, boundary semantics и presentation helpers описаны в [valueState/README.md](./valueState/README.md).
+
+## Formatter pipeline
+
+Pipeline последовательно применяет `rowBasedOverride`, leading zeros, value state и typed formatting. Он поддерживает сериализуемые plan/graph configs, validation, dependency collection и construction-stage compilation.
+
+- [pipeline/README.md](./pipeline/README.md) — основной runtime и config API;
+- [rowBased/README.md](./rowBased/README.md) — host-defined formulas и их registry.
+
+## Пример единой конфигурации приложения
+
+```ts
+import {
+	configureRowBasedFormatterRegistry,
+	createRowBasedFormatterRegistry,
+	registerDatePreset,
+	registerNumberPreset,
+	type RowBasedFormatterDefinition
+} from "@ryuzaki13/react-foundation-lib/formatters";
+
+const rowBasedDefinitions: RowBasedFormatterDefinition[] = [
+	{
+		id: "completion-percent",
+		name: "Процент выполнения",
+		description: "actual / planned * 100; dependencies: planned, actual",
+		fn: (ctx) => {
+			const planned = ctx.num(0);
+			return planned === 0 ? undefined : (ctx.num(1) / planned) * 100;
+		}
+	}
+];
+
+export function configureApplicationFormatters(): void {
+	registerDatePreset({
+		name: "document-date",
+		pattern: "dd.MM.yyyy",
+		invalidFallback: "—"
+	});
+
+	registerNumberPreset({
+		name: "quantity-4",
+		decimals: 4
+	});
+
+	configureRowBasedFormatterRegistry(createRowBasedFormatterRegistry(rowBasedDefinitions));
+}
+```
+
+Вызовите bootstrap-функцию до чтения пользовательских formatter configs и компиляции runtime fields.
+
+## Тестирование formatter-кода
+
+Проверяйте не только «обычный» пример:
+
+- `null`, `undefined`, `""`, whitespace;
+- неправильный тип;
+- `NaN`, `Infinity`, отрицательный ноль;
+- границы threshold и date ranges;
+- timezone среды для date parsing;
+- NBSP/NNBSP в числах и строках;
+- неизвестный preset/formula id;
+- reset глобального реестра между тестами;
+- точный тип результата (`number`, `string`, `undefined`).
+
+Formatter output часто содержит locale-specific неразрывный пробел. В тесте лучше сравнивать точный ожидаемый Unicode-контракт либо явно нормализовать только тогда, когда это разрешено задачей.
+
+## Частые архитектурные ошибки
+
+### Deep import из исходников
+
+В consumer разрешён только опубликованный `/formatters`. Внутренние пути могут исчезнуть и не входят в npm `exports`.
+
+### Своя копия formatter-а в приложении
+
+Если правило является общим техническим и уже покрыто модулем, используйте существующий API. Если действительно не хватает общего контракта, расширяйте foundation package и его публичный `index.ts`, а не копируйте helper локально.
+
+### Смешивание display и transport
+
+`formatPhone` создаёт человекочитаемый телефон, `formatDateAsDateLong` — локализованную дату, `formatNumberAsDecimal2` — UI-число. Не отправляйте display strings в API без явного transport-контракта.
+
+### Невидимое подавление ошибок
+
+Некоторые formatters возвращают `""` или `"0"` для ошибки. Если источник ненадёжен, используйте parser/validator до formatter-а и решайте fallback явно.
+
+### Глобальная настройка во время рендера
+
+Preset и formula registries — application configuration, а не component state.
+
+## Публичная граница
+
+Фактическим источником истины является [`index.ts`](./index.ts). Документируются только exports, достижимые через `@ryuzaki13/react-foundation-lib/formatters`.
+
+Например, внутренний файл `formatTagAsHashtag.ts` сейчас не экспортирован из публичного index и поэтому не является поддерживаемым API. Наличие файла в repository не разрешает consumer делать private import.
+
+## Следующий шаг
+
+Если нужна одна простая функция, выберите строку в таблице быстрого выбора. Если настраивается таблица или сохраняемый пользовательский config, начните с [formatter pipeline](./pipeline/README.md) и затем откройте документы зависимых областей.

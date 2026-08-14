@@ -1,0 +1,482 @@
+# Row-based форматтеры
+
+`rowBased` — небольшой runtime-слой для формул, которые вычисляют отображаемое значение одной ячейки на основании других полей той же строки.
+
+Он используется шагом `rowBasedOverride` в [formatter pipeline](../pipeline/README.md). Сам модуль не содержит бизнес-формул: host-приложение создаёт их, собирает в реестр и один раз передаёт реестр библиотеке.
+
+Все публичные значения импортируются из общего entrypoint:
+
+```ts
+import {
+	configureRowBasedFormatterRegistry,
+	createRowBasedFormatterContext,
+	createRowBasedFormatterRegistry,
+	getRowBasedFormatterById,
+	getRowBasedFormatterList,
+	type RowBasedFormatterContext,
+	type RowBasedFormatterDefinition,
+	type RowBasedFormatterFn,
+	type RowBasedFormatterRegistry
+} from "@ryuzaki13/react-foundation-lib/formatters";
+```
+
+Отдельного импорта `@ryuzaki13/react-foundation-lib/formatters/rowBased` нет.
+
+## Что решает модуль
+
+Допустим, сервер вернул строку:
+
+```ts
+const rowData = {
+	plannedHours: "160",
+	actualHours: "144"
+};
+```
+
+Таблица должна показать процент выполнения. Формула может прочитать зависимости по индексам и вычислить значение:
+
+```ts
+const completionPercent: RowBasedFormatterDefinition = {
+	id: "completion-percent",
+	name: "Процент выполнения",
+	description: "Вычисляет actual / planned * 100",
+	fn: (ctx) => {
+		const planned = ctx.num(0);
+		const actual = ctx.num(1);
+
+		return planned === 0 ? undefined : (actual / planned) * 100;
+	}
+};
+```
+
+Индексы `0` и `1` связываются с конкретными полями в конфигурации pipeline:
+
+```ts
+const dependencyIds = ["plannedHours", "actualHours"];
+```
+
+Таким образом, одна и та же функция не привязана к конкретному имени поля. Порядок зависимостей является частью контракта формулы.
+
+## Жизненный цикл
+
+```text
+Host объявляет definitions
+        ↓
+createRowBasedFormatterRegistry(definitions)
+        ↓
+configureRowBasedFormatterRegistry(registry)
+        ↓
+валидация и компиляция formatter pipeline
+        ↓
+формула выполняется для конкретных строк
+```
+
+Конфигурируйте реестр на старте приложения, до первой валидации или компиляции pipeline. Уже скомпилированный executor хранит найденную функцию; замена глобального реестра не переписывает существующие executors.
+
+## Минимальная настройка
+
+### 1. Объявите формулы
+
+```ts
+import type { RowBasedFormatterDefinition } from "@ryuzaki13/react-foundation-lib/formatters";
+
+const definitions: RowBasedFormatterDefinition[] = [
+	{
+		id: "sum-two-fields",
+		name: "Сумма двух полей",
+		description: "Складывает две выбранные числовые зависимости",
+		fn: (ctx) => ctx.num(0) + ctx.num(1)
+	},
+	{
+		id: "first-non-empty",
+		name: "Первое заполненное значение",
+		description: "Использует первую зависимость, затем вторую, затем raw value",
+		fn: (ctx) => ctx.value(0) ?? ctx.value(1) ?? ctx.rawValue
+	}
+];
+```
+
+### 2. Создайте и установите реестр
+
+```ts
+import { configureRowBasedFormatterRegistry, createRowBasedFormatterRegistry } from "@ryuzaki13/react-foundation-lib/formatters";
+
+const registry = createRowBasedFormatterRegistry(definitions);
+
+configureRowBasedFormatterRegistry(registry);
+```
+
+Обычно это выполняется один раз в bootstrap-коде приложения.
+
+### 3. Сошлитесь на формулу из pipeline
+
+```ts
+import type { FormattersPipelineConfig } from "@ryuzaki13/react-foundation-lib/formatters";
+
+const formattersPipeline: FormattersPipelineConfig = {
+	version: 1,
+	plan: {
+		steps: [
+			{
+				id: "override-1",
+				type: "rowBasedOverride",
+				config: {
+					mode: "formula",
+					formulaId: "sum-two-fields",
+					dependencyIds: ["planned", "actual"],
+					fallbackToRaw: true
+				}
+			}
+		]
+	}
+};
+```
+
+## Контекст формулы
+
+```ts
+type RowBasedFormatterContext = {
+	rowData: Record<string, unknown>;
+	rawValue: unknown;
+	columnId: string;
+	key: (index: number) => string | undefined;
+	value: (index: number) => unknown;
+	num: (index: number) => number;
+};
+```
+
+### `ctx.key(index)`
+
+Возвращает имя зависимости по индексу:
+
+```ts
+// dependencyIds = ["planned", "actual"]
+ctx.key(0); // "planned"
+ctx.key(1); // "actual"
+ctx.key(2); // undefined
+```
+
+Индекс должен быть целым неотрицательным числом. `-1`, `1.5`, `NaN` и индекс за границами массива возвращают `undefined`.
+
+### `ctx.value(index)`
+
+Находит ключ через `ctx.key(index)` и возвращает `rowData[key]` без преобразования:
+
+```ts
+// rowData.actual === "144"
+ctx.value(1); // "144"
+```
+
+Если ключ отсутствует, пуст или выходит за границы, возвращается `undefined`.
+
+### `ctx.num(index)`
+
+Читает зависимость и преобразует её функцией `parseNumber`:
+
+```ts
+ctx.num(0); // 160
+ctx.num(1); // 144
+ctx.num(99); // 0
+```
+
+Невалидное, пустое или отсутствующее значение превращается в `0`. Это удобно для сумм, но опасно, если `0` и «данных нет» имеют разный бизнес-смысл. В таком случае сначала используйте `ctx.value(index)` и самостоятельно проверьте значение.
+
+### `ctx.rawValue`
+
+Исходное значение текущей ячейки до row-based подмены. Оно полезно как fallback:
+
+```ts
+fn: (ctx) => ctx.value(0) ?? ctx.rawValue;
+```
+
+### `ctx.rowData`
+
+Вся строка как `Record<string, unknown>`. Предпочитайте индексные методы `value` и `num`, когда поле объявлено зависимостью pipeline: тогда dependency collector сможет добавить его в запрос, а validator — проверить формулу.
+
+Прямой доступ к `rowData.someField` не отслеживается автоматически.
+
+### `ctx.columnId`
+
+Идентификатор форматируемой колонки. Позволяет общей формуле учитывать текущую колонку, но частые ветвления по `columnId` могут быть признаком того, что лучше создать несколько небольших формул.
+
+## `createRowBasedFormatterContext(args)`
+
+Создаёт контекст вручную. В обычном runtime это делает pipeline, но функция полезна для тестов или другого адаптера.
+
+```ts
+const context = createRowBasedFormatterContext({
+	rowData: { price: "12,5", count: "4" },
+	rawValue: undefined,
+	columnId: "total",
+	keys: ["price", "count"]
+});
+
+context.value(0); // "12,5"
+context.num(0); // 12.5
+context.num(1); // 4
+```
+
+Массив `keys` копируется при создании контекста. Последующее изменение исходного массива не меняет сопоставление индексов внутри уже созданного контекста.
+
+### Инструментирование
+
+Необязательное поле `instrumentation` позволяет отследить обращения к индексам:
+
+```ts
+const readIndexes: number[] = [];
+const invalidIndexes: number[] = [];
+
+const context = createRowBasedFormatterContext({
+	rowData: { amount: 10 },
+	rawValue: 10,
+	columnId: "amount",
+	keys: ["amount"],
+	instrumentation: {
+		onReadIndex: (index) => readIndexes.push(index),
+		onOutOfRangeIndex: (index) => invalidIndexes.push(index)
+	}
+});
+
+context.num(0);
+context.num(2);
+```
+
+`onReadIndex` вызывается только для целого неотрицательного индекса, в том числе если он уже вышел за длину `keys`. `onOutOfRangeIndex` вызывается для любого недопустимого индекса.
+
+Formatter pipeline использует этот механизм при валидации formula-режима.
+
+## Реестр формул
+
+### `createRowBasedFormatterRegistry(definitions)`
+
+```ts
+function createRowBasedFormatterRegistry(definitions: readonly RowBasedFormatterDefinition[]): RowBasedFormatterRegistry;
+```
+
+Для каждого definition функция:
+
+- обрезает пробелы вокруг `id`, `name` и `description`;
+- запрещает пустой `id`;
+- запрещает повторяющийся `id` после обрезки;
+- создаёт поверхностно замороженный definition;
+- сохраняет порядок входного массива в `registry.list`.
+
+```ts
+const registry = createRowBasedFormatterRegistry([
+	{
+		id: "  total  ",
+		name: "  Итого  ",
+		description: "  Сумма  ",
+		fn: (ctx) => ctx.num(0) + ctx.num(1)
+	}
+]);
+
+registry.list[0].id; // "total"
+registry.list[0].name; // "Итого"
+```
+
+Ошибочные определения приводят к исключению:
+
+```ts
+createRowBasedFormatterRegistry([{ id: " ", name: "", description: "", fn: () => 0 }]);
+// Error: Formula id ... не может быть пустым
+```
+
+```ts
+createRowBasedFormatterRegistry([
+	{ id: "sum", name: "A", description: "", fn: () => 0 },
+	{ id: " sum ", name: "B", description: "", fn: () => 0 }
+]);
+// Error: дублирующийся formulaId ...
+```
+
+Реестр и его список заморожены поверхностно. `byId` типизирован как `ReadonlyMap`; не приводите его обратно к изменяемому `Map` и не мутируйте внутренности вручную.
+
+### `configureRowBasedFormatterRegistry(registry)`
+
+Заменяет текущий глобальный реестр модуля:
+
+```ts
+configureRowBasedFormatterRegistry(registry);
+```
+
+Функция ничего не возвращает. Это глобальная конфигурация в пределах загруженного экземпляра модуля, поэтому:
+
+- вызывайте её централизованно;
+- завершайте конфигурацию до компиляции pipeline;
+- не переключайте реестры для отдельных компонентов во время рендера;
+- в тестах явно устанавливайте нужный реестр в `beforeEach`, если тесты влияют друг на друга.
+
+### `getRowBasedFormatterList()`
+
+Возвращает список definitions в порядке регистрации. Подходит для select/listbox редактора pipeline:
+
+```ts
+const options = getRowBasedFormatterList().map((definition) => ({
+	value: definition.id,
+	label: definition.name
+}));
+```
+
+Возвращается сам read-only список реестра, а не новая копия.
+
+### `getRowBasedFormatterById(formulaId)`
+
+Обрезает пробелы вокруг id и возвращает definition либо `undefined`:
+
+```ts
+getRowBasedFormatterById(" sum-two-fields "); // definition
+getRowBasedFormatterById(""); // undefined
+getRowBasedFormatterById(undefined); // undefined
+getRowBasedFormatterById("unknown"); // undefined
+```
+
+## Как formula-режим работает в pipeline
+
+Для шага:
+
+```ts
+{
+	id: "override",
+	type: "rowBasedOverride",
+	config: {
+		mode: "formula",
+		formulaId: "completion-percent",
+		dependencyIds: ["plannedHours", "actualHours"],
+		fallbackToRaw: true
+	}
+}
+```
+
+runtime выполняет следующие действия:
+
+1. находит formula definition по `formulaId`;
+2. создаёт контекст, где `dependencyIds` становятся индексными `keys`;
+3. передаёт текущее значение pipeline как `rawValue`;
+4. вызывает `definition.fn(context)`;
+5. использует результат как следующее значение pipeline.
+
+Если функция вернула `null` или `undefined`:
+
+- при `fallbackToRaw: true` или без этого поля сохраняется предыдущее значение;
+- при `fallbackToRaw: false` следующим значением становится `undefined`.
+
+Если функция выбросила ошибку, действует та же политика fallback.
+
+В отличие от field-режима, formula-режим выполняется и для totals-строк. Подробности описаны в [README pipeline](../pipeline/README.md#шаг-rowbasedoverride).
+
+## Требования к функциям
+
+### Формула должна быть чистой
+
+Pipeline validator запускает формулу на синтетических данных как минимум два раза — с положительными и отрицательными зависимостями. Поэтому функция не должна:
+
+- отправлять запросы;
+- изменять store;
+- писать в DOM;
+- менять `rowData`;
+- зависеть от случайности или текущего времени;
+- накапливать внешнее состояние.
+
+Хорошая формула вычисляет и возвращает результат только из `ctx`:
+
+```ts
+const safeFormula: RowBasedFormatterFn = (ctx) => {
+	const total = ctx.num(0);
+	const completed = ctx.num(1);
+
+	return total > 0 ? completed / total : undefined;
+};
+```
+
+### Формула должна быть синхронной
+
+Тип результата — `unknown`, но runtime не ожидает `Promise`. `async`-функция вернёт Promise как отображаемое значение и не выполнит ожидаемое вычисление.
+
+### Обрабатывайте деление на ноль и отсутствующие данные
+
+`ctx.num()` возвращает `0` для невалидных значений. Явно решите, что означает ноль в вашей формуле.
+
+```ts
+fn: (ctx) => {
+	const denominatorRaw = ctx.value(0);
+	if (denominatorRaw == null || denominatorRaw === "") return undefined;
+
+	const denominator = ctx.num(0);
+	return denominator === 0 ? undefined : ctx.num(1) / denominator;
+};
+```
+
+## Тестирование своей формулы
+
+Формулу удобно тестировать без таблицы:
+
+```ts
+import { createRowBasedFormatterContext } from "@ryuzaki13/react-foundation-lib/formatters";
+
+const context = createRowBasedFormatterContext({
+	rowData: {
+		plannedHours: "160",
+		actualHours: "144"
+	},
+	rawValue: undefined,
+	columnId: "completion",
+	keys: ["plannedHours", "actualHours"]
+});
+
+const result = completionPercent.fn(context);
+// result === 90
+```
+
+Проверяйте как минимум:
+
+- обычные значения;
+- `null`, `undefined` и пустые строки;
+- нули и отрицательные числа;
+- ошибочный или отсутствующий dependency;
+- порядок `dependencyIds`;
+- fallback к `rawValue`.
+
+## Частые ошибки
+
+### Настроить реестр после компиляции pipeline
+
+Validator не найдёт `formulaId`, а executor может быть скомпилирован как невалидный. Конфигурируйте реестр на старте приложения.
+
+### Поменять порядок зависимостей
+
+```ts
+// Формула ожидает [planned, actual]
+fn: (ctx) => ctx.num(1) / ctx.num(0);
+
+// Но конфиг передал [actual, planned] — результат изменится.
+dependencyIds: ["actual", "planned"];
+```
+
+Документируйте ожидаемый порядок в `description` и тестах.
+
+### Читать undeclared поле через `rowData`
+
+Dependency collector видит `dependencyIds`, но не анализирует тело JavaScript-функции. Поле, прочитанное только через `ctx.rowData.hiddenField`, может не попасть в серверный query.
+
+### Делать формулу с побочным эффектом
+
+Она может выполниться при валидации, а затем много раз для строк таблицы. Побочный эффект станет непредсказуемым и дорогим.
+
+## API-справка
+
+| API                                  | Назначение                          | Результат / ошибка                       |
+| ------------------------------------ | ----------------------------------- | ---------------------------------------- |
+| `createRowBasedFormatterContext`     | Создать индексный контекст строки   | `RowBasedFormatterContext`               |
+| `createRowBasedFormatterRegistry`    | Нормализовать и собрать definitions | реестр; `Error` при пустом/повторном id  |
+| `configureRowBasedFormatterRegistry` | Установить глобальный реестр        | `void`                                   |
+| `getRowBasedFormatterList`           | Получить список для UI/диагностики  | `readonly RowBasedFormatterDefinition[]` |
+| `getRowBasedFormatterById`           | Найти definition по id              | definition или `undefined`               |
+
+Публичные TypeScript-типы: `RowBasedFormatterContext`, `RowBasedFormatterContextInstrumentation`, `RowBasedFormatterFn`, `RowBasedFormatterDefinition`, `RowBasedFormatterRegistry`.
+
+## Связанная документация
+
+- [Обзор `formatters`](../README.md)
+- [Formatter pipeline](../pipeline/README.md)
+- [Числовые форматтеры и `parseNumber`](../number/README.md)

@@ -267,7 +267,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `formulas`
 
-Файлы: [`formulas/index.ts`](./src/formulas/index.ts), README: [`formulas/README.md`](./src/formulas/README.md).
+Файлы: [`formulas/index.ts`](./src/formulas/index.ts), подробный README: [`formulas/README.md`](./src/formulas/README.md).
 
 Инфраструктура реестра клиентских формул таблицы для calculated/clientOnly measure-колонок. Definitions принадлежат host-приложению и не входят в foundation-пакет.
 

@@ -1,3 +1,7 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/API/Formatters/Обзор" />
+
 # `@ryuzaki13/react-foundation-lib/formatters`
 
 `formatters` — большой модуль подготовки значений для интерфейса и transport-контрактов. Он работает с датами, числами, строками, boolean/ABAP-флагами, ФИО, российскими телефонами, ведущими нулями и семантическими состояниями. Для таблиц модуль также предоставляет конфигурируемый formatter pipeline и row-based формулы.
@@ -35,15 +39,15 @@ import { formatDate, formatNumber } from "@ryuzaki13/react-foundation-lib/format
 
 ## Карта документации
 
-| Область              | README                                         | Что внутри                                                        |
-| -------------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
-| Boolean и ABAP-флаги | [boolean/README.md](./boolean/README.md)       | `parseAbapBoolean`, `parseBoolean`, `toAbapBoolean`, truthy/falsy |
-| Даты и диапазоны     | [date/README.md](./date/README.md)             | parsing, formatting, timezone, presets, calendar, education dates |
-| Числа                | [number/README.md](./number/README.md)         | presets, parsing SAP-like строк, compact, zero semantics          |
-| Строки               | [strings/README.md](./strings/README.md)       | trim, spaces, leading zeros, truncate, русские plural forms       |
-| Value state          | [valueState/README.md](./valueState/README.md) | fixed/threshold resolvers, registry, CSS presentation             |
-| Row-based формулы    | [rowBased/README.md](./rowBased/README.md)     | formula context, registry, dependencies и purity                  |
-| Formatter pipeline   | [pipeline/README.md](./pipeline/README.md)     | plan/graph, validation, compilation, runtime ячеек                |
+| Область              | README                                           | Что внутри                                                        |
+| -------------------- | ------------------------------------------------ | ----------------------------------------------------------------- |
+| Boolean и ABAP-флаги | [boolean/README.mdx](./boolean/README.mdx)       | `parseAbapBoolean`, `parseBoolean`, `toAbapBoolean`, truthy/falsy |
+| Даты и диапазоны     | [date/README.mdx](./date/README.mdx)             | parsing, formatting, timezone, presets, calendar, education dates |
+| Числа                | [number/README.mdx](./number/README.mdx)         | presets, parsing SAP-like строк, compact, zero semantics          |
+| Строки               | [strings/README.mdx](./strings/README.mdx)       | trim, spaces, leading zeros, truncate, русские plural forms       |
+| Value state          | [valueState/README.mdx](./valueState/README.mdx) | fixed/threshold resolvers, registry, CSS presentation             |
+| Row-based формулы    | [rowBased/README.mdx](./rowBased/README.mdx)     | formula context, registry, dependencies и purity                  |
+| Formatter pipeline   | [pipeline/README.mdx](./pipeline/README.mdx)     | plan/graph, validation, compilation, runtime ячеек                |
 
 Все эти области остаются частью одного публичного `/formatters` entrypoint. Деление относится к документации и организации исходников, а не к способу импорта.
 
@@ -342,7 +346,7 @@ normalizeLeadingZerosStrict(12, 5); // 12, не "00012"
 | `parseBoolean`     | строки `true`, `x`, `1` без учёта регистра; прочие values через truthy/falsy |
 | `toAbapBoolean`    | `"X"` или `" "`; среди строк только точное `"0"` считается false             |
 
-Последнее правило особенно неочевидно: `toAbapBoolean("")` и `toAbapBoolean("false")` возвращают `"X"`. Полная таблица и безопасные recipes приведены в [boolean/README.md](./boolean/README.md).
+Последнее правило особенно неочевидно: `toAbapBoolean("")` и `toAbapBoolean("false")` возвращают `"X"`. Полная таблица и безопасные recipes приведены в [boolean/README.mdx](./boolean/README.mdx).
 
 ## Строки
 
@@ -354,26 +358,26 @@ normalizeLeadingZerosStrict(12, 5); // 12, не "00012"
 - `truncateText`;
 - русские plural forms.
 
-Точные различия пустой строки, fallback, whitespace и Unicode описаны в [strings/README.md](./strings/README.md).
+Точные различия пустой строки, fallback, whitespace и Unicode описаны в [strings/README.mdx](./strings/README.mdx).
 
 ## Даты
 
-Date API различает floating calendar и instant timezone parsing, поддерживает ABAP/OData, Intl/pattern presets, ranges, periods и учебный календарь. Начните с [date/README.md](./date/README.md), особенно с раздела о timezone.
+Date API различает floating calendar и instant timezone parsing, поддерживает ABAP/OData, Intl/pattern presets, ranges, periods и учебный календарь. Начните с [date/README.mdx](./date/README.mdx), особенно с раздела о timezone.
 
 ## Числа
 
-Числовой API различает `formatNumber` с обычным `Number(value)` и SAP-like parser `toFiniteNumber`. Presets, compact formatting, `OrEmpty` и registry lifecycle подробно разобраны в [number/README.md](./number/README.md).
+Числовой API различает `formatNumber` с обычным `Number(value)` и SAP-like parser `toFiniteNumber`. Presets, compact formatting, `OrEmpty` и registry lifecycle подробно разобраны в [number/README.mdx](./number/README.mdx).
 
 ## Value state
 
-Fixed resolver сопоставляет точные строковые keys, threshold resolver делит число на сегменты. Registry ids, boundary semantics и presentation helpers описаны в [valueState/README.md](./valueState/README.md).
+Fixed resolver сопоставляет точные строковые keys, threshold resolver делит число на сегменты. Registry ids, boundary semantics и presentation helpers описаны в [valueState/README.mdx](./valueState/README.mdx).
 
 ## Formatter pipeline
 
 Pipeline последовательно применяет `rowBasedOverride`, leading zeros, value state и typed formatting. Он поддерживает сериализуемые plan/graph configs, validation, dependency collection и construction-stage compilation.
 
-- [pipeline/README.md](./pipeline/README.md) — основной runtime и config API;
-- [rowBased/README.md](./rowBased/README.md) — host-defined formulas и их registry.
+- [pipeline/README.mdx](./pipeline/README.mdx) — основной runtime и config API;
+- [rowBased/README.mdx](./rowBased/README.mdx) — host-defined formulas и их registry.
 
 ## Пример единой конфигурации приложения
 
@@ -462,4 +466,4 @@ Preset и formula registries — application configuration, а не component st
 
 ## Следующий шаг
 
-Если нужна одна простая функция, выберите строку в таблице быстрого выбора. Если настраивается таблица или сохраняемый пользовательский config, начните с [formatter pipeline](./pipeline/README.md) и затем откройте документы зависимых областей.
+Если нужна одна простая функция, выберите строку в таблице быстрого выбора. Если настраивается таблица или сохраняемый пользовательский config, начните с [formatter pipeline](./pipeline/README.mdx) и затем откройте документы зависимых областей.

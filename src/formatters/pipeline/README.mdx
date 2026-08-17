@@ -1,3 +1,7 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/API/Formatters/Pipeline" />
+
 # Formatter pipeline
 
 Formatter pipeline — конфигурируемая последовательность преобразований значения ячейки. Она умеет:
@@ -173,7 +177,7 @@ Validator запрещает только один критичный вариа
 
 `dependencyIds` становятся индексами контекста формулы: `ctx.num(0)` читает `planned`, `ctx.num(1)` — `actual`. Если формула вернула `null`/`undefined` или выбросила ошибку, применяется политика `fallbackToRaw`.
 
-До валидации и компиляции нужно настроить реестр. Подробный контракт описан в [rowBased/README.md](../rowBased/README.md).
+До валидации и компиляции нужно настроить реестр. Подробный контракт описан в [rowBased/README.mdx](../rowBased/README.mdx).
 
 ## Шаг `normalizeLeadingZeros`
 
@@ -187,7 +191,7 @@ Validator запрещает только один критичный вариа
 
 Вызывает `normalizeLeadingZeros(currentValue, fixed)`. Например, числовая строка `"42"` при `fixed: 6` превращается в `"000042"`.
 
-Передавайте положительное целое `fixed`. Structural validator проверяет только тип `number`, а сама функция имеет широкую JavaScript-семантику преобразования. Все ограничения разобраны в [обзоре formatters](../README.md#ведущие-нули).
+Передавайте положительное целое `fixed`. Structural validator проверяет только тип `number`, а сама функция имеет широкую JavaScript-семантику преобразования. Все ограничения разобраны в [обзоре formatters](../README.mdx#ведущие-нули).
 
 ## Шаг `resolveValueState`
 
@@ -238,7 +242,7 @@ Fixed-сопоставление выполняется по точному `Str
 }
 ```
 
-Для `N` порогов требуется ровно `N + 1` состояний. Подробности границ `lower`/`upper` приведены в [valueState/README.md](../valueState/README.md).
+Для `N` порогов требуется ровно `N + 1` состояний. Подробности границ `lower`/`upper` приведены в [valueState/README.mdx](../valueState/README.mdx).
 
 ### Настройки иконки
 
@@ -617,9 +621,9 @@ import type {
 
 ## Связанная документация
 
-- [Обзор всего модуля `formatters`](../README.md)
-- [Row-based формулы и реестр](../rowBased/README.md)
-- [Value state](../valueState/README.md)
-- [Числовые форматтеры](../number/README.md)
-- [Даты](../date/README.md)
-- [Строковые форматтеры](../strings/README.md)
+- [Обзор всего модуля `formatters`](../README.mdx)
+- [Row-based формулы и реестр](../rowBased/README.mdx)
+- [Value state](../valueState/README.mdx)
+- [Числовые форматтеры](../number/README.mdx)
+- [Даты](../date/README.mdx)
+- [Строковые форматтеры](../strings/README.mdx)

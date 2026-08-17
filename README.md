@@ -80,7 +80,7 @@ npm run pack:dry-run
 | Числа, проценты, валютные числа, compact axis labels   | [`formatters/number`](./src/formatters/number/index.ts), тесты: [`formatNumber.test.ts`](./src/formatters/number/formatNumber.test.ts), [`parseNumber.test.ts`](./src/formatters/number/parseNumber.test.ts)                    |
 | Строки, ФИО, телефон, leading zeros, SAP boolean       | [`formatters`](./src/formatters/index.ts), тесты: [`common.test.ts`](./src/formatters/common.test.ts), [`boolean.test.ts`](./src/formatters/boolean/boolean.test.ts), [`strings.test.ts`](./src/formatters/strings/strings.test.ts) |
 | Runtime-форматирование ячеек таблицы                   | [`formatters/pipeline`](./src/formatters/pipeline/index.ts), тесты в [`formatters/pipeline`](./src/formatters/pipeline)                                                                                                     |
-| Группировка, дедупликация, порядок и нормализация массивов | [`array`](./src/array/index.ts), подробный README: [`array/README.md`](./src/array/README.md)                                                                                                                          |
+| Группировка, дедупликация, порядок и нормализация массивов | [`array`](./src/array/index.ts), подробный README: [`array/README.mdx`](./src/array/README.mdx)                                                                                                                          |
 | OData metadata, filters, sorts, path, values           | [`odata-service`](./src/odata-service/index.ts), тесты в [`odata-service`](./src/odata-service)                                                                                                                             |
 | Справочные code/text пары OData collections            | [`odata`](./src/odata/index.ts), тест: [`odata.test.ts`](./src/odata/odata.test.ts)                                                                                                                                         |
 | TanStack Table helpers                                 | [`table`](./src/table/index.ts), тесты в [`table`](./src/table)                                                                                                                                                             |
@@ -96,11 +96,11 @@ npm run pack:dry-run
 
 ## Форматирование и значения
 
-Полный пользовательский путеводитель находится в [`formatters/README.md`](./src/formatters/README.md). Он объясняет общие правила, публичную границу единственного entrypoint `@ryuzaki13/react-foundation-lib/formatters` и ведёт к подробным документам каждой предметной области. Разделы ниже дают только краткую карту пакета и не заменяют API-документацию.
+Полный пользовательский путеводитель находится в [`formatters/README.mdx`](./src/formatters/README.mdx). Он объясняет общие правила, публичную границу единственного entrypoint `@ryuzaki13/react-foundation-lib/formatters` и ведёт к подробным документам каждой предметной области. Разделы ниже дают только краткую карту пакета и не заменяют API-документацию.
 
 ### `formatters/date`
 
-Файлы: [`formatters/date/index.ts`](./src/formatters/date/index.ts), подробный README: [`formatters/date/README.md`](./src/formatters/date/README.md).
+Файлы: [`formatters/date/index.ts`](./src/formatters/date/index.ts), подробный README: [`formatters/date/README.mdx`](./src/formatters/date/README.mdx).
 
 Главная идея: модуль работает в плавающей календарной семантике. ISO/OData строки с timezone не пересчитываются в timezone клиента, а сохраняют видимые компоненты даты и времени.
 
@@ -128,7 +128,7 @@ npm run pack:dry-run
 
 ### `formatters/number`
 
-Файлы: [`formatters/number/index.ts`](./src/formatters/number/index.ts), README: [`formatters/number/README.md`](./src/formatters/number/README.md).
+Файлы: [`formatters/number/index.ts`](./src/formatters/number/index.ts), README: [`formatters/number/README.mdx`](./src/formatters/number/README.mdx).
 
 Модуль форматирует числа через presets и кеширует `Intl.NumberFormat`. Это стандартный путь для таблиц, графиков и SAP-like строк.
 
@@ -155,7 +155,7 @@ npm run pack:dry-run
 
 ### `formatters/strings`
 
-Файлы: [`formatters/strings/index.ts`](./src/formatters/strings/index.ts), подробный README: [`formatters/strings/README.md`](./src/formatters/strings/README.md).
+Файлы: [`formatters/strings/index.ts`](./src/formatters/strings/index.ts), подробный README: [`formatters/strings/README.mdx`](./src/formatters/strings/README.mdx).
 
 | API                                                  | Поведение                                                       |
 | ---------------------------------------------------- | --------------------------------------------------------------- |
@@ -185,7 +185,7 @@ npm run pack:dry-run
 
 ### `formatters/boolean`
 
-Файлы: [`formatters/boolean/index.ts`](./src/formatters/boolean/index.ts), подробный README: [`formatters/boolean/README.md`](./src/formatters/boolean/README.md), тест: [`boolean.test.ts`](./src/formatters/boolean/boolean.test.ts).
+Файлы: [`formatters/boolean/index.ts`](./src/formatters/boolean/index.ts), подробный README: [`formatters/boolean/README.mdx`](./src/formatters/boolean/README.mdx), тест: [`boolean.test.ts`](./src/formatters/boolean/boolean.test.ts).
 
 | API                | Поведение                                                     |
 | ------------------ | ------------------------------------------------------------- |
@@ -195,7 +195,7 @@ npm run pack:dry-run
 
 ### `formatters/valueState`
 
-Файлы: [`formatters/valueState/index.ts`](./src/formatters/valueState/index.ts), README: [`formatters/valueState/README.md`](./src/formatters/valueState/README.md).
+Файлы: [`formatters/valueState/index.ts`](./src/formatters/valueState/index.ts), README: [`formatters/valueState/README.mdx`](./src/formatters/valueState/README.mdx).
 
 Модуль вычисляет визуальный `State` (`none`, `information`, `success`, `warning`, `error`) по значению.
 
@@ -213,7 +213,7 @@ npm run pack:dry-run
 
 ### `formatters/pipeline`
 
-Файлы: [`formatters/pipeline/index.ts`](./src/formatters/pipeline/index.ts), подробный README: [`formatters/pipeline/README.md`](./src/formatters/pipeline/README.md).
+Файлы: [`formatters/pipeline/index.ts`](./src/formatters/pipeline/index.ts), подробный README: [`formatters/pipeline/README.mdx`](./src/formatters/pipeline/README.mdx).
 
 Pipeline — runtime форматирования ячейки. Он принимает сериализуемый `FormattersPipelineConfig` версии `1`, валидирует `plan` или строит линейный plan из `graph`, компилирует executor и возвращает display-result.
 
@@ -252,7 +252,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `formatters/rowBased`
 
-Файлы: [`formatters/rowBased/index.ts`](./src/formatters/rowBased/index.ts), подробный README: [`formatters/rowBased/README.md`](./src/formatters/rowBased/README.md), тест: [`rowBased.test.ts`](./src/formatters/rowBased/rowBased.test.ts).
+Файлы: [`formatters/rowBased/index.ts`](./src/formatters/rowBased/index.ts), подробный README: [`formatters/rowBased/README.mdx`](./src/formatters/rowBased/README.mdx), тест: [`rowBased.test.ts`](./src/formatters/rowBased/rowBased.test.ts).
 
 Это маленький реестр формул для row-based override внутри pipeline.
 
@@ -267,7 +267,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `formulas`
 
-Файлы: [`formulas/index.ts`](./src/formulas/index.ts), подробный README: [`formulas/README.md`](./src/formulas/README.md).
+Файлы: [`formulas/index.ts`](./src/formulas/index.ts), подробный README: [`formulas/README.mdx`](./src/formulas/README.mdx).
 
 Инфраструктура реестра клиентских формул таблицы для calculated/clientOnly measure-колонок. Definitions принадлежат host-приложению и не входят в foundation-пакет.
 
@@ -458,7 +458,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `file` и `binary`
 
-Файлы: [`file/index.ts`](./src/file/index.ts), подробный README: [`file/README.md`](./src/file/README.md); [`binary/index.ts`](./src/binary/index.ts), README: [`binary/README.md`](./src/binary/README.md).
+Файлы: [`file/index.ts`](./src/file/index.ts), подробный README: [`file/README.mdx`](./src/file/README.mdx); [`binary/index.ts`](./src/binary/index.ts), README: [`binary/README.mdx`](./src/binary/README.mdx).
 
 `file`:
 
@@ -494,7 +494,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `dom`
 
-Файлы: [`dom/index.ts`](./src/dom/index.ts), подробный README: [`dom/README.md`](./src/dom/README.md), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx).
+Файлы: [`dom/index.ts`](./src/dom/index.ts), подробный README: [`dom/README.mdx`](./src/dom/README.mdx), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx).
 
 | API                                                                         | Поведение                                                                                      |
 | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -527,7 +527,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `copy`
 
-Файлы: [`copy/index.ts`](./src/copy/index.ts), подробный README: [`copy/README.md`](./src/copy/README.md).
+Файлы: [`copy/index.ts`](./src/copy/index.ts), подробный README: [`copy/README.mdx`](./src/copy/README.mdx).
 
 | API                              | Поведение                                                                               |
 | -------------------------------- | --------------------------------------------------------------------------------------- |
@@ -637,7 +637,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `array`
 
-Файлы: [`array/index.ts`](./src/array/index.ts), подробный README: [`array/README.md`](./src/array/README.md), тесты: [`array.test.ts`](./src/array/array.test.ts), [`reorder.test.ts`](./src/array/reorder.test.ts).
+Файлы: [`array/index.ts`](./src/array/index.ts), подробный README: [`array/README.mdx`](./src/array/README.mdx), тесты: [`array.test.ts`](./src/array/array.test.ts), [`reorder.test.ts`](./src/array/reorder.test.ts).
 
 | API                                                 | Поведение                                                                  |
 | --------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -692,7 +692,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `crypto` и `session-storage`
 
-Файлы: [`crypto/index.ts`](./src/crypto/index.ts), подробный README: [`crypto/README.md`](./src/crypto/README.md); [`session-storage/index.ts`](./src/session-storage/index.ts).
+Файлы: [`crypto/index.ts`](./src/crypto/index.ts), подробный README: [`crypto/README.mdx`](./src/crypto/README.mdx); [`session-storage/index.ts`](./src/session-storage/index.ts).
 
 | API                                                            | Поведение                                                                           |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |

@@ -1,8 +1,12 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/API/Formatters/Row-Based" />
+
 # Row-based форматтеры
 
 `rowBased` — небольшой runtime-слой для формул, которые вычисляют отображаемое значение одной ячейки на основании других полей той же строки.
 
-Он используется шагом `rowBasedOverride` в [formatter pipeline](../pipeline/README.md). Сам модуль не содержит бизнес-формул: host-приложение создаёт их, собирает в реестр и один раз передаёт реестр библиотеке.
+Он используется шагом `rowBasedOverride` в [formatter pipeline](../pipeline/README.mdx). Сам модуль не содержит бизнес-формул: host-приложение создаёт их, собирает в реестр и один раз передаёт реестр библиотеке.
 
 Все публичные значения импортируются из общего entrypoint:
 
@@ -363,7 +367,7 @@ runtime выполняет следующие действия:
 
 Если функция выбросила ошибку, действует та же политика fallback.
 
-В отличие от field-режима, formula-режим выполняется и для totals-строк. Подробности описаны в [README pipeline](../pipeline/README.md#шаг-rowbasedoverride).
+В отличие от field-режима, formula-режим выполняется и для totals-строк. Подробности описаны в [README pipeline](../pipeline/README.mdx#шаг-rowbasedoverride).
 
 ## Требования к функциям
 
@@ -477,6 +481,6 @@ Dependency collector видит `dependencyIds`, но не анализируе�
 
 ## Связанная документация
 
-- [Обзор `formatters`](../README.md)
-- [Formatter pipeline](../pipeline/README.md)
-- [Числовые форматтеры и `parseNumber`](../number/README.md)
+- [Обзор `formatters`](../README.mdx)
+- [Formatter pipeline](../pipeline/README.mdx)
+- [Числовые форматтеры и `parseNumber`](../number/README.mdx)

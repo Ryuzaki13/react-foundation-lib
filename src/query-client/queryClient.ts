@@ -23,7 +23,7 @@ export type QueryBroadcastOptions = {
 };
 
 /**
- * Создаёт singleton QueryClient (SPA).
+ * Создаёт настроенный QueryClient. Singleton lifecycle обеспечивает host-приложение.
  */
 export function createQueryClient({ onQueryError, onMutationError }: QueryBroadcastOptions) {
 	const queryPersister = createReactQueryPersister();
@@ -60,8 +60,6 @@ export type OptimisticContext<TQueryCacheData> = {
 };
 
 /**
- * ### не использвать, только планируется реализация
- *
  * _Оптимистичное обновление — это когда мы моментально меняем локальный кэш (и UI) до ответа сервера,
  * чтобы интерфейс был отзывчивым. Если сервер вернул ошибку — откатываем изменения.
  * Если сервер подтвердил — либо принимаем ответ сервера,

@@ -1,0 +1,2500 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Infrastructure/Query Client" />
+
+# Query Client
+
+Модуль `@ryuzaki13/react-foundation-lib/query-client` предоставляет общую инфраструктуру TanStack Query для browser-приложения:
+
+- создаёт настроенный `QueryClient`;
+- подключает глобальную обработку query/mutation errors;
+- сохраняет только явно разрешённые query в IndexedDB;
+- разделяет публичный persistent cache и данные текущей серверной сессии;
+- сбрасывает session-scoped query при смене пользователя или авторизации;
+- синхронизирует cache data и invalidation между вкладками;
+- предоставляет низкоуровневые helpers для optimistic update и rollback.
+
+README рассчитан на разработчика без доступа к исходному коду и с минимальным знанием JavaScript, TypeScript и TanStack Query. Здесь описаны установка, инициализация, жизненный цикл данных, точное поведение функций, ограничения browser API и полный публичный API.
+
+> Ранее optimistic update был описан отдельным документом. Теперь весь смысл, примеры, ограничения и API находятся только на этой странице.
+
+## Содержание
+
+- [Назначение и границы](#назначение-и-границы)
+- [Установка и импорт](#установка-и-импорт)
+- [Обязательные build-time constants](#обязательные-build-time-constants)
+- [Основные понятия TanStack Query](#основные-понятия-tanstack-query)
+- [Как выбрать cache strategy](#как-выбрать-cache-strategy)
+- [Быстрый старт](#быстрый-старт)
+- [Создание QueryClient](#создание-queryclient)
+- [Query metadata](#query-metadata)
+- [Настройка project adapter](#настройка-project-adapter)
+- [IndexedDB persistence](#indexeddb-persistence)
+- [Session-scoped query](#session-scoped-query)
+- [Синхронизация между вкладками](#синхронизация-между-вкладками)
+- [Optimistic update](#optimistic-update)
+- [Безопасность и сериализация](#безопасность-и-сериализация)
+- [Browser, SSR и lifecycle](#browser-ssr-и-lifecycle)
+- [Тестирование consumer-кода](#тестирование-consumer-кода)
+- [Полная карта API](#полная-карта-api)
+- [Частые вопросы](#частые-вопросы)
+
+## Назначение и границы
+
+### Что делает модуль
+
+```text
+queryOptions/useQuery/useMutation
+             │
+             ▼
+        QueryClient
+       /     │      \
+      /      │       \
+ IndexedDB  Broadcast  session reset
+ persistence  channels  и optimistic cache
+```
+
+Модуль управляет инфраструктурным поведением TanStack Query cache. Он знает, как создать client, где хранить opt-in query, как передать cache event другой вкладке и как откатить optimistic patch.
+
+### Что модуль не делает
+
+Модуль не является transport или бизнес-слоем:
+
+- не выполняет `fetch` сам по себе;
+- не знает URL backend;
+- не добавляет SSO credentials и X-CSRF token;
+- не строит OData path, `$filter` или payload;
+- не создаёт query keys конкретной entity;
+- не решает, какие данные безопасно сохранять;
+- не показывает notification пользователю;
+- не заменяет `QueryClientProvider`;
+- не создаёт singleton автоматически.
+
+Используйте правильного владельца:
+
+| Задача                                             | Владелец                                               |
+| -------------------------------------------------- | ------------------------------------------------------ |
+| QueryClient, persistence, broadcast, session reset | `@ryuzaki13/react-foundation-lib/query-client`         |
+| HTTP/OData transport и operation                   | `@ryuzaki13/react-foundation-api/odata` или `/http`    |
+| Query key и query options сущности                 | entity/feature API consumer-проекта                    |
+| UI loading/error/empty state                       | component/feature consumer-проекта                     |
+| Service Worker HTTP cache                          | `@ryuzaki13/react-foundation-lib/pwa` и host SW policy |
+
+### Три разных cache-механизма
+
+Не смешивайте:
+
+| Механизм             | Что хранит                                | Где живёт                      |
+| -------------------- | ----------------------------------------- | ------------------------------ |
+| Query cache          | Backend snapshot и состояние query        | В памяти текущей вкладки       |
+| Query persistence    | Выбранные уже полученные query data       | IndexedDB                      |
+| Service Worker cache | HTTP response/request на transport-уровне | Cache Storage в Service Worker |
+
+Broadcast не является четвёртым хранилищем. Он только передаёт изменения между уже работающими вкладками.
+
+## Установка и импорт
+
+Установите foundation-пакет и совместимые peer dependencies:
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+npm install react @tanstack/react-query \
+  @tanstack/query-persist-client-core \
+  @tanstack/query-broadcast-client-experimental
+```
+
+Публичный импорт:
+
+```ts
+import { createQueryClient, persistedQueryMeta, sessionScopedQueryMeta } from "@ryuzaki13/react-foundation-lib/query-client";
+```
+
+Типы импортируйте через `import type`:
+
+```ts
+import type { AppQueryMeta, OptimisticContext, QueryBroadcastOptions } from "@ryuzaki13/react-foundation-lib/query-client";
+```
+
+Неверные импорты:
+
+```ts
+// Корневой entrypoint пакета не опубликован.
+import { createQueryClient } from "@ryuzaki13/react-foundation-lib";
+
+// Внутреннее устройство dist не является публичным API.
+import { createQueryClient } from "@ryuzaki13/react-foundation-lib/dist/query-client/queryClient";
+
+// Это локальный alias чужого приложения, а не package contract.
+import { createQueryClient } from "@/shared/lib";
+```
+
+Модуль распространяется как ESM. Используйте `import`, а не CommonJS `require`.
+
+## Обязательные build-time constants
+
+Entry point использует constants, которые host-сборка должна определить:
+
+```ts
+declare const __APP_ID__: string;
+declare const __DEV__: boolean;
+declare const __REACT_QUERY_PERSISTENCE_BUSTER__: string;
+```
+
+Они нужны для namespacing IndexedDB и cache busting.
+
+### Пример Vite define
+
+```ts
+import { defineConfig } from "vite";
+
+export default defineConfig(({ mode }) => ({
+	define: {
+		__APP_ID__: JSON.stringify("sales-app"),
+		__DEV__: JSON.stringify(mode === "development"),
+		__REACT_QUERY_PERSISTENCE_BUSTER__: JSON.stringify("sales-app.query-cache.v1")
+	}
+}));
+```
+
+Это compile-time replacement. Не нужно писать:
+
+```ts
+window.__APP_ID__ = "sales-app";
+```
+
+Такое присваивание не заменяет Vite `define`.
+
+`REACT_QUERY_PERSISTENCE_BUSTER` вычисляется на верхнем уровне модуля из `__REACT_QUERY_PERSISTENCE_BUSTER__`. Поэтому buster должен быть определён уже при сборке/import entrypoint, даже если persistence позже не включится из-за отсутствия IndexedDB.
+
+### Как выбирать buster
+
+Buster — строковая версия формата persistent cache:
+
+```text
+sales-app.query-cache.v1
+sales-app.query-cache.v2
+```
+
+Повышайте версию, когда старые записи несовместимы с новым приложением:
+
+- изменилась структура persisted data;
+- изменился mapping ответа;
+- изменился смысл query key;
+- старый cache нельзя безопасно использовать.
+
+Не меняйте buster при каждой сборке без причины: это уничтожит пользу persistence.
+
+## Основные понятия TanStack Query
+
+### Query
+
+Query — описание чтения backend data:
+
+```ts
+const options = {
+	queryKey: ["products", { company: "1000" }],
+	queryFn: fetchProducts
+};
+```
+
+Query содержит key, функцию загрузки, состояние, data, timestamps и metadata.
+
+### Query key
+
+Query key — identity данных в cache:
+
+```ts
+const productsKey = ["products", { company: "1000" }] as const;
+```
+
+Все параметры, влияющие на результат, должны входить в key. Иначе разные запросы могут записать данные в одну cache entry.
+
+Хороший key:
+
+- стабилен;
+- сериализуем;
+- не содержит token, password или session secret;
+- различает все варианты результата;
+- принадлежит owner-у query.
+
+### QueryClient
+
+`QueryClient` управляет query/mutation cache:
+
+```ts
+queryClient.getQueryData(queryKey);
+queryClient.setQueryData(queryKey, nextData);
+queryClient.invalidateQueries({ queryKey });
+queryClient.cancelQueries({ queryKey });
+```
+
+В SPA обычно создают один экземпляр на всё приложение и передают в `QueryClientProvider`.
+
+### Observer и active query
+
+Query считается active, когда у неё есть активный observer — обычно смонтированный `useQuery` с `enabled !== false`.
+
+Query может оставаться в cache без component-подписки. Тогда она inactive.
+
+Различие важно для:
+
+- `refetchType`;
+- session reset;
+- garbage collection;
+- фонового обновления.
+
+### Fresh, stale и invalidated
+
+- Fresh: данные моложе `staleTime`.
+- Stale: данные можно показывать, но TanStack Query может обновить их.
+- Invalidated: client явно отметил query устаревшей.
+
+Stale не означает «удалена». Data может продолжать отображаться до refetch.
+
+### `staleTime` и `gcTime`
+
+`staleTime` отвечает за свежесть.
+
+`gcTime` отвечает за время хранения неактивной query в памяти до garbage collection.
+
+Они не задают срок хранения IndexedDB. Persistent срок отдельно задаёт `REACT_QUERY_PERSISTENCE_MAX_AGE`.
+
+### Query data — backend state
+
+Не копируйте backend snapshot одновременно в Query cache, Zustand и React state. Обычно:
+
+- backend data живёт в Query cache;
+- draft формы — в React/form state;
+- URL filters — в Router search;
+- устойчивые пользовательские preferences — в Zustand/store.
+
+## Как выбрать cache strategy
+
+Перед созданием query ответьте на вопросы:
+
+| Вопрос                                                      | Решение                                               |
+| ----------------------------------------------------------- | ----------------------------------------------------- |
+| Нужны данные только пока открыта вкладка?                   | Обычная query без `persistedQueryMeta`.               |
+| Данные публичные, тяжёлые и могут пережить reload?          | Рассмотреть `persistedQueryMeta`.                     |
+| Данные зависят от пользователя, роли или server session?    | `sessionScopedQueryMeta`.                             |
+| Нужно передать обновление другой открытой вкладке?          | Broadcast installation и подходящее cache event.      |
+| UI должен измениться до ответа mutation?                    | Optimistic update с обязательным rollback policy.     |
+| Server response авторитетен и уже содержит новое состояние? | `setQueryData`/`onSuccessOptimistic`.                 |
+| После mutation нужен свежий server snapshot?                | Scoped `invalidateQueries` с выбранным `refetchType`. |
+
+`persistedQueryMeta` и `sessionScopedQueryMeta` взаимоисключающие. Session data не должна переживать смену пользователя.
+
+## Быстрый старт
+
+### Bootstrap
+
+Инициализация выполняется один раз до обычного render приложения:
+
+```tsx
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
+
+import {
+	configureQueryPersistenceProjectAdapter,
+	createQueryClient,
+	installReactQueryBroadcast,
+	installSessionScopedQueryReset,
+	setBroadcastFn
+} from "@ryuzaki13/react-foundation-lib/query-client";
+
+configureQueryPersistenceProjectAdapter({
+	persistenceBuster: "sales-app.query-cache.v1",
+	resolveSystemIdentifier: () => "production:300"
+});
+
+const queryClient = createQueryClient({
+	onQueryError: (error, query) => {
+		console.error("Query завершилась ошибкой", query.queryKey, error);
+	},
+	onMutationError: (error) => {
+		console.error("Mutation завершилась ошибкой", error);
+	}
+});
+
+const cacheBroadcast = installReactQueryBroadcast(queryClient, {
+	queriesChannel: "sales-app:query-data",
+	eventsChannel: "sales-app:query-events"
+});
+
+setBroadcastFn(cacheBroadcast.broadcast);
+
+const sessionReset = installSessionScopedQueryReset(queryClient, {
+	channelName: "sales-app:session-query-reset"
+});
+
+createRoot(document.getElementById("root")!).render(
+	<StrictMode>
+		<QueryClientProvider client={queryClient}>
+			<App />
+		</QueryClientProvider>
+	</StrictMode>
+);
+```
+
+В обычной SPA эти installations живут до закрытия страницы. В тесте, story, microfrontend или явно размонтируемом shell вызовите cleanup:
+
+```ts
+cacheBroadcast.cleanup();
+sessionReset.cleanup();
+setBroadcastFn(() => undefined);
+queryClient.clear();
+```
+
+### Обычная query
+
+```ts
+import { queryOptions, useQuery } from "@tanstack/react-query";
+
+export function productsQueryOptions(company: string) {
+	return queryOptions({
+		queryKey: ["products", { company }] as const,
+		queryFn: () => fetchProducts(company)
+	});
+}
+
+export function useProducts(company: string) {
+	return useQuery(productsQueryOptions(company));
+}
+```
+
+Она использует default options созданного client, но не сохраняется в IndexedDB без явной meta.
+
+## Создание QueryClient
+
+### `createQueryClient`
+
+```ts
+function createQueryClient(options: QueryBroadcastOptions): QueryClient;
+```
+
+Несмотря на старый комментарий «создаёт singleton», функция не кеширует экземпляр. Каждый вызов возвращает новый `QueryClient`:
+
+```ts
+const first = createQueryClient({});
+const second = createQueryClient({});
+
+console.log(first === second); // false
+```
+
+Singleton — ответственность host bootstrap:
+
+```ts
+export const queryClient = createQueryClient({});
+```
+
+Не вызывайте `createQueryClient` внутри React component. Иначе render может создать новый cache и потерять предыдущие данные.
+
+### Default query options
+
+```ts
+{
+  staleTime: 10 * 60 * 1000,
+  gcTime: 30 * 60 * 1000,
+  throwOnError: false,
+  retry: false,
+  persister: /* только если доступен IndexedDB */
+}
+```
+
+| Option         | Default  | Смысл                                                                |
+| -------------- | -------- | -------------------------------------------------------------------- |
+| `staleTime`    | 10 минут | Данные считаются fresh после успеха.                                 |
+| `gcTime`       | 30 минут | Неактивная query остаётся в памяти до GC.                            |
+| `throwOnError` | `false`  | Query error не пробрасывается в render/Error Boundary автоматически. |
+| `retry`        | `false`  | Автоматический повтор query отключён.                                |
+
+Конкретная query может переопределить defaults:
+
+```ts
+useQuery({
+	queryKey,
+	queryFn,
+	staleTime: Infinity
+});
+```
+
+### Default mutation options
+
+```ts
+{
+  throwOnError: false,
+  retry: false
+}
+```
+
+Mutation не повторяется автоматически. Это особенно важно для create/update/delete: повтор небезопасной операции может создать дубль.
+
+### Глобальные error callbacks
+
+```ts
+type QueryBroadcastOptions = {
+	onQueryError?: (error: DefaultError, query: Query<unknown, unknown, unknown>) => void;
+
+	onMutationError?: (
+		error: DefaultError,
+		variables: unknown,
+		onMutateResult: unknown,
+		mutation: Mutation<unknown, unknown, unknown>,
+		context: MutationFunctionContext
+	) => Promise<unknown> | unknown;
+};
+```
+
+Callbacks устанавливаются в `QueryCache` и `MutationCache`. Они подходят для общей диагностики, auth recovery и единой error policy.
+
+Не помещайте в log:
+
+- access/session tokens;
+- raw credentials;
+- персональные payloads;
+- секреты из mutation variables;
+- полный cache dump.
+
+Локальный `onError` mutation/query и global cache callback — разные уровни. Локальный handler может выполнить rollback/UI recovery, а глобальный — записать diagnostics. Не считайте один автоматической заменой другого.
+
+### Persistence подключается автоматически
+
+`createQueryClient` вызывает `createReactQueryPersister`.
+
+- Если `indexedDB` доступен, `persisterFn` становится default query persister.
+- Если `indexedDB` отсутствует, client создаётся без persister.
+- Даже с persister сохраняются только opt-in query.
+
+## Query metadata
+
+### `AppQueryMeta`
+
+Модуль расширяет TanStack Query `Register.queryMeta`:
+
+```ts
+type AppQueryMeta = {
+	readonly persist?: boolean;
+	readonly sessionScoped?: boolean;
+} & Record<string, unknown>;
+```
+
+После импорта package TypeScript понимает эти fields в `queryOptions`, `useQuery` и Query object:
+
+```ts
+queryOptions({
+	queryKey: ["dictionary"],
+	queryFn: fetchDictionary,
+	meta: {
+		persist: true,
+		source: "dictionary"
+	}
+});
+```
+
+`Record<string, unknown>` разрешает consumer-проекту добавлять собственную metadata. Infrastructure этого модуля читает только `persist` и `sessionScoped`.
+
+### `persistedQueryMeta`
+
+```ts
+const persistedQueryMeta = { persist: true } as const;
+```
+
+Применение:
+
+```ts
+import { queryOptions } from "@tanstack/react-query";
+import { persistedQueryMeta } from "@ryuzaki13/react-foundation-lib/query-client";
+
+export function dictionaryQueryOptions(dictionaryId: string) {
+	return queryOptions({
+		queryKey: ["dictionary", dictionaryId] as const,
+		queryFn: () => fetchDictionary(dictionaryId),
+		meta: persistedQueryMeta,
+		staleTime: 8 * 60 * 60 * 1000
+	});
+}
+```
+
+Meta только разрешает persistence. Она не гарантирует, что IndexedDB доступен и запись уже создана.
+
+### `sessionScopedQueryMeta`
+
+```ts
+const sessionScopedQueryMeta = { sessionScoped: true } as const;
+```
+
+Используйте для data, содержимое или доступность которых зависит от server session, пользователя или роли:
+
+```ts
+queryOptions({
+	queryKey: ["current-user", "permissions"] as const,
+	queryFn: fetchCurrentPermissions,
+	meta: sessionScopedQueryMeta
+});
+```
+
+При смене сессии host обязан вызвать `resetSessionScopedQueries`.
+
+### Meta нельзя совмещать
+
+Неверно:
+
+```ts
+meta: {
+  persist: true,
+  sessionScoped: true
+}
+```
+
+`shouldPersistQuery` всё равно не сохранит такую query, потому что session scope имеет приоритет безопасности.
+
+Используйте один смысл:
+
+- публичный/безопасный долгоживущий справочник → `persistedQueryMeta`;
+- auth/session dependent data → `sessionScopedQueryMeta`;
+- обычные transient data → meta не нужна.
+
+## Настройка project adapter
+
+### Зачем нужен adapter
+
+Foundation-пакет не знает имя SAP system, client, tenant или окружение конкретного приложения. `QueryPersistenceProjectAdapter` позволяет host передать устойчивый namespace и собственный buster:
+
+```ts
+type QueryPersistenceProjectAdapter = {
+	persistenceBuster?: string;
+	resolveSystemIdentifier?: () => string | null | undefined;
+};
+```
+
+### `configureQueryPersistenceProjectAdapter`
+
+```ts
+configureQueryPersistenceProjectAdapter({
+	persistenceBuster: "sales-app.query.v2",
+	resolveSystemIdentifier: () => {
+		return "sap-prd:300";
+	}
+});
+```
+
+Вызов заменяет весь текущий adapter. Это global module state, а не merge:
+
+```ts
+configureQueryPersistenceProjectAdapter({
+	persistenceBuster: "v2"
+});
+
+// Предыдущий resolveSystemIdentifier больше не установлен.
+```
+
+### Порядок инициализации
+
+Настройте adapter до первого `createQueryClient` или `createIndexedDbQueryStorage`:
+
+```ts
+configureQueryPersistenceProjectAdapter(adapter);
+const queryClient = createQueryClient({});
+```
+
+Иначе storage/persister уже получит default namespace и buster.
+
+### `getQueryPersistenceProjectAdapter`
+
+```ts
+const adapter = getQueryPersistenceProjectAdapter();
+```
+
+Возвращает текущий object по ссылке. Не мутируйте его. Для изменения вызывайте `configureQueryPersistenceProjectAdapter` с новым object.
+
+### Выбор system identifier
+
+Правило по умолчанию:
+
+```text
+development: dev:{APP_ID}
+
+production:
+  adapter.resolveSystemIdentifier() → если вернулась непустая строка
+  иначе {APP_ID}:{window.location.hostname}
+
+server-like runtime без window:
+  {APP_ID}:server
+```
+
+Примеры:
+
+```text
+dev:sales-app
+sap-prd:300
+sales-app:portal.company.local
+sales-app:server
+```
+
+Identifier становится именем IndexedDB database и prefix persisted query keys. Он должен разделять окружения, между которыми нельзя переиспользовать data.
+
+Resolver может быть вызван больше одного раза при создании storage и persister. Он должен быть чистым и возвращать одинаковый identifier в рамках одного application runtime.
+
+Не включайте в identifier username, token или персональные данные. Для пользовательских данных persistence вообще не должна использоваться.
+
+### Выбор buster
+
+При создании persister используется:
+
+```text
+adapter.persistenceBuster ?? REACT_QUERY_PERSISTENCE_BUSTER
+```
+
+Пустая строка считается явным adapter value, потому что используется `??`, а не truthy-проверка. На практике задавайте непустую версионированную строку.
+
+## IndexedDB persistence
+
+### Зачем IndexedDB
+
+IndexedDB подходит для больших асинхронных browser data лучше, чем `localStorage`:
+
+- операции асинхронные;
+- значения хранятся через structured clone;
+- можно хранить object без ручного JSON stringify;
+- storage не блокирует основной поток синхронным API `localStorage`;
+- объём обычно лучше подходит тяжёлым справочникам.
+
+Persistence не означает, что любой большой payload автоматически безопасен. Объём, чувствительность и свежесть остаются решением consumer-а.
+
+### Opt-in правило
+
+```ts
+function shouldPersistQuery(query: Pick<Query, "meta">): boolean;
+```
+
+Результат `true` только когда:
+
+```ts
+query.meta?.persist === true && query.meta.sessionScoped !== true;
+```
+
+Примеры:
+
+| Meta                                     | Сохраняется |
+| ---------------------------------------- | ----------- |
+| `undefined`                              | Нет         |
+| `{ persist: false }`                     | Нет         |
+| `{ persist: true }`                      | Да          |
+| `{ sessionScoped: true }`                | Нет         |
+| `{ persist: true, sessionScoped: true }` | Нет         |
+
+### `createIndexedDbQueryStorage`
+
+```ts
+const storage = createIndexedDbQueryStorage<MyValue>({
+	dbName: "sales-query-cache",
+	storeName: "queries",
+	indexedDB: customFactory
+});
+```
+
+Options structurally имеют форму:
+
+```ts
+type Options = {
+	dbName?: string;
+	storeName?: string;
+	indexedDB?: IDBFactory;
+};
+```
+
+Сам тип options не экспортируется, но TypeScript выводит его из signature.
+
+Если explicit `indexedDB` не передан, используется `globalThis.indexedDB`.
+
+Если factory отсутствует, возвращается `undefined`:
+
+```ts
+const storage = createIndexedDbQueryStorage();
+
+if (!storage) {
+	console.info("IndexedDB недоступен, persistence отключена");
+}
+```
+
+### Default database и object store
+
+- `dbName` по умолчанию равен system identifier;
+- `storeName` по умолчанию равен `queries`;
+- database открывается с версией `1`;
+- object store создаётся в `onupgradeneeded`;
+- открытая database promise переиспользуется внутри storage instance.
+
+Если вы выбираете custom `storeName` для уже существующей database версии `1`, browser может не вызвать upgrade, и store не будет создан. Для custom layout используйте отдельный `dbName` либо заранее управляемую migration/version strategy.
+
+У storage нет публичного `close()`. Обычно instance живёт вместе с persister всё время работы SPA.
+
+### Storage API
+
+Возвращаемый adapter совместим с TanStack `AsyncStorage`:
+
+```ts
+type QueryStorage<T> = {
+	getItem(key: string): Promise<T | undefined | null>;
+	setItem(key: string, value: T): Promise<unknown>;
+	removeItem(key: string): Promise<void>;
+	entries?(): Promise<Array<[key: string, value: T]>>;
+};
+```
+
+Пример прямой работы:
+
+```ts
+const storage = createIndexedDbQueryStorage<string>({
+	dbName: "query-storage-demo"
+});
+
+if (storage) {
+	await storage.setItem("first", "один");
+	const value = await storage.getItem("first");
+	const all = await storage.entries?.();
+	await storage.removeItem("first");
+}
+```
+
+`setItem` завершается после окончания write transaction, а не сразу после `store.put`.
+
+`entries` читает object store через cursor. Не завязывайте бизнес-логику на предполагаемый insertion order: порядок определяется IndexedDB keys/cursor.
+
+### Ошибки IndexedDB
+
+Storage не скрывает ошибки. Promise отклоняется, если:
+
+- database open заблокирован;
+- browser отказал в storage;
+- transaction завершилась error/abort;
+- значение не поддерживает structured clone;
+- object store отсутствует;
+- превышена quota.
+
+Не превращайте такую ошибку молча в успешную запись. На уровне приложения выберите diagnostics и degradation policy.
+
+### `createReactQueryPersister`
+
+```ts
+const persister = createReactQueryPersister();
+```
+
+Возвращает результат `experimental_createQueryPersister` либо `undefined`, если IndexedDB недоступен.
+
+Настройки foundation wrapper:
+
+```ts
+{
+  serialize: (query) => query,
+  deserialize: (query) => query,
+  prefix: systemIdentifier,
+  buster: adapterBuster ?? buildTimeBuster,
+  maxAge: 90 * 24 * 60 * 60 * 1000,
+  refetchOnRestore: true,
+  filters: { predicate: shouldPersistQuery }
+}
+```
+
+API TanStack помечено `experimental`. При обновлении major/minor версии peer dependency повторно проверяйте совместимость.
+
+### Constants
+
+```ts
+REACT_QUERY_PERSISTENCE_BUSTER;
+REACT_QUERY_PERSISTENCE_MAX_AGE;
+```
+
+`REACT_QUERY_PERSISTENCE_MAX_AGE` равен 90 дням в миллисекундах:
+
+```ts
+90 * 24 * 60 * 60 * 1000;
+```
+
+Это максимальный возраст persisted записи, а не `staleTime` и не `gcTime`.
+
+### Ключ записи
+
+TanStack persister использует форму:
+
+```text
+{prefix}-{queryHash}
+```
+
+Например:
+
+```text
+sap-prd:300-["odata","metadata",{"service":"REPORT_SRV"}]
+```
+
+Фактический `queryHash` создаёт TanStack Query. Не собирайте persistent key вручную.
+
+### Что хранится
+
+Каждая запись содержит `PersistedQuery` с query key, hash, state и buster. `state` включает data и timestamps TanStack Query.
+
+Wrapper не делает JSON serialization:
+
+```ts
+serialize: (query) => query;
+deserialize: (query) => query;
+```
+
+Следствие: data должна поддерживать browser structured clone.
+
+Не сохраняйте:
+
+- functions;
+- DOM nodes;
+- React elements;
+- QueryClient;
+- AbortController/Signal как часть data;
+- class instances с важным prototype behavior;
+- несериализуемые runtime handles.
+
+### Жизненный цикл восстановления
+
+Для query с `meta: persistedQueryMeta`:
+
+1. TanStack Query создаёт query в памяти.
+2. Persister проверяет `shouldPersistQuery`.
+3. По `prefix-queryHash` читается IndexedDB.
+4. Проверяются buster и возраст записи.
+5. Подходящее state восстанавливается в Query cache.
+6. Если восстановленная query stale, `refetchOnRestore: true` запускает обновление.
+7. Если записи нет/она протухла/не совпал buster, выполняется обычный `queryFn`.
+8. Успешный результат планируется к записи в IndexedDB.
+
+Восстановление per-query ленивое. Модуль не гидратирует весь persistent cache целиком при старте приложения.
+
+### Freshness: три разных времени
+
+| Время                             | Отвечает за                                       |
+| --------------------------------- | ------------------------------------------------- |
+| `staleTime` query                 | Когда data перестаёт считаться fresh.             |
+| `gcTime` query                    | Когда неактивная query удаляется из memory cache. |
+| `REACT_QUERY_PERSISTENCE_MAX_AGE` | Когда IndexedDB запись слишком стара для restore. |
+
+Пример:
+
+```ts
+queryOptions({
+	queryKey: ["dictionary", "materials"],
+	queryFn: fetchMaterials,
+	meta: persistedQueryMeta,
+	staleTime: 2 * 60 * 60 * 1000,
+	gcTime: 30 * 60 * 1000
+});
+```
+
+- Через reload в течение двух часов data может восстановиться fresh без немедленного refetch.
+- После двух часов data может восстановиться, но stale query будет обновлена.
+- После 90 дней запись не должна использоваться.
+
+### Хорошие кандидаты для persistence
+
+- публичные справочники;
+- metadata/schema, одинаковые для пользователей в namespace;
+- тяжёлые редко меняющиеся reference data;
+- data с ясной invalidation/version strategy;
+- payload без чувствительной информации.
+
+### Плохие кандидаты
+
+- текущий пользователь и permissions;
+- персональные списки;
+- form draft;
+- результаты поиска с большим числом уникальных keys;
+- быстро меняющиеся balances/statuses;
+- auth/session dependent response;
+- data без понятного срока свежести;
+- огромные таблицы, сохраняемые «на всякий случай».
+
+### DevTools
+
+В browser DevTools:
+
+1. Откройте `Application`.
+2. Выберите `IndexedDB`.
+3. Найдите database по system identifier.
+4. Откройте object store `queries`.
+5. Проверьте keys, buster и query state.
+
+Удаление database в DevTools — ручной способ очистить persistent cache текущего namespace. Не делайте автоматическую очистку всех databases другого приложения.
+
+## Session-scoped query
+
+### Когда нужна session scope
+
+Query считается session-scoped, если data или право на чтение меняется вместе с server session:
+
+- текущий пользователь;
+- permissions/roles;
+- персональные настройки с backend;
+- доступные пользователю операции;
+- auth-dependent списки;
+- данные, которые нельзя показывать следующему вошедшему пользователю.
+
+```ts
+import { sessionScopedQueryMeta } from "@ryuzaki13/react-foundation-lib/query-client";
+
+const permissionsOptions = queryOptions({
+	queryKey: ["session", "permissions"] as const,
+	queryFn: fetchPermissions,
+	meta: sessionScopedQueryMeta,
+	staleTime: Infinity
+});
+```
+
+Meta сама ничего не сбрасывает. Host должен вызвать reset на boundary смены сессии.
+
+### `isSessionScopedQuery`
+
+```ts
+function isSessionScopedQuery(query: Pick<Query, "meta">): boolean;
+```
+
+Возвращает `true` только для строгого `meta.sessionScoped === true`.
+
+### `resetSessionScopedQueries`
+
+```ts
+await resetSessionScopedQueries(queryClient);
+```
+
+Вызывайте после:
+
+- успешного входа другим пользователем;
+- выхода;
+- обновления server session, меняющего доступ;
+- потери авторизации;
+- смены роли/контекста, если старые данные более недопустимы.
+
+Порядок работы:
+
+1. Находит только query с `sessionScoped === true`.
+2. Отменяет их незавершённые requests.
+3. Неактивные query полностью удаляет из QueryCache.
+4. Query с observer очищает: reset + `data: undefined`, `dataUpdatedAt: 0`.
+5. Повторно запрашивает только active session-scoped query.
+6. По умолчанию отправляет другим вкладкам команду такого же reset.
+
+Обычные публичные query остаются нетронутыми.
+
+### Почему observed query не удаляется
+
+Смонтированный `useQuery` владеет observer. Удаление query прямо из-под активного observer может привести к сложному lifecycle. Поэтому entry сохраняется, но старые data явно очищаются и active query перезапрашивается.
+
+### Disabled query
+
+Query с observer и `enabled: false` очищается, но не refetch-ится:
+
+```text
+до reset: cache data есть, observer disabled
+после reset: query entry есть, data = undefined
+queryFn повторно не вызвана
+```
+
+Это ожидаемо: disabled query не считается active для refetch.
+
+### Hydrated data
+
+Модуль явно обнуляет `data` после `query.reset()`. Это защищает от ситуации, когда hydrated initial state прежней сессии мог бы вернуться после обычного reset.
+
+Foundation-пакет не включает SSR самостоятельно, но helper безопасно очищает такой cache state, если consumer использует TanStack dehydration/hydration.
+
+### Options
+
+```ts
+type ResetSessionScopedQueriesOptions = {
+	readonly broadcast?: boolean;
+};
+```
+
+По умолчанию `broadcast` включён:
+
+```ts
+await resetSessionScopedQueries(queryClient);
+```
+
+Для обработки уже полученной remote-команды нужен `false`, чтобы не создать цикл:
+
+```ts
+await resetSessionScopedQueries(queryClient, { broadcast: false });
+```
+
+Обычно consumer вручную не передаёт `false`: это делает `installSessionScopedQueryReset` внутри message handler.
+
+### `installSessionScopedQueryReset`
+
+```ts
+const installed = installSessionScopedQueryReset(queryClient, {
+	channelName: "sales-app:session-cache-reset"
+});
+```
+
+Типы:
+
+```ts
+type InstallSessionScopedQueryResetOptions = {
+	readonly channelName: string;
+};
+
+type InstalledSessionScopedQueryReset = {
+	readonly cleanup: () => void;
+};
+```
+
+Канал передаёт только command:
+
+```ts
+{
+	type: "session-scoped-query-cache-reset";
+}
+```
+
+Он не передаёт:
+
+- query data;
+- user id;
+- auth payload;
+- token;
+- session details.
+
+Это безопаснее полной передачи session cache между вкладками.
+
+### Browser fallback
+
+Если отсутствует `window` или `BroadcastChannel`, installation возвращает no-op cleanup:
+
+```ts
+const { cleanup } = installSessionScopedQueryReset(queryClient, options);
+cleanup(); // безопасно
+```
+
+Локальный `resetSessionScopedQueries` всё равно работает без browser channel.
+
+### Lifecycle и global sender
+
+Внутри модуля хранится одна global функция рассылки session reset. Последняя успешная installation становится активной для `resetSessionScopedQueries`.
+
+Поэтому в одном application runtime обычно устанавливают один session channel.
+
+`cleanup()`:
+
+- удаляет `onmessage`;
+- закрывает BroadcastChannel;
+- очищает global sender, если он всё ещё принадлежит этой installation.
+
+### Пример auth boundary
+
+```ts
+async function completeLogin() {
+	await establishServerSession();
+	await resetSessionScopedQueries(queryClient);
+}
+
+async function logout() {
+	await closeServerSession();
+	await resetSessionScopedQueries(queryClient);
+}
+```
+
+Сначала измените server session, затем перезапрашивайте active query. Иначе refetch может снова получить data старой сессии.
+
+### Почему session query нельзя persist
+
+IndexedDB переживает reload и может остаться после logout. Даже если UI очищает memory cache, persisted персональная запись представляет риск утечки следующей сессии.
+
+`shouldPersistQuery` защищает от случайного сочетания flags, но правильная metadata остаётся ответственностью owner-а query.
+
+## Синхронизация между вкладками
+
+### Две задачи, два канала
+
+`installReactQueryBroadcast` создаёт два разных механизма:
+
+```text
+queriesChannel
+  └─ experimental broadcastQueryClient
+     синхронизирует query cache data/state
+
+eventsChannel
+  └─ собственный BroadcastChannel
+     передаёт invalidate/setQueryData commands
+```
+
+Разделение нужно потому, что experimental TanStack broadcast не обязан передавать прикладное invalidation так, как требуется host-приложению.
+
+### Установка
+
+```ts
+const installed = installReactQueryBroadcast(queryClient, {
+	queriesChannel: "sales-app:query-data",
+	eventsChannel: "sales-app:query-events"
+});
+```
+
+Структурные options:
+
+```ts
+type InstallBroadcastOptions = {
+	queriesChannel: string;
+	eventsChannel: string;
+};
+```
+
+Возвращается:
+
+```ts
+type InstalledReactQueryBroadcast = {
+	broadcast: (event: CacheSyncEvent) => void;
+	cleanup: () => void;
+};
+```
+
+Эти types не экспортируются отдельными именами, но TypeScript выводит их из function signature.
+
+### Имена каналов
+
+Выбирайте стабильные и уникальные имена:
+
+```text
+{app}:{environment}:query-data
+{app}:{environment}:query-events
+```
+
+Не используйте один channel name для несвязанных приложений на одном origin. Иначе они могут прочитать чужие cache events.
+
+`queriesChannel` и `eventsChannel` должны различаться: у них разные wire protocols.
+
+### Cache data sync
+
+Foundation wrapper вызывает:
+
+```ts
+broadcastQueryClient({
+	queryClient,
+	broadcastChannel: queriesChannel
+});
+```
+
+Успешные изменения Query cache, включая подходящий `setQueryData`, могут появиться в другой вкладке через experimental TanStack adapter.
+
+Это не сетевой refetch. Data передаётся browser channel между вкладками одного origin.
+
+### Автоматическая invalidation
+
+Wrapper подписывается на `queryClient.getQueryCache()`.
+
+Когда локальная query получает action `invalidate`, wrapper автоматически отправляет event:
+
+```ts
+{
+  type: "invalidate",
+  keys: [query.queryKey],
+  refetchType: "none"
+}
+```
+
+Remote вкладка вызывает `invalidateQueries` для каждого key.
+
+Широкая локальная invalidation превращается в набор точечных events для query, которые реально обновились в cache отправителя.
+
+Автоматическая отправка всегда использует `refetchType: "none"`. Если другой вкладке нужен active/inactive/all refetch, отправьте explicit event.
+
+### Event `invalidate`
+
+```ts
+installed.broadcast({
+	type: "invalidate",
+	keys: [["products"], ["products", "summary"]],
+	refetchType: "active"
+});
+```
+
+Поддерживаемые `refetchType`:
+
+- `"none"`;
+- `"active"`;
+- `"inactive"`;
+- `"all"`.
+
+Если field отсутствует, receiver использует `"none"`.
+
+### Event `setQueryData`
+
+```ts
+installed.broadcast({
+	type: "setQueryData",
+	key: ["products", "summary"],
+	data: { count: 42 }
+});
+```
+
+Receiver вызывает:
+
+```ts
+queryClient.setQueryData(event.key, event.data);
+```
+
+Event принимает `data: unknown`. TypeScript не может доказать, что data соответствует cache type receiver-а. Sender обязан использовать правильный query key/data contract.
+
+### Глобальный imperative API
+
+Чтобы не передавать `installed.broadcast` через все слои:
+
+```ts
+setBroadcastFn(installed.broadcast);
+
+broadcastCacheEvent({
+	type: "invalidate",
+	keys: [["products"]],
+	refetchType: "none"
+});
+```
+
+`setBroadcastFn` заменяет одну global handler-функцию. Это singleton module state.
+
+До установки handler `broadcastCacheEvent` ничего не делает:
+
+```ts
+broadcastCacheEvent(event); // no-op, если handler ещё null
+```
+
+### Cleanup global handler
+
+`installed.cleanup()` закрывает каналы, но не знает, передавали ли вы `installed.broadcast` в `setBroadcastFn`.
+
+Перед/после cleanup сбросьте global handler:
+
+```ts
+setBroadcastFn(() => undefined);
+installed.cleanup();
+```
+
+Иначе поздний `broadcastCacheEvent` может попытаться использовать функцию, связанную с уже закрытым channel.
+
+### Что делает cleanup
+
+```ts
+installed.cleanup();
+```
+
+Cleanup:
+
+- отписывается от QueryCache events;
+- вызывает cleanup TanStack broadcast adapter;
+- закрывает custom BroadcastChannel.
+
+Вызывайте его в тестах, stories, microfrontend teardown и при повторной installation.
+
+### Защита от циклов
+
+Каждая installation получает `tabId`.
+
+Receiver:
+
+- игнорирует message с собственным `tabId`;
+- на время применения remote event включает `isApplyingRemoteEvent`;
+- не пересылает вызванную remote message invalidation обратно.
+
+Это предотвращает бесконечное эхо между вкладками.
+
+### Проверка входящих messages
+
+Модуль проверяет:
+
+- message является record;
+- `tabId` является string;
+- event имеет известный `type`;
+- invalidate содержит array `keys`;
+- `refetchType` входит в allowlist;
+- setQueryData содержит fields `key` и `data`.
+
+Проверка намеренно не является полной schema validation QueryKey/data. Например, каждый элемент `keys` отдельно глубоко не валидируется.
+
+Это защита от случайных/устаревших messages, но не security boundary между приложениями одного origin. Используйте уникальные channel names и не отправляйте secrets.
+
+### Browser support
+
+Если `window` отсутствует, `installReactQueryBroadcast` возвращает no-op `broadcast` и `cleanup`.
+
+Но если `window` существует, а `BroadcastChannel` отсутствует, текущая implementation попытается вызвать constructor и может выбросить `ReferenceError`.
+
+Для старого/ограниченного browser сделайте feature check до installation:
+
+```ts
+const installed =
+	typeof BroadcastChannel === "undefined"
+		? { broadcast: () => undefined, cleanup: () => undefined }
+		: installReactQueryBroadcast(queryClient, options);
+```
+
+### Structured clone
+
+BroadcastChannel использует structured clone. В `setQueryData.data` не передавайте:
+
+- functions;
+- DOM nodes;
+- React elements;
+- QueryClient;
+- non-cloneable runtime handles.
+
+Ошибка clone может возникнуть при `postMessage`.
+
+### Same-origin граница
+
+BroadcastChannel работает между browsing contexts одного origin и channel name. Он не синхронизирует разные domains, browser profiles или devices.
+
+### Когда нужен ручной event
+
+Обычный `queryClient.setQueryData` уже может синхронизироваться TanStack adapter-ом. Не дублируйте manual `setQueryData` event автоматически везде.
+
+Ручной event нужен, когда:
+
+- требуется explicit прикладная команда;
+- нужен особый `refetchType`;
+- нужно одной командой перечислить несколько keys;
+- consumer сознательно не полагается только на experimental data sync.
+
+### Broadcast и session data
+
+Полная cache synchronization потенциально передаёт query data между вкладками. Для команды очистки auth/session cache используйте отдельный `installSessionScopedQueryReset`: он передаёт только reset command.
+
+Не отправляйте session token или чувствительный payload через `broadcastCacheEvent`.
+
+## Optimistic update
+
+### Что это такое
+
+Обычная mutation:
+
+```text
+действие пользователя
+       ↓
+HTTP request
+       ↓
+server response
+       ↓
+обновление UI
+```
+
+Пользователь ждёт сеть до визуального результата.
+
+Optimistic update сначала меняет локальный Query cache:
+
+```text
+действие пользователя
+       ↓
+UI/cache меняются сразу
+       ↓
+HTTP request
+       ├─ успех  → подтвердить/слить server data
+       └─ ошибка → откатить предыдущий snapshot
+```
+
+Мы предполагаем, что server примет изменение. Если предположение неверно, cache возвращается к предыдущему состоянию.
+
+### Когда использовать
+
+Хорошие сценарии:
+
+- toggle/checkbox;
+- изменение видимости;
+- простое inline-edit;
+- drag-and-drop reorder;
+- добавление элемента с временным id;
+- действие с высокой вероятностью успеха и понятным rollback.
+
+Не используйте автоматически для:
+
+- финансовых операций;
+- сложной server validation;
+- действия с большим количеством side effects;
+- mutation, где server радикально меняет результат;
+- нескольких параллельных изменений одного cache key без concurrency strategy;
+- операции, для которой невозможно корректно восстановить UI.
+
+Optimistic UI не означает, что операция завершилась успешно. Показывайте error/recovery, если server отказал.
+
+### Роль lifecycle handlers
+
+```text
+mutate(variables)
+      │
+      ▼
+onMutate
+  1. cancelQueries
+  2. snapshot previous cache
+  3. optimistic patch
+  4. return { previous }
+      │
+      ▼
+mutationFn
+      ├─ success → onSuccess
+      │             server data merge, если нужно
+      │
+      ├─ error   → onError
+      │             rollback previous
+      │
+      └─ always  → onSettled
+                    scoped invalidation/refetch policy
+```
+
+TanStack Query передаёт результат `onMutate` в следующие lifecycle callbacks.
+
+### Публичные helpers
+
+| Helper                | Lifecycle   | Назначение                           |
+| --------------------- | ----------- | ------------------------------------ |
+| `onMutateOptimistic`  | `onMutate`  | Cancel + snapshot + patch.           |
+| `onErrorOptimistic`   | `onError`   | Restore предыдущего snapshot.        |
+| `onSuccessOptimistic` | `onSuccess` | Merge authoritative server response. |
+| `onSettledOptimistic` | `onSettled` | Invalidate один или несколько keys.  |
+
+Helpers низкоуровневые: они не создают `useMutation`, не выполняют request, не показывают notification и не выбирают query key.
+
+### `OptimisticContext`
+
+```ts
+type OptimisticContext<TQueryCacheData> = {
+	previous: TQueryCacheData | undefined;
+};
+```
+
+`TQueryCacheData` — тип data именно в Query cache, не request variables и не обязательно server response.
+
+Пример:
+
+```ts
+type Task = {
+	id: string;
+	title: string;
+	done: boolean;
+};
+
+type TaskCache = Task[];
+```
+
+### `onMutateOptimistic`
+
+```ts
+const context = await onMutateOptimistic<TaskCache>(queryClient, tasksQueryKey, (oldCache) => {
+	return oldCache?.map((task) => (task.id === taskId ? { ...task, done: true } : task));
+});
+```
+
+Signature:
+
+```ts
+async function onMutateOptimistic<TQueryCacheData>(
+	queryClient: QueryClient,
+	queryKey: QueryKey,
+	patcher: (oldCache: TQueryCacheData | undefined) => TQueryCacheData | undefined
+): Promise<OptimisticContext<TQueryCacheData>>;
+```
+
+Три шага выполняются последовательно:
+
+1. `cancelQueries({ queryKey })`;
+2. `getQueryData<TQueryCacheData>(queryKey)`;
+3. `setQueryData<TQueryCacheData>(queryKey, patcher)`.
+
+### Зачем `cancelQueries`
+
+Без отмены background refetch может завершиться после optimistic patch и записать старый server snapshot:
+
+```text
+cache: done=false
+background request начат
+optimistic patch: done=true
+background response: done=false  ← patch потерян
+```
+
+`cancelQueries` уменьшает эту race condition.
+
+Он не отменяет другие mutation. Параллельные writes требуют отдельной стратегии.
+
+### Exact и prefix key
+
+`cancelQueries({ queryKey })` по TanStack defaults может затронуть query, совпадающие по prefix.
+
+`getQueryData` и `setQueryData` работают с конкретным cache key.
+
+Поэтому для optimistic patch передавайте exact owner key, а не слишком широкий prefix:
+
+```ts
+const key = ["tasks", { projectId }] as const;
+```
+
+### Patcher должен быть immutable
+
+Неверно:
+
+```ts
+(old) => {
+	const task = old?.find((item) => item.id === taskId);
+	if (task) task.done = true;
+	return old;
+};
+```
+
+Объект из Query cache мутирован по существующей ссылке.
+
+Правильно:
+
+```ts
+(old) => old?.map((task) => (task.id === taskId ? { ...task, done: true } : task));
+```
+
+Создаётся новый массив и новый изменённый object.
+
+### Что означает `undefined` из patcher
+
+Patcher получает `undefined`, если cache entry/data отсутствует.
+
+```ts
+(old) => old?.map(...)
+```
+
+вернёт `undefined` и не создаст data.
+
+Если нужно создать initial optimistic data:
+
+```ts
+(old) => [...(old ?? []), optimisticTask];
+```
+
+Но тогда обязательно учтите ограничение rollback при отсутствующем previous snapshot.
+
+### `onErrorOptimistic`
+
+```ts
+onErrorOptimistic(queryClient, tasksQueryKey, context);
+```
+
+Signature:
+
+```ts
+function onErrorOptimistic<TQueryCacheData>(
+	queryClient: QueryClient,
+	queryKey: QueryKey,
+	context: OptimisticContext<TQueryCacheData> | undefined
+): void;
+```
+
+Если `context?.previous !== undefined`, helper вызывает:
+
+```ts
+queryClient.setQueryData(queryKey, context.previous);
+```
+
+Если context отсутствует, ничего не происходит. Это безопасно, когда `onMutate` сам завершился ошибкой до возврата context.
+
+### Важное ограничение rollback
+
+Если до mutation data была `undefined`, context содержит:
+
+```ts
+{
+	previous: undefined;
+}
+```
+
+`onErrorOptimistic` ничего не делает. Он не удаляет созданную optimistic entry.
+
+Проблемный сценарий:
+
+```ts
+// Cache до mutation отсутствует.
+onMutateOptimistic<Task[]>(queryClient, key, (old) => [...(old ?? []), optimisticTask]);
+```
+
+При error optimistic task останется, если вызвать только standard helper.
+
+Варианты решения:
+
+1. До optimistic create заранее обеспечить существующий cache snapshot, например `[]`.
+2. В `onError` отдельно удалить/очистить query, если `context.previous === undefined`.
+3. Не применять optimistic create для изначально отсутствующей query.
+
+Пример explicit rollback:
+
+```ts
+onError: (_error, _variables, context) => {
+	if (context?.previous === undefined) {
+		queryClient.removeQueries({ queryKey: tasksQueryKey, exact: true });
+		return;
+	}
+
+	onErrorOptimistic(queryClient, tasksQueryKey, context);
+};
+```
+
+Выбирайте удаление только для exact key, которым владеет mutation.
+
+### `onSuccessOptimistic`
+
+Когда server возвращает authoritative data:
+
+```ts
+onSuccessOptimistic<Task[], Task>(queryClient, tasksQueryKey, serverTask, (cache, task) => {
+	return cache?.map((item) => (item.id === task.id ? task : item));
+});
+```
+
+Signature:
+
+```ts
+function onSuccessOptimistic<TQueryCacheData, TServerData>(
+	queryClient: QueryClient,
+	queryKey: QueryKey,
+	serverData: TServerData,
+	merger: (cache: TQueryCacheData | undefined, serverData: TServerData) => TQueryCacheData | undefined
+): void;
+```
+
+`TServerData` может отличаться от cache data. Merger является явным type-safe мостом.
+
+### Полная замена ответом server
+
+```ts
+onSuccessOptimistic<Task[], Task[]>(queryClient, tasksQueryKey, serverTasks, (_cache, data) => data);
+```
+
+### Merge одного элемента
+
+```ts
+onSuccessOptimistic<Task[], Task>(queryClient, tasksQueryKey, updatedTask, (cache, data) =>
+	cache?.map((task) => (task.id === data.id ? data : task))
+);
+```
+
+Merger тоже должен быть immutable.
+
+### Server возвращает `void`
+
+Если request только подтверждает изменение, а optimistic cache уже отражает точное состояние, `onSuccessOptimistic` не нужен:
+
+```ts
+onSuccess: () => {
+	// Нечего сливать: server response void.
+};
+```
+
+После этого выберите onSettled invalidation strategy. Не вызывайте merger с `void` только ради формальности.
+
+### `onSettledOptimistic`
+
+```ts
+await onSettledOptimistic(queryClient, tasksQueryKey);
+```
+
+Или несколько keys:
+
+```ts
+await onSettledOptimistic(queryClient, [tasksQueryKey, taskSummaryQueryKey], { refetchType: "active" });
+```
+
+Signature:
+
+```ts
+type OnSettledOptimisticOptions = {
+	refetchType?: "none" | "active" | "inactive" | "all";
+};
+
+async function onSettledOptimistic(
+	queryClient: QueryClient,
+	queryKeys: QueryKey | QueryKey[],
+	options?: OnSettledOptimisticOptions
+): Promise<void>;
+```
+
+Helper вызывает `invalidateQueries` для всех normalized keys через `Promise.all`.
+
+### `refetchType`
+
+| Value        | Поведение                                                        |
+| ------------ | ---------------------------------------------------------------- |
+| `"none"`     | Только invalidation, немедленного refetch нет. Default helper-а. |
+| `"active"`   | Refetch active matching query.                                   |
+| `"inactive"` | Refetch inactive matching query.                                 |
+| `"all"`      | Refetch active и inactive matching query.                        |
+
+`"none"` подходит, когда optimistic/server merge уже дал достаточное текущее состояние.
+
+`"active"` нужен, если server применяет дополнительную логику и видимый UI должен быстро получить authoritative snapshot.
+
+Не ставьте `"all"` автоматически: это может создать много HTTP requests.
+
+### Как передавать один и несколько keys
+
+Один key:
+
+```ts
+onSettledOptimistic(queryClient, ["tasks"]);
+```
+
+Несколько keys:
+
+```ts
+onSettledOptimistic(queryClient, [["tasks"], ["task-summary"]]);
+```
+
+Runtime различает формы по первому элементу: если первый элемент сам array, значение считается массивом keys.
+
+Избегайте необычного одиночного QueryKey, у которого первый segment является array:
+
+```ts
+const ambiguousKey = [["nested"]] as const;
+```
+
+Он будет воспринят как список query keys.
+
+### Полный пример: toggle, server возвращает `void`
+
+```ts
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { onErrorOptimistic, onMutateOptimistic, onSettledOptimistic } from "@ryuzaki13/react-foundation-lib/query-client";
+
+type Task = {
+	id: string;
+	title: string;
+	done: boolean;
+};
+
+type ToggleTaskInput = {
+	id: string;
+	done: boolean;
+};
+
+const tasksQueryKey = ["tasks"] as const;
+
+export function useToggleTaskMutation() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: updateTaskOnServer,
+
+		onMutate: async (input: ToggleTaskInput) => {
+			return onMutateOptimistic<Task[]>(queryClient, tasksQueryKey, (old) =>
+				old?.map((task) => (task.id === input.id ? { ...task, done: input.done } : task))
+			);
+		},
+
+		onError: (_error, _input, context) => {
+			onErrorOptimistic(queryClient, tasksQueryKey, context);
+		},
+
+		onSettled: () => {
+			return onSettledOptimistic(queryClient, tasksQueryKey);
+		}
+	});
+}
+```
+
+Cache timeline:
+
+```text
+до:       [{ id: "1", done: false }]
+onMutate: [{ id: "1", done: true  }]
+
+success:  optimistic data остаётся, query помечается stale
+error:    previous snapshot восстанавливается
+```
+
+### Полный пример: create с authoritative object
+
+```ts
+type Task = {
+	id: string;
+	title: string;
+	createdAt: string;
+};
+
+type NewTask = {
+	title: string;
+};
+
+const TEMP_ID = "optimistic:task";
+
+export function useCreateTaskMutation() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: createTaskOnServer,
+
+		onMutate: async (input: NewTask) => {
+			return onMutateOptimistic<Task[]>(queryClient, tasksQueryKey, (old) => [
+				...(old ?? []),
+				{ id: TEMP_ID, title: input.title, createdAt: "" }
+			]);
+		},
+
+		onError: (_error, _input, context) => {
+			if (context?.previous === undefined) {
+				queryClient.removeQueries({
+					queryKey: tasksQueryKey,
+					exact: true
+				});
+				return;
+			}
+
+			onErrorOptimistic(queryClient, tasksQueryKey, context);
+		},
+
+		onSuccess: (createdTask: Task) => {
+			onSuccessOptimistic<Task[], Task>(
+				queryClient,
+				tasksQueryKey,
+				createdTask,
+				(cache, serverTask) => cache?.map((task) => (task.id === TEMP_ID ? serverTask : task)) ?? [serverTask]
+			);
+		},
+
+		onSettled: () => {
+			return onSettledOptimistic(queryClient, tasksQueryKey, { refetchType: "active" });
+		}
+	});
+}
+```
+
+Timeline:
+
+```text
+до:
+[{ id: "server-1", title: "Первая", createdAt: "..." }]
+
+optimistic:
+[
+  { id: "server-1", ... },
+  { id: "optimistic:task", title: "Вторая", createdAt: "" }
+]
+
+server success:
+[
+  { id: "server-1", ... },
+  { id: "server-2", title: "Вторая", createdAt: "2026-08-18..." }
+]
+```
+
+### Несколько связанных keys
+
+Mutation может влиять на detail, list и counters:
+
+```ts
+onSettled: () =>
+	onSettledOptimistic(
+		queryClient,
+		[
+			["orders", orderId],
+			["orders", "list"],
+			["orders", "counters"]
+		],
+		{ refetchType: "active" }
+	);
+```
+
+Указывайте только keys реальных owners. Не инвалидируйте весь cache приложения.
+
+### Optimistic update и broadcast
+
+Optimistic helpers сами не вызывают `broadcastCacheEvent`.
+
+При установленном `installReactQueryBroadcast`:
+
+- обычный Query cache update может уйти через TanStack data channel;
+- `onSettledOptimistic` вызывает local invalidation;
+- wrapper автоматически передаст конкретную invalidation другой вкладке с `refetchType: "none"`.
+
+Manual event нужен только для осознанного другого поведения:
+
+```ts
+onSettled: async () => {
+	await onSettledOptimistic(queryClient, tasksQueryKey, { refetchType: "active" });
+
+	broadcastCacheEvent({
+		type: "invalidate",
+		keys: [tasksQueryKey],
+		refetchType: "active"
+	});
+};
+```
+
+Такой explicit event может дублировать automatic `"none"` invalidation message. Делайте это только если remote active refetch действительно требуется.
+
+### Параллельные mutation одного key
+
+Helpers хранят один snapshot на каждую mutation, но не координируют порядок нескольких writes.
+
+Проблема:
+
+```text
+cache = A
+
+mutation 1 snapshot A → patch B
+mutation 2 snapshot B → patch C
+mutation 2 success
+mutation 1 error → rollback A
+
+успешный результат mutation 2 потерян
+```
+
+`cancelQueries` отменяет reads, а не соседние mutations.
+
+Для concurrent writes выберите стратегию:
+
+- сериализовать mutation по entity/key;
+- блокировать повторное действие до settlement;
+- хранить более богатый optimistic context/patch stack;
+- использовать mutation id и условный rollback;
+- отказаться от optimistic update и refetch server snapshot.
+
+Текущие helpers лучше подходят одной последовательной mutation для одного exact cache key.
+
+### Server validation и merge
+
+Если server:
+
+- округляет число;
+- добавляет id/timestamp;
+- меняет status;
+- пересчитывает totals;
+- сортирует list;
+- применяет permissions/business rules,
+
+то optimistic value не является authoritative. Используйте `onSuccessOptimistic` либо active invalidation.
+
+### Error handling
+
+Rollback восстанавливает cache, но не объясняет ошибку пользователю. В `onError` обычно нужны:
+
+- rollback;
+- безопасное notification;
+- diagnostics без sensitive data;
+- понятная возможность повторить действие.
+
+```ts
+onError: (error, _variables, context) => {
+	onErrorOptimistic(queryClient, key, context);
+	notifyError("Изменение не сохранено");
+	reportError(error);
+};
+```
+
+Не оставляйте пустой `catch` и не показывайте success до фактического server confirmation, если это может ввести пользователя в заблуждение.
+
+### Типовые ошибки
+
+#### Мутировать old cache
+
+Всегда возвращайте новые изменённые containers/objects.
+
+#### Забыть rollback
+
+Optimistic patch без `onError` оставит ложное состояние при отказе server.
+
+#### Считать `context` обязательным
+
+Если `onMutate` выбросил ошибку, context может быть `undefined`.
+
+#### Не учесть `previous: undefined`
+
+Standard rollback helper не удаляет новую cache entry.
+
+#### Refetch `all` после каждой mutation
+
+Создаёт лишний network traffic и может ухудшить UX сильнее обычной non-optimistic mutation.
+
+#### Использовать широкий query prefix как exact data key
+
+Cancel и patch начнут относиться к разным наборам cache entries.
+
+#### Игнорировать параллельные writes
+
+Поздний rollback старой mutation может затереть более новое успешное изменение.
+
+## Безопасность и сериализация
+
+### Query key не должен содержать secrets
+
+Query key может попасть:
+
+- в memory cache;
+- в IndexedDB persistent key/state;
+- в broadcast message;
+- в DevTools;
+- в diagnostics/error report.
+
+Нельзя помещать:
+
+- token;
+- password;
+- session cookie;
+- raw authorization header;
+- секретный payload.
+
+Используйте безопасные business identifiers и нормализованные параметры.
+
+### Persistence — явное разрешение
+
+`persistedQueryMeta` означает, что data может пережить reload и оставаться в browser storage долгое время.
+
+Перед включением проверьте:
+
+1. Data не персональная и не session-scoped.
+2. Namespace разделяет несовместимые system/client/tenant.
+3. Query key включает все влияющие параметры.
+4. Есть freshness/invalidation policy.
+5. Data поддерживает structured clone.
+6. Объём не создаёт неконтролируемый storage growth.
+
+### Namespace не является authorization
+
+Разные `dbName`/prefix уменьшают случайное смешение environments, но не защищают от JavaScript того же origin.
+
+При XSS вредоносный code может читать browser storage и channels. Не сохраняйте sensitive data, полагаясь только на необычное имя database.
+
+### Broadcast не является доверенным transport
+
+Message приходит от другого context того же origin. Runtime guards фильтруют явный мусор, но не проверяют business authorization или точный data schema.
+
+Не используйте broadcast вместо backend confirmation.
+
+### Structured clone ограничения
+
+И IndexedDB, и BroadcastChannel используют structured clone. Plain serializable data — самый предсказуемый вариант:
+
+```ts
+type SafeCacheData = {
+	id: string;
+	count: number;
+	labels: string[];
+	updatedAt: string;
+};
+```
+
+Сложные instances могут потерять ожидаемое поведение или не клонироваться.
+
+### Error callbacks и персональные данные
+
+Global error handler получает query/mutation objects и variables. Не логируйте их целиком без sanitization.
+
+Хороший diagnostics context:
+
+```ts
+{
+  operation: "update-task",
+  queryKeyOwner: "tasks",
+  errorName: error.name,
+  message: error.message
+}
+```
+
+Плохой context:
+
+```ts
+{
+  mutationVariables,
+  allQueryCache: queryClient.getQueryCache().getAll(),
+  token
+}
+```
+
+## Browser, SSR и lifecycle
+
+### Основная среда — browser SPA
+
+Persistence и broadcast предназначены для browser runtime:
+
+- IndexedDB;
+- BroadcastChannel;
+- `window.location.hostname`;
+- несколько вкладок одного origin.
+
+Pure QueryClient/optimistic helpers сами используют TanStack Query API, но единый entrypoint всё равно требует корректных build-time constants.
+
+### Поведение без IndexedDB
+
+```ts
+createIndexedDbQueryStorage(); // undefined
+createReactQueryPersister(); // undefined
+createQueryClient({}); // работает без default persister
+```
+
+Приложение продолжает работать с обычным memory cache.
+
+### Поведение без `window`
+
+`installReactQueryBroadcast` возвращает no-op.
+
+`installSessionScopedQueryReset` возвращает no-op cleanup.
+
+`resetSessionScopedQueries` продолжает локально работать с QueryClient.
+
+Production system identifier fallback без window — `{APP_ID}:server`.
+
+### `window` есть, BroadcastChannel нет
+
+Session reset installation проверяет оба globals и деградирует в no-op.
+
+Общая cache broadcast installation проверяет только `window`. Сделайте дополнительный feature check в host, если поддерживаются browsers без BroadcastChannel.
+
+### Global module state
+
+Модуль хранит:
+
+- текущий persistence project adapter;
+- global cache broadcast function;
+- global session-reset sender.
+
+Это process/module singletons. В обычной SPA они удобны, но в tests, HMR и microfrontends требуют lifecycle discipline.
+
+### Повторная installation
+
+Перед повторной установкой:
+
+1. сбросьте imperative broadcast handler;
+2. вызовите cleanup предыдущего broadcast;
+3. вызовите cleanup session channel;
+4. установите новые channels;
+5. сохраните новый handler.
+
+Иначе останутся дублированные subscriptions/channels.
+
+### React Provider
+
+`createQueryClient` не рендерит Provider:
+
+```tsx
+<QueryClientProvider client={queryClient}>
+	<App />
+</QueryClientProvider>
+```
+
+`useQueryClient`, `useQuery` и `useMutation` требуют этот provider в component tree.
+
+### React Strict Mode
+
+Не устанавливайте channels внутри component render/effect без уверенного cleanup. В development Strict Mode effect setup может выполняться повторно.
+
+Предпочтительно устанавливать application-wide QueryClient/channels в bootstrap module или в отдельной lifecycle boundary с симметричным cleanup.
+
+## Тестирование consumer-кода
+
+### Test QueryClient без retry
+
+Для unit test создавайте отдельный client:
+
+```ts
+import { QueryClient } from "@tanstack/react-query";
+
+export function createTestQueryClient() {
+	return new QueryClient({
+		defaultOptions: {
+			queries: { retry: false },
+			mutations: { retry: false }
+		}
+	});
+}
+```
+
+Это изолирует cache каждого test.
+
+После test:
+
+```ts
+queryClient.clear();
+```
+
+### Test `createQueryClient`
+
+Проверьте defaults и error callbacks:
+
+```ts
+const client = createQueryClient({});
+
+expect(client.getDefaultOptions().queries).toMatchObject({
+	staleTime: 10 * 60 * 1000,
+	gcTime: 30 * 60 * 1000,
+	retry: false,
+	throwOnError: false
+});
+```
+
+В environment без IndexedDB `persister` должен отсутствовать.
+
+### IndexedDB test
+
+Передайте factory явно, не полагаясь на browser global:
+
+```ts
+import { indexedDB } from "fake-indexeddb";
+
+const storage = createIndexedDbQueryStorage<string>({
+	indexedDB,
+	dbName: "query-client-test"
+});
+
+expect(storage).toBeDefined();
+await storage?.setItem("key", "value");
+await expect(storage?.getItem("key")).resolves.toBe("value");
+```
+
+Используйте уникальный `dbName` между несвязанными tests, чтобы data не протекала.
+
+### Test opt-in persistence
+
+```ts
+expect(shouldPersistQuery({ meta: persistedQueryMeta })).toBe(true);
+expect(shouldPersistQuery({ meta: undefined })).toBe(false);
+expect(shouldPersistQuery({ meta: sessionScopedQueryMeta })).toBe(false);
+expect(
+	shouldPersistQuery({
+		meta: { persist: true, sessionScoped: true }
+	})
+).toBe(false);
+```
+
+### Test optimistic rollback
+
+```ts
+const client = createTestQueryClient();
+const key = ["tasks"] as const;
+const initial = [{ id: "1", done: false }];
+
+client.setQueryData(key, initial);
+
+const context = await onMutateOptimistic<typeof initial>(client, key, (old) => old?.map((task) => ({ ...task, done: true })));
+
+expect(client.getQueryData(key)).toEqual([{ id: "1", done: true }]);
+
+onErrorOptimistic(client, key, context);
+expect(client.getQueryData(key)).toEqual(initial);
+```
+
+Отдельно тестируйте `previous: undefined`, если mutation способна создать cache entry.
+
+### Test session reset
+
+Создайте public и session query, выполните reset и проверьте их отдельно:
+
+```ts
+await client.fetchQuery({
+	queryKey: ["public"],
+	queryFn: () => "public"
+});
+
+await client.fetchQuery({
+	queryKey: ["session"],
+	queryFn: () => "private",
+	meta: sessionScopedQueryMeta
+});
+
+await resetSessionScopedQueries(client, { broadcast: false });
+
+expect(client.getQueryData(["public"])).toBe("public");
+expect(client.getQueryData(["session"])).toBeUndefined();
+```
+
+### Test BroadcastChannel
+
+Для unit test предоставьте fake implementation, которая:
+
+- регистрирует channels по имени;
+- отправляет message другим instances, но не себе;
+- вызывает `onmessage`;
+- умеет `close`;
+- очищает registry после test.
+
+Всегда вызывайте installation cleanup.
+
+### Сброс global state между tests
+
+```ts
+setBroadcastFn(() => undefined);
+configureQueryPersistenceProjectAdapter({});
+installedBroadcast?.cleanup();
+installedSessionReset?.cleanup();
+queryClient.clear();
+```
+
+Без cleanup test order может влиять на результат.
+
+### Проверки самого пакета
+
+```bash
+npm run typecheck
+npm run lint
+node_modules/.bin/vitest run src/query-client
+npm run build
+```
+
+Profile tests подтверждают:
+
+- IndexedDB CRUD и opt-in filtering;
+- условное подключение persister;
+- broadcast no-op вне browser;
+- cache data/invalidation sync;
+- игнорирование невалидных messages;
+- отсутствие remote event loop;
+- optimistic snapshot/patch/rollback/merge/invalidation;
+- session reset active/inactive/disabled/hydrated query;
+- межвкладочную reset command без cache data.
+
+## Полная карта API
+
+Раздел перечисляет все публичные symbols entrypoint. Не импортируйте другие names через private path.
+
+### QueryClient
+
+| Symbol                  | Вид      | Назначение                             |
+| ----------------------- | -------- | -------------------------------------- |
+| `QueryBroadcastOptions` | type     | Global query/mutation error callbacks. |
+| `createQueryClient`     | function | Создаёт новый настроенный QueryClient. |
+
+### Query metadata
+
+| Symbol                   | Вид   | Назначение                                      |
+| ------------------------ | ----- | ----------------------------------------------- |
+| `AppQueryMeta`           | type  | `persist`, `sessionScoped` и consumer metadata. |
+| `persistedQueryMeta`     | const | Opt-in public persistence marker.               |
+| `sessionScopedQueryMeta` | const | Session reset marker.                           |
+
+### Persistence project adapter
+
+| Symbol                                    | Вид      | Назначение                           |
+| ----------------------------------------- | -------- | ------------------------------------ |
+| `QueryPersistenceProjectAdapter`          | type     | Buster и system identifier resolver. |
+| `configureQueryPersistenceProjectAdapter` | function | Заменяет global adapter.             |
+| `getQueryPersistenceProjectAdapter`       | function | Возвращает текущий adapter.          |
+
+### IndexedDB persistence
+
+| Symbol                            | Вид      | Назначение                                |
+| --------------------------------- | -------- | ----------------------------------------- |
+| `REACT_QUERY_PERSISTENCE_BUSTER`  | const    | Build-time default buster.                |
+| `REACT_QUERY_PERSISTENCE_MAX_AGE` | const    | Persistent max age: 90 дней.              |
+| `shouldPersistQuery`              | function | Opt-in predicate с session safety.        |
+| `createIndexedDbQueryStorage`     | function | AsyncStorage поверх IndexedDB.            |
+| `createReactQueryPersister`       | function | Настроенный per-query TanStack persister. |
+
+Options type `createIndexedDbQueryStorage` не экспортируется отдельным symbol; используйте структурный object или `Parameters<typeof createIndexedDbQueryStorage>[0]`.
+
+### Broadcast
+
+| Symbol                       | Вид      | Назначение                              |
+| ---------------------------- | -------- | --------------------------------------- |
+| `installReactQueryBroadcast` | function | Устанавливает data + event channels.    |
+| `setBroadcastFn`             | function | Устанавливает global imperative sender. |
+| `broadcastCacheEvent`        | function | Отправляет event через текущий sender.  |
+
+`CacheSyncEvent`, installation options и result types не экспортируются отдельными именами. Они доступны через inference:
+
+```ts
+type BroadcastEvent = Parameters<typeof broadcastCacheEvent>[0];
+type BroadcastOptions = Parameters<typeof installReactQueryBroadcast>[1];
+type InstalledBroadcast = ReturnType<typeof installReactQueryBroadcast>;
+```
+
+### Session-scoped cache
+
+| Symbol                                  | Вид      | Назначение                                |
+| --------------------------------------- | -------- | ----------------------------------------- |
+| `ResetSessionScopedQueriesOptions`      | type     | Управляет broadcast reset.                |
+| `InstallSessionScopedQueryResetOptions` | type     | Имя command channel.                      |
+| `InstalledSessionScopedQueryReset`      | type     | Cleanup contract.                         |
+| `isSessionScopedQuery`                  | function | Predicate по query meta.                  |
+| `resetSessionScopedQueries`             | function | Cancel/clear/refetch session query.       |
+| `installSessionScopedQueryReset`        | function | Межвкладочная reset-command installation. |
+
+### Optimistic update
+
+| Symbol                       | Вид            | Назначение                           |
+| ---------------------------- | -------------- | ------------------------------------ |
+| `OptimisticContext`          | type           | Previous cache snapshot.             |
+| `OnSettledOptimisticOptions` | type           | Invalidation refetchType.            |
+| `onMutateOptimistic`         | async function | Cancel, snapshot и optimistic patch. |
+| `onErrorOptimistic`          | function       | Rollback defined previous snapshot.  |
+| `onSuccessOptimistic`        | function       | Merge server data в текущий cache.   |
+| `onSettledOptimistic`        | async function | Invalidate один/несколько keys.      |
+
+## Частые вопросы
+
+### `createQueryClient` действительно singleton?
+
+Нет. Функция создаёт новый client при каждом вызове. Host должен вызвать её один раз и экспортировать instance.
+
+### Нужно ли помечать каждую query `persistedQueryMeta`?
+
+Нет. Persistence строго opt-in и подходит только проверенным публичным долгоживущим data.
+
+### Почему query с `persistedQueryMeta` не появилась в IndexedDB?
+
+Проверьте:
+
+- доступен ли IndexedDB;
+- query завершилась ли успешно;
+- meta действительно `persist: true`;
+- нет ли `sessionScoped: true`;
+- не возникла ли quota/transaction error;
+- вызывается ли query через client с подключённым default persister;
+- под каким dbName/system identifier открыт storage.
+
+### Почему после restore всё равно идёт request?
+
+`refetchOnRestore: true` обновляет восстановленную stale query. Проверьте `staleTime`, возраст data, buster и maxAge.
+
+### Можно ли persist permissions?
+
+Нет. Permissions зависят от session/role. Используйте `sessionScopedQueryMeta` и reset при смене сессии.
+
+### Чем `sessionScopedQueryMeta` отличается от `gcTime: 0`?
+
+`gcTime` управляет garbage collection неактивной query. Session reset является явной security/lifecycle boundary: cancel, очистка old data, refetch active query и команда другим вкладкам.
+
+### Нужно ли вручную broadcast обычный `setQueryData`?
+
+Не всегда. Установленный TanStack broadcast синхронизирует cache data. Manual event используйте только для explicit policy.
+
+### Почему другая вкладка только стала stale, но не сделала request?
+
+Automatic invalidation использует `refetchType: "none"`. Для немедленного remote refetch отправьте explicit invalidate event с `"active"` или другой подходящей policy.
+
+### Почему broadcast не работает в другом domain?
+
+BroadcastChannel ограничен одним origin и channel name.
+
+### Можно ли передавать Date в IndexedDB?
+
+Browser structured clone поддерживает `Date`, но убедитесь, что consumer mapping и cache contract ожидают Date после restore. Для transport/domain snapshots часто предсказуемее serializable ISO string.
+
+### Почему rollback не удалил созданный optimistic item?
+
+Если до mutation cache была `undefined`, standard context не отличает «entry отсутствовала» от undefined data и `onErrorOptimistic` ничего не делает. Добавьте explicit exact-key removal или заранее создайте empty cache snapshot.
+
+### Достаточно ли `cancelQueries` для параллельных mutation?
+
+Нет. Оно отменяет matching queries/refetches, а не mutation. Параллельные writes требуют serialization, mutation id, patch stack или отказа от optimistic update.
+
+### Нужно ли всегда вызывать `onSettledOptimistic`?
+
+Не механически. Выберите cache strategy. Если server response полностью записан через `setQueryData` и invalidation не нужна, дополнительная invalidation может быть лишней. Если server мог изменить другие fields/data, invalidation полезна.
+
+### Что произойдёт без build-time buster?
+
+Import entrypoint может завершиться `ReferenceError`, потому что constant читается на верхнем уровне. Настройте host bundler `define`.
+
+### Как очистить channels при HMR/test?
+
+Сбросьте global broadcast handler, вызовите оба cleanup и очистите test QueryClient.
+
+## Связанные модули
+
+- `@ryuzaki13/react-foundation-api/odata` — OData reads/mutations и TanStack integration.
+- `@ryuzaki13/react-foundation-api/http` — обычные HTTP query/mutation functions.
+- `@ryuzaki13/react-foundation-lib/odata-service` — чистые metadata/value/path/filter helpers.
+- `@ryuzaki13/react-foundation-lib/pwa` — Service Worker update и HTTP cache policy.
+- `@ryuzaki13/react-foundation-lib/error-report` — подготовка и диагностика error reports.

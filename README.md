@@ -89,7 +89,7 @@ npm run pack:dry-run
 | DOM overlay, portal, focus, download                                        | [`dom`](./src/dom/index.ts), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx)                                                                                                                                                         |
 | Debounce/throttle, DnD sensors, search params, listbox                      | [`hooks`](./src/hooks/index.ts), подробный README: [`hooks/README.mdx`](./src/hooks/README.mdx), [`utils/keyboard.ts`](./src/utils/keyboard.ts)                                                                                     |
 | Breakpoints, media queries и responsive props                               | [`media`](./src/media/index.ts), подробный README: [`media/README.mdx`](./src/media/README.mdx), тест: [`media.test.ts`](./src/media/media.test.ts)                                                                                 |
-| QueryClient, persistence, broadcast                                         | [`query-client`](./src/query-client/index.ts), README: [`query-client/README.md`](./src/query-client/README.md)                                                                                                                     |
+| QueryClient, persistence, broadcast                                         | [`query-client`](./src/query-client/index.ts), подробный README: [`query-client/README.mdx`](./src/query-client/README.mdx)                                                                                                         |
 | PWA service worker update и `x-sw-cache` policy                             | [`pwa`](./src/pwa/index.ts), README: [`pwa/README.md`](./src/pwa/README.md)                                                                                                                                                         |
 | Подстановки открытых границ диапазона                                       | [`range-output`](./src/range-output/index.ts), тест: [`rangeOutput.test.ts`](./src/range-output/rangeOutput.test.ts)                                                                                                                |
 | Unknown guards, className, stable stringify, clone                          | [`validators`](./src/validators/index.ts), [`utils`](./src/utils/index.ts)                                                                                                                                                          |
@@ -598,18 +598,20 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `query-client`
 
-Файлы: [`query-client/index.ts`](./src/query-client/index.ts), README: [`query-client/README.md`](./src/query-client/README.md), optimistic guide: [`OPTIMISTIC_UPDATE.md`](./src/query-client/OPTIMISTIC_UPDATE.md).
+Файлы: [`query-client/index.ts`](./src/query-client/index.ts), единый подробный справочник: [`query-client/README.mdx`](./src/query-client/README.mdx). Раздел optimistic update теперь входит в этот документ.
 
-| API                                                                                                    | Поведение                                                                            |
-| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `createQueryClient`                                                                                    | Singleton QueryClient defaults: stale/gc, retry, error handlers, optional persister. |
-| `persistedQueryMeta`, `shouldPersistQuery`, `createReactQueryPersister`, `createIndexedDbQueryStorage` | Opt-in persistence справочников в IndexedDB.                                         |
-| `installReactQueryBroadcast`, `broadcastCacheEvent`, `setBroadcastFn`                                  | Sync query cache и cache events между вкладками.                                     |
-| `onMutateOptimistic`, `onErrorOptimistic`, `onSuccessOptimistic`, `onSettledOptimistic`                | Helpers для точечного optimistic update.                                             |
+| API                                                                                                    | Поведение                                                               |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `createQueryClient`                                                                                    | Создаёт настроенный QueryClient; singleton lifecycle обеспечивает host. |
+| `persistedQueryMeta`, `shouldPersistQuery`, `createReactQueryPersister`, `createIndexedDbQueryStorage` | Opt-in persistence справочников в IndexedDB.                            |
+| `configureQueryPersistenceProjectAdapter`, `getQueryPersistenceProjectAdapter`                         | Host namespace и buster для persistent cache.                           |
+| `installReactQueryBroadcast`, `broadcastCacheEvent`, `setBroadcastFn`                                  | Sync query cache и cache events между вкладками.                        |
+| `sessionScopedQueryMeta`, `resetSessionScopedQueries`, `installSessionScopedQueryReset`                | Очистка auth/session-dependent query локально и между вкладками.        |
+| `onMutateOptimistic`, `onErrorOptimistic`, `onSuccessOptimistic`, `onSettledOptimistic`                | Helpers для точечного optimistic update.                                |
 
 Поведение из тестов: persistence сохраняет только `meta.persist === true`, broadcast игнорирует невалидные сообщения и не зацикливает remote events, `onSettledOptimistic` по умолчанию invalidates с `refetchType: "none"`.
 
-Тесты: [`queryClient.test.ts`](./src/query-client/queryClient.test.ts), [`persistence.test.ts`](./src/query-client/persistence.test.ts), [`broadcast.test.ts`](./src/query-client/broadcast.test.ts), [`broadcast.integration.test.ts`](./src/query-client/broadcast.integration.test.ts).
+Тесты: [`queryClient.test.ts`](./src/query-client/queryClient.test.ts), [`persistence.test.ts`](./src/query-client/persistence.test.ts), [`broadcast.test.ts`](./src/query-client/broadcast.test.ts), [`broadcast.integration.test.ts`](./src/query-client/broadcast.integration.test.ts), [`sessionScoped.test.ts`](./src/query-client/sessionScoped.test.ts).
 
 ### `error` и `error-report`
 

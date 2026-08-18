@@ -121,10 +121,6 @@
 			"types": "./dist/number-scale/index.d.ts",
 			"import": "./dist/number-scale/index.js"
 		},
-		"./odata": {
-			"types": "./dist/odata/index.d.ts",
-			"import": "./dist/odata/index.js"
-		},
 		"./odata-service": {
 			"types": "./dist/odata-service/index.d.ts",
 			"import": "./dist/odata-service/index.js"

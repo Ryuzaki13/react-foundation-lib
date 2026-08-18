@@ -1,0 +1,1853 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/API/Media" />
+
+# Адаптивность и media queries через `@ryuzaki13/react-foundation-lib/media`
+
+Модуль `media` содержит общий низкоуровневый контракт адаптивности для React-приложений:
+
+- проектные брейкпоинты `mobile`, `tablet` и `laptop`;
+- React hook для произвольного CSS media query;
+- React hook, который сообщает текущий проектный брейкпоинт;
+- типы и функции для responsive-значений вида `{ mobile, tablet, laptop }`;
+- чтение вычисленных `font-size` и `line-height` из DOM;
+- преобразование количества пикселей относительно размера `em`;
+- расчёт проектной высоты control.
+
+Документ рассчитан на разработчика, который использует опубликованный пакет без доступа к его исходному коду. Поэтому ниже отдельно объясняются базовые понятия CSS и React, точные значения, fallback-порядок, SSR, hydration, подписки, cleanup, ограничения и все публичные exports.
+
+## Содержание
+
+- [Граница ответственности](#граница-ответственности)
+- [Установка и импорт](#установка-и-импорт)
+- [Минимальные понятия](#минимальные-понятия)
+- [Как выбрать API](#как-выбрать-api)
+- [Проектные брейкпоинты](#проектные-брейкпоинты)
+- [`useMediaQuery`](#usemediaquery)
+- [`useMatchMedia`](#usematchmedia)
+- [Responsive-значения](#responsive-значения)
+- [`isResponsiveMap`](#isresponsivemap)
+- [`resolveResponsiveValue`](#resolveresponsivevalue)
+- [`resolveProps`](#resolveprops)
+- [Полный React-пример](#полный-react-пример)
+- [DOM-метрики](#dom-метрики)
+- [`pxToEm`](#pxtoem)
+- [CSS или JavaScript](#css-или-javascript)
+- [SSR и hydration](#ssr-и-hydration)
+- [Доступность](#доступность)
+- [Производительность и lifecycle](#производительность-и-lifecycle)
+- [Тестирование](#тестирование)
+- [Частые ошибки](#частые-ошибки)
+- [API-справочник](#api-справочник)
+- [Вопросы и ответы](#вопросы-и-ответы)
+
+## Граница ответственности
+
+### Что делает модуль
+
+- хранит единый набор project breakpoints;
+- преобразует breakpoints из `em` в browser media queries;
+- подписывает React-компонент на изменение media query;
+- предоставляет стабильный snapshot через React `useSyncExternalStore`;
+- безопасно отдаёт заранее определённый snapshot во время server render;
+- выбирает значение для текущего брейкпоинта с документированным fallback;
+- поверхностно разрешает выбранные responsive props;
+- читает несколько вычисленных CSS-метрик в браузере;
+- освобождает media-query listeners и DOM observers после ухода последнего подписчика.
+
+### Чего модуль не делает
+
+- не создаёт готовые React-компоненты layout;
+- не генерирует CSS-классы и CSS custom properties;
+- не заменяет CSS `@media` и container queries;
+- не определяет ориентацию, hover, pointer, color scheme или motion автоматически — для этого передайте собственный query в `useMediaQuery`;
+- не предоставляет брейкпоинт `desktop`;
+- не валидирует строку произвольного media query;
+- не рекурсивно обходит вложенные объекты;
+- не измеряет ширину конкретного компонента или контейнера;
+- не предоставляет polyfill для browser APIs;
+- не гарантирует одинаковую разметку для разных viewport на сервере;
+- не является дизайн-системой.
+
+### Соседние владельцы
+
+| Задача                                            | Предпочтительный владелец                                   |
+| ------------------------------------------------- | ----------------------------------------------------------- |
+| Готовые `Flex`, `Grid` и responsive UI primitives | `@ryuzaki13/react-foundation-ui/<module>`                   |
+| Общие media-query hooks и responsive resolver     | `@ryuzaki13/react-foundation-lib/media`                     |
+| Наблюдение за размером конкретного DOM-элемента   | `@ryuzaki13/react-foundation-lib/dom` или container query   |
+| Touch/coarse-pointer capability                   | `useIsTouchDevice` из `@ryuzaki13/react-foundation-lib/dom` |
+| Debounce/throttle пользовательских callbacks      | `@ryuzaki13/react-foundation-lib/hooks`                     |
+| Бизнес-решение «что показывать пользователю»      | entity/feature/widget host-приложения                       |
+
+Если задача решается только стилями, сначала используйте CSS. JavaScript hook нужен, когда media query действительно влияет на вычисления, выбор поведения, параметры сторонней библиотеки или внешний store.
+
+## Установка и импорт
+
+Установите пакет:
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+Entrypoint экспортирует React hooks, поэтому host-приложение должно предоставить совместимую peer dependency:
+
+```bash
+npm install react
+```
+
+Текущий контракт пакета требует React `>=19.2.0 <20.0.0`.
+
+Импортируйте runtime API только из опубликованного subpath `/media`:
+
+```ts
+import {
+	BREAKPOINTS_EM,
+	getControlHeight,
+	getCurrentFontSize,
+	getCurrentLineHeight,
+	isResponsiveMap,
+	pxToEm,
+	resolveProps,
+	resolveResponsiveValue,
+	useMatchMedia,
+	useMediaQuery
+} from "@ryuzaki13/react-foundation-lib/media";
+```
+
+TypeScript-типы импортируйте через `import type`:
+
+```ts
+import type {
+	Breakpoint,
+	MediaMatches,
+	ResolvedProps,
+	ResponsiveMap,
+	ResponsiveValue,
+	UnwrapResponsive
+} from "@ryuzaki13/react-foundation-lib/media";
+```
+
+Корневой и глубокий импорты не являются публичным контрактом:
+
+```ts
+// Неправильно: корневой entrypoint не опубликован.
+import { useMatchMedia } from "@ryuzaki13/react-foundation-lib";
+
+// Неправильно: внутреннее расположение файла может измениться.
+import { useMatchMedia } from "@ryuzaki13/react-foundation-lib/src/media/useMatchMedia";
+
+// Правильно.
+import { useMatchMedia } from "@ryuzaki13/react-foundation-lib/media";
+```
+
+Пакет поставляется как ESM.
+
+## Минимальные понятия
+
+### Viewport
+
+Viewport — видимая область страницы в браузере. Media query `width` сравнивает условие с шириной viewport, а не с шириной конкретной карточки или `div`.
+
+Если нужно реагировать на ширину отдельного контейнера, обычный viewport media query не подходит. Рассмотрите CSS container queries или измерение конкретного элемента.
+
+### CSS pixel
+
+CSS pixel — логическая единица браузерной раскладки. Она не обязана совпадать с одним физическим пикселем экрана. Значение `window.innerWidth` и границы media query выражаются в CSS pixels.
+
+### `em`
+
+`em` — относительная CSS-единица. В этом модуле константы брейкпоинтов хранятся в `em`, а `useMatchMedia` перед созданием query умножает их на текущий вычисленный `font-size` корневого элемента.
+
+При корневом `font-size: 16px`:
+
+```text
+48em × 16px = 768px
+72em × 16px = 1152px
+```
+
+При корневом `font-size: 20px`:
+
+```text
+48em × 20px = 960px
+72em × 20px = 1440px
+```
+
+Это осознанно связывает адаптивность с настройкой базового размера текста.
+
+### Media query
+
+Media query — условие среды отображения:
+
+```css
+@media (width >= 768px) {
+	/* Стили для достаточно широкого viewport. */
+}
+```
+
+JavaScript получает результат условия через `window.matchMedia`:
+
+```ts
+const result = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+console.log(result.matches);
+```
+
+`result.matches` — boolean: `true`, если условие сейчас выполняется, иначе `false`.
+
+### React hook
+
+`useMediaQuery` и `useMatchMedia` являются React hooks. Вызывайте их:
+
+- на верхнем уровне function component;
+- на верхнем уровне другого custom hook;
+- всегда в одинаковом порядке.
+
+```tsx
+// Неправильно.
+if (enabled) {
+	const isMobile = useMediaQuery("(width < 768px)");
+}
+
+// Правильно.
+const isMobile = useMediaQuery("(width < 768px)");
+
+if (!enabled) {
+	return null;
+}
+```
+
+### Что такое SSR и hydration
+
+SSR — создание HTML на сервере, где нет `window` и неизвестна реальная ширина экрана пользователя.
+
+Hydration — подключение React к уже созданному серверному HTML в браузере. Начальный client snapshot должен быть согласован с server snapshot, иначе React может получить различающуюся разметку.
+
+Hooks модуля используют `useSyncExternalStore` и отдельный server snapshot. Это делает механизм подписки SSR-безопасным, но разработчик всё равно отвечает за UX при последующем изменении значения в браузере.
+
+### Breakpoint
+
+Breakpoint — именованный диапазон ширины. В модуле их ровно три:
+
+```ts
+type Breakpoint = "mobile" | "tablet" | "laptop";
+```
+
+`laptop` охватывает также более широкие desktop viewport. Отдельного `desktop` в публичном типе нет.
+
+## Как выбрать API
+
+| Нужно                                                                                            | API                                         |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| Проверить `prefers-color-scheme`, `prefers-reduced-motion`, `orientation` или собственную ширину | `useMediaQuery(query, options?)`            |
+| Получить `mobile` / `tablet` / `laptop` по проектным границам                                    | `useMatchMedia()`                           |
+| Описать prop как обычное или responsive-значение                                                 | `ResponsiveValue<T>`                        |
+| Выбрать одно responsive-значение без React                                                       | `resolveResponsiveValue(value, breakpoint)` |
+| Разрешить несколько выбранных props                                                              | `resolveProps(props, breakpoint, keys)`     |
+| Проверить runtime-объект на responsive keys                                                      | `isResponsiveMap(value)`                    |
+| Прочитать вычисленный `font-size`                                                                | `getCurrentFontSize(element?)`              |
+| Прочитать нормализованный `line-height`                                                          | `getCurrentLineHeight(element?)`            |
+| Получить проектную высоту control                                                                | `getControlHeight()`                        |
+| Разделить px на базовый размер `em`                                                              | `pxToEm(px, baseEm?)`                       |
+| Изменить только внешний вид на разных ширинах                                                    | CSS `@media` или container query            |
+
+## Проектные брейкпоинты
+
+### `Breakpoint`
+
+`Breakpoint` — union type:
+
+```ts
+type Breakpoint = "mobile" | "tablet" | "laptop";
+```
+
+```ts
+import type { Breakpoint } from "@ryuzaki13/react-foundation-lib/media";
+
+const valid: Breakpoint = "tablet";
+
+// Ошибка TypeScript.
+const invalid: Breakpoint = "desktop";
+```
+
+### `BREAKPOINTS_EM`
+
+Константа хранит числовые границы в `em`:
+
+```ts
+const BREAKPOINTS_EM = {
+	mobileMax: 767.98 / 16,
+	tabletMin: 768 / 16,
+	tabletMax: 1151.98 / 16,
+	laptopMin: 1152 / 16
+} as const;
+```
+
+| Поле        | Значение в `em` | При базе `16px` | Назначение             |
+| ----------- | --------------: | --------------: | ---------------------- |
+| `mobileMax` |      `47.99875` |      `767.98px` | верхняя граница mobile |
+| `tabletMin` |            `48` |         `768px` | нижняя граница tablet  |
+| `tabletMax` |      `71.99875` |     `1151.98px` | верхняя граница tablet |
+| `laptopMin` |            `72` |        `1152px` | нижняя граница laptop  |
+
+`BREAKPOINTS_EM` имеет `as const`-тип. Не изменяйте его поля в consumer-коде.
+
+### `MediaMatches`
+
+`MediaMatches` хранит boolean для каждого breakpoint:
+
+```ts
+type MediaMatches = Record<Breakpoint, boolean>;
+```
+
+Эквивалентная форма:
+
+```ts
+type MediaMatches = {
+	mobile: boolean;
+	tablet: boolean;
+	laptop: boolean;
+};
+```
+
+### Как границы зависят от root font-size
+
+`useMatchMedia` читает `font-size` у `document.documentElement` и строит query в пикселях:
+
+```text
+граница в px = BREAKPOINTS_EM.<поле> × текущий root font-size
+```
+
+| Root font-size | Mobile          | Tablet                  | Laptop      |
+| -------------: | --------------- | ----------------------- | ----------- |
+|         `16px` | до `767.98px`   | `768px` — `1151.98px`   | от `1152px` |
+|         `18px` | до `863.9775px` | `864px` — `1295.9775px` | от `1296px` |
+|         `20px` | до `959.975px`  | `960px` — `1439.975px`  | от `1440px` |
+
+Это отличается от жёстко записанного `(width < 768px)`: пользователь с увеличенным базовым шрифтом дольше остаётся в более компактном layout.
+
+### Микрозазоры между диапазонами
+
+Между `mobileMax` и `tabletMin`, а также между `tabletMax` и `laptopMin` есть разница `0.02px` при базе `16px`. Она предотвращает одновременное совпадение соседних диапазонов на общей границе.
+
+При дробной ширине внутри такого очень узкого зазора все три `matches` теоретически могут быть `false`. В этом случае `activeBreakpoint` будет `"laptop"`, потому что это fallback алгоритма.
+
+Не воспроизводите границы вручную. Используйте `BREAKPOINTS_EM` или `useMatchMedia`, чтобы разные компоненты не получили расходящиеся значения.
+
+## `useMediaQuery`
+
+`useMediaQuery` подписывает React-компонент на один произвольный media query и возвращает boolean.
+
+### Сигнатура
+
+```ts
+function useMediaQuery(
+	query: string,
+	options?: {
+		readonly ssrFallback?: boolean;
+	}
+): boolean;
+```
+
+Тип options является частью сигнатуры функции, но не экспортируется отдельным именем.
+
+### Параметры
+
+| Параметр              | Тип       | Default      | Значение                                       |
+| --------------------- | --------- | ------------ | ---------------------------------------------- |
+| `query`               | `string`  | обязательный | условие для `window.matchMedia`                |
+| `options.ssrFallback` | `boolean` | `false`      | значение на сервере и начальной hydration-фазе |
+
+### Возвращаемое значение
+
+- `true` — query сейчас совпадает;
+- `false` — query не совпадает или browser API недоступен и fallback равен `false`.
+
+### Минимальный пример
+
+```tsx
+import { useMediaQuery } from "@ryuzaki13/react-foundation-lib/media";
+
+export function ColorSchemeStatus() {
+	const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
+
+	return <p>Системная тема: {prefersDark ? "тёмная" : "светлая"}</p>;
+}
+```
+
+Передавайте только внутреннее условие. Не добавляйте CSS-директиву `@media`:
+
+```tsx
+// Правильно.
+useMediaQuery("(prefers-reduced-motion: reduce)");
+
+// Неправильно.
+useMediaQuery("@media (prefers-reduced-motion: reduce)");
+```
+
+### Доступность: reduced motion
+
+```tsx
+import { useMediaQuery } from "@ryuzaki13/react-foundation-lib/media";
+
+export function AnimatedProgress({ value }: { value: number }) {
+	const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+	const label = "Прогресс: " + value + "%";
+	const transform = "scaleX(" + value / 100 + ")";
+
+	return (
+		<div
+			aria-label={label}
+			style={{
+				transform,
+				transition: reduceMotion ? "none" : "transform 200ms ease"
+			}}
+		/>
+	);
+}
+```
+
+Preference должна улучшать доступность, но сам hook не добавляет ARIA и не изменяет CSS.
+
+### SSR fallback
+
+На сервере нельзя узнать `window.matchMedia(...).matches`. Поэтому hook возвращает `ssrFallback`:
+
+```tsx
+const prefersDark = useMediaQuery("(prefers-color-scheme: dark)", {
+	ssrFallback: false
+});
+```
+
+Во время hydration React сначала использует то же fallback-значение, затем читает реальный query в браузере и при необходимости перерисовывает компонент.
+
+Выбирайте fallback по смыслу:
+
+- `false` подходит для безопасного базового поведения;
+- значение из server cookie подходит, если сервер и клиент используют один источник;
+- значение из заранее выставленного `data-*` атрибута можно передать, если оно согласовано с серверной разметкой;
+- не пытайтесь читать `window` прямо на сервере.
+
+```tsx
+type Scheme = "light" | "dark";
+
+function useSystemDarkScheme(serverScheme: Scheme) {
+	return useMediaQuery("(prefers-color-scheme: dark)", {
+		ssrFallback: serverScheme === "dark"
+	});
+}
+```
+
+### Lifecycle подписки
+
+1. React читает snapshot через `window.matchMedia(query).matches`.
+2. Hook подписывается на событие `change` соответствующего `MediaQueryList`.
+3. При изменении browser вызывает listener.
+4. `useSyncExternalStore` повторно читает snapshot.
+5. React перерисовывает component, если boolean изменился.
+6. При изменении строки `query` старая подписка очищается и создаётся новая.
+7. При unmount listener удаляется.
+
+Современные браузеры используют `addEventListener("change", ...)`. Для legacy Safari предусмотрен fallback на `addListener` / `removeListener`.
+
+### Динамический query
+
+```tsx
+import { useMemo } from "react";
+
+import { useMediaQuery } from "@ryuzaki13/react-foundation-lib/media";
+
+export function WidthStatus({ minWidth }: { minWidth: number }) {
+	const query = useMemo(() => "(width >= " + minWidth + "px)", [minWidth]);
+	const matches = useMediaQuery(query);
+
+	return <span>{matches ? "Достаточно места" : "Мало места"}</span>;
+}
+```
+
+`useMemo` здесь не обязателен: React dependency сравнивается по строковому значению. Он только делает зависимость query от `minWidth` очевидной.
+
+### Если `matchMedia` отсутствует
+
+В Node.js или неполном test DOM `window.matchMedia` может отсутствовать. Тогда:
+
+- snapshot равен `ssrFallback`;
+- фактическая подписка не создаётся;
+- hook не устанавливает polyfill;
+- результат не реагирует на изменение viewport в этой среде.
+
+### Когда использовать
+
+Подходящие случаи:
+
+- `prefers-color-scheme`;
+- `prefers-reduced-motion`;
+- `prefers-contrast`;
+- `orientation`;
+- `hover` и `pointer`;
+- интеграция с API, которому нужен boolean;
+- изменение вычислительного поведения, которое нельзя выразить CSS.
+
+Для проектных `mobile` / `tablet` / `laptop` предпочтительнее `useMatchMedia`: он использует единые границы и отслеживает изменение базового размера шрифта.
+
+### Ограничения
+
+- строка query передаётся браузеру без валидации;
+- hook не возвращает сам `MediaQueryList`;
+- hook не сообщает причину изменения;
+- для каждого вызова создаётся отдельная подписка;
+- browser определяет поддержку конкретной media feature;
+- результат capability query не обязательно описывает текущий способ действия пользователя.
+
+## `useMatchMedia`
+
+`useMatchMedia` возвращает проектный breakpoint и сырые boolean-совпадения для всех трёх диапазонов.
+
+### Сигнатура результата
+
+```ts
+function useMatchMedia(): {
+	matches: MediaMatches;
+	activeBreakpoint: Breakpoint;
+};
+```
+
+Тип объекта snapshot не экспортируется отдельным именем. Используйте `Breakpoint` и `MediaMatches` для своих контрактов либо выводите return type:
+
+```ts
+import { useMatchMedia } from "@ryuzaki13/react-foundation-lib/media";
+
+type MatchMediaResult = ReturnType<typeof useMatchMedia>;
+```
+
+### Минимальный пример
+
+```tsx
+import { useMatchMedia } from "@ryuzaki13/react-foundation-lib/media";
+
+export function BreakpointBadge() {
+	const { activeBreakpoint, matches } = useMatchMedia();
+
+	return (
+		<p>
+			Активный диапазон: {activeBreakpoint}. Mobile query: {matches.mobile ? "совпадает" : "не совпадает"}.
+		</p>
+	);
+}
+```
+
+Для обычного выбора используйте `activeBreakpoint`. `matches` нужен для диагностики или когда важны исходные результаты каждого query.
+
+### Точные query
+
+При текущем root font-size `E` hook создаёт:
+
+```text
+mobile: (width <= mobileMax × E px)
+tablet: (width >= tabletMin × E px) and (width <= tabletMax × E px)
+laptop: (width >= laptopMin × E px)
+```
+
+При `E = 16` итог примерно такой:
+
+```text
+mobile: (width <= 767.98px)
+tablet: (width >= 768px) and (width <= 1151.98px)
+laptop: (width >= 1152px)
+```
+
+Hook использует современный range-синтаксис media features. Если поддерживаемый browser не понимает этот синтаксис, соответствующий `MediaQueryList.matches` останется `false`.
+
+### Как выбирается `activeBreakpoint`
+
+Приоритет:
+
+1. если `matches.mobile === true`, результат `"mobile"`;
+2. иначе, если `matches.tablet === true`, результат `"tablet"`;
+3. иначе результат `"laptop"`.
+
+Следствия:
+
+- при нормальном диапазоне активен ровно один breakpoint;
+- если по какой-либо причине совпали несколько, `mobile` имеет наивысший приоритет;
+- если не совпал ни один, используется `laptop`;
+- `activeBreakpoint` никогда не равен `undefined`.
+
+### SSR snapshot
+
+На сервере hook всегда возвращает стабильный default snapshot:
+
+```ts
+{
+	matches: {
+		mobile: false,
+		tablet: false,
+		laptop: false
+	},
+	activeBreakpoint: "laptop"
+}
+```
+
+Сервер не пытается угадать ширину по User-Agent. На hydration React сначала использует этот же snapshot, затем подписывается и публикует фактическое browser-состояние.
+
+Это предотвращает несогласованную первую hydration-проверку, но может дать короткий переход с laptop-разметки на mobile-разметку. Если такой переход заметен:
+
+- используйте CSS для визуального layout;
+- не удаляйте важный контент по breakpoint;
+- зарезервируйте размеры;
+- используйте устойчивую базовую разметку;
+- не пытайтесь исправить это прямым чтением `window.innerWidth` во время render.
+
+### Singleton external store
+
+Все mounted вызовы `useMatchMedia` используют один module-level store.
+
+Для всего загруженного экземпляра entrypoint создаются:
+
+- три `MediaQueryList`;
+- по одному listener на каждый query;
+- один `MutationObserver` для root attributes;
+- не более одного `ResizeObserver`;
+- один скрытый probe-элемент размером `1em`;
+- один общий immutable snapshot;
+- набор React listeners.
+
+Если hook используют 100 компонентов, модуль не создаёт 300 независимых `MediaQueryList`. Компоненты подписываются на общий snapshot.
+
+### Инициализация
+
+Store лениво инициализируется при первом реальном browser subscriber:
+
+1. subscriber добавляется в общий `Set`;
+2. читается root font-size;
+3. создаются три query;
+4. подключаются query listeners;
+5. вычисляется первый client snapshot;
+6. подключаются observers за изменением `em`.
+
+Один импорт модуля не добавляет DOM-элементы и listeners.
+
+### Отслеживание root `em`
+
+Изменение базового шрифта может изменить breakpoint даже при неизменной ширине viewport. Store наблюдает:
+
+- атрибуты `style`, `class` и `data-font-size` у `document.documentElement`;
+- размер скрытого probe-элемента `width: 1em` через `ResizeObserver`.
+
+Observer events объединяются debounce-интервалом `80ms`. Query перестраиваются, если root font-size изменился минимум на `0.25px`. Меньшие колебания игнорируются.
+
+Например:
+
+```ts
+document.documentElement.style.fontSize = "20px";
+```
+
+Mutation observer планирует проверку. Если предыдущее значение было `16px`, query перестраиваются на границы `960px` и `1440px`.
+
+Если `ResizeObserver` отсутствует, store продолжит работать с `MutationObserver` и media-query listeners, но не получит дополнительный сигнал через probe.
+
+### Cleanup
+
+Когда последний component отписывается:
+
+- удаляются три media-query listener;
+- отменяется ожидающий debounce timer;
+- отключаются `MutationObserver` и `ResizeObserver`;
+- probe удаляется из DOM;
+- текущие `MediaQueryList` освобождаются;
+- store помечается неинициализированным.
+
+Последний опубликованный snapshot остаётся в памяти модуля. При следующем subscriber store принудительно перечитает root font-size и query.
+
+### React Strict Mode
+
+В development React Strict Mode может выполнить дополнительный subscribe/unsubscribe cycle. Store поддерживает это: ресурсы создаются лениво и очищаются после ухода последнего listener.
+
+Не пишите код, который рассчитывает на единственную инициализацию component за всё время жизни приложения.
+
+### Когда использовать `matches`
+
+```tsx
+const { activeBreakpoint, matches } = useMatchMedia();
+
+// Основной consumer-код.
+const columns = activeBreakpoint === "laptop" ? 3 : 1;
+
+// Диагностический код.
+console.table(matches);
+```
+
+Не вычисляйте breakpoint повторно из `matches` без необходимости. `activeBreakpoint` уже применяет точный приоритет модуля.
+
+### Ограничения
+
+- пользовательские breakpoint values передать нельзя;
+- SSR fallback настроить нельзя;
+- границы зависят от root font-size;
+- изменение stylesheet отслеживается через фактическое изменение probe, если доступен `ResizeObserver`;
+- частичная browser-like среда должна иметь `MutationObserver`;
+- hook отслеживает viewport, а не отдельный container;
+- store один на загруженный экземпляр модуля, но две физические копии пакета создадут два store;
+- очень узкие зазоры диапазонов получают fallback `laptop`.
+
+## Responsive-значения
+
+Responsive-значение позволяет prop принимать либо одно значение для всех breakpoint, либо map с разными вариантами.
+
+### `ResponsiveMap<T>`
+
+```ts
+type ResponsiveMap<T> = {
+	mobile?: T;
+	tablet?: T;
+	laptop?: T;
+};
+```
+
+Все поля optional. Допустимы полная и частичная map:
+
+```ts
+import type { ResponsiveMap } from "@ryuzaki13/react-foundation-lib/media";
+
+const full: ResponsiveMap<number> = {
+	mobile: 1,
+	tablet: 2,
+	laptop: 3
+};
+
+const partial: ResponsiveMap<number> = {
+	mobile: 1,
+	laptop: 3
+};
+```
+
+Для пропущенного поля resolver использует documented fallback, а не автоматически наследует строго «слева направо».
+
+### `ResponsiveValue<T>`
+
+```ts
+type ResponsiveValue<T> = T | ResponsiveMap<T>;
+```
+
+Пример component prop:
+
+```ts
+import type { ResponsiveValue } from "@ryuzaki13/react-foundation-lib/media";
+
+type PanelProps = {
+	gap?: ResponsiveValue<"small" | "medium" | "large">;
+};
+```
+
+Consumer может передать обычное значение:
+
+```tsx
+<Panel gap="medium" />
+```
+
+Оно применяется на всех breakpoint. Или map:
+
+```tsx
+<Panel
+	gap={{
+		mobile: "small",
+		tablet: "medium",
+		laptop: "large"
+	}}
+/>
+```
+
+### `UnwrapResponsive<T>`
+
+Conditional type снимает обёртку `ResponsiveValue`:
+
+```ts
+type UnwrapResponsive<T> = T extends ResponsiveValue<infer U> ? U : T;
+```
+
+Концептуальные примеры:
+
+```ts
+type A = UnwrapResponsive<ResponsiveValue<number>>;
+// number
+
+type B = UnwrapResponsive<string>;
+// string
+```
+
+Это type-level операция. В runtime она ничего не вычисляет. Для реального выбора значения используйте `resolveResponsiveValue` или `resolveProps`.
+
+## `isResponsiveMap`
+
+`isResponsiveMap` проверяет runtime-значение и одновременно служит TypeScript type guard.
+
+### Сигнатура
+
+```ts
+function isResponsiveMap<T>(value: ResponsiveValue<T>): value is ResponsiveMap<T>;
+```
+
+Функция возвращает `true`, если:
+
+- значение является object;
+- значение не равно `null`;
+- в нём присутствует хотя бы один собственный или унаследованный ключ `mobile`, `tablet`, `laptop` или `desktop`.
+
+Проверяется наличие ключа через оператор `in`, а не значение поля:
+
+```ts
+isResponsiveMap({ mobile: "compact" }); // true
+isResponsiveMap({ mobile: undefined }); // true
+isResponsiveMap({ value: "compact" }); // false
+isResponsiveMap("compact"); // false
+isResponsiveMap(null); // false
+```
+
+### Важная коллизия object values
+
+`ResponsiveValue<T>` может принимать обычный object `T`. Если у обычного business object есть поле `mobile`, `tablet`, `laptop` или `desktop`, функция ошибочно с точки зрения бизнес-смысла распознает его как responsive map:
+
+```ts
+const contact = {
+	mobile: "+7 900 000-00-00",
+	name: "Анна"
+};
+
+isResponsiveMap(contact); // true
+```
+
+Не используйте responsive wrapper для object-типа с такими ключами. Измените форму данных или явно отделите значение:
+
+```ts
+type ContactValue = {
+	value: {
+		mobile: string;
+		name: string;
+	};
+};
+```
+
+### Почему распознаётся `desktop`
+
+Runtime guard считает объект с ключом `desktop` responsive map, однако:
+
+- `desktop` не входит в `ResponsiveMap<T>`;
+- `desktop` не входит в `Breakpoint`;
+- resolver не читает значение `desktop`.
+
+Поэтому не передавайте:
+
+```ts
+const legacyValue = {
+	desktop: "wide"
+};
+
+resolveResponsiveValue(legacyValue, "laptop");
+// undefined
+```
+
+Распознавание `desktop` следует считать защитой от смешения legacy-подобного объекта с обычным value, а не поддержкой четвёртого breakpoint.
+
+## `resolveResponsiveValue`
+
+Функция выбирает одно значение для переданного breakpoint. React и DOM ей не нужны.
+
+### Сигнатура
+
+```ts
+function resolveResponsiveValue<T>(value: ResponsiveValue<T> | undefined, breakpoint: Breakpoint): T | undefined;
+```
+
+### Обычное значение
+
+Если `value` не является responsive map, оно возвращается без изменений:
+
+```ts
+resolveResponsiveValue("medium", "mobile"); // "medium"
+resolveResponsiveValue(42, "tablet"); // 42
+resolveResponsiveValue(null, "laptop"); // null, если T допускает null
+resolveResponsiveValue(undefined, "mobile"); // undefined
+```
+
+### Точный fallback-порядок
+
+| Текущий breakpoint | Порядок поиска                 |
+| ------------------ | ------------------------------ |
+| `mobile`           | `mobile` → `tablet` → `laptop` |
+| `tablet`           | `tablet` → `mobile` → `laptop` |
+| `laptop`           | `laptop` → `tablet` → `mobile` |
+
+Примеры:
+
+```ts
+resolveResponsiveValue(
+	{
+		tablet: "medium",
+		laptop: "large"
+	},
+	"mobile"
+);
+// "medium"
+
+resolveResponsiveValue(
+	{
+		mobile: "small",
+		laptop: "large"
+	},
+	"tablet"
+);
+// "small"
+
+resolveResponsiveValue(
+	{
+		mobile: "small",
+		tablet: "medium"
+	},
+	"laptop"
+);
+// "medium"
+```
+
+Для `tablet` сначала берётся точное значение, потом mobile, только затем laptop. Это важно: алгоритм не просто выбирает первое поле в object и не всегда движется к большему breakpoint.
+
+### Nullish fallback
+
+Resolver использует оператор `??`. Отсутствующими считаются `undefined` и `null`. Значения `false`, `0` и пустая строка остаются полноценными:
+
+```ts
+resolveResponsiveValue(
+	{
+		mobile: false,
+		tablet: true
+	},
+	"mobile"
+);
+// false
+
+resolveResponsiveValue(
+	{
+		mobile: 0,
+		tablet: 10
+	},
+	"mobile"
+);
+// 0
+
+resolveResponsiveValue(
+	{
+		mobile: "",
+		tablet: "fallback"
+	},
+	"mobile"
+);
+// ""
+```
+
+Но `null` внутри map запускает fallback:
+
+```ts
+resolveResponsiveValue(
+	{
+		mobile: null,
+		tablet: "fallback"
+	},
+	"mobile"
+);
+// "fallback"
+```
+
+Если `null` должен быть отдельным осмысленным responsive-значением, текущий contract для этого не подходит.
+
+### Пустая map
+
+```ts
+resolveResponsiveValue({}, "tablet"); // undefined
+```
+
+TypeScript разрешает пустой `ResponsiveMap<T>`, потому что все поля optional. Проверяйте обязательность на уровне props или validation host-приложения.
+
+### Функция не мутирует данные
+
+`resolveResponsiveValue` только читает переданное значение. Она не дописывает отсутствующие поля и не изменяет map.
+
+## `resolveProps`
+
+`resolveProps` создаёт поверхностную копию object props и разрешает только явно перечисленные keys.
+
+### Сигнатура
+
+```ts
+function resolveProps<T extends object>(props: T, breakpoint: Breakpoint, responsiveKeys: readonly (keyof T)[]): ResolvedProps<T>;
+```
+
+### `ResolvedProps<T>`
+
+```ts
+type ResolvedProps<T extends object> = {
+	[K in keyof T]: UnwrapResponsive<T[K]>;
+};
+```
+
+Тип сохраняет имена полей и снимает responsive wrapper с их типов.
+
+### Базовый пример
+
+```ts
+import { resolveProps } from "@ryuzaki13/react-foundation-lib/media";
+import type { ResponsiveValue } from "@ryuzaki13/react-foundation-lib/media";
+
+type LayoutProps = {
+	direction?: ResponsiveValue<"row" | "column">;
+	gap?: ResponsiveValue<number>;
+	title: string;
+};
+
+const props: LayoutProps = {
+	direction: {
+		mobile: "column",
+		laptop: "row"
+	},
+	gap: {
+		mobile: 8,
+		tablet: 12,
+		laptop: 16
+	},
+	title: "Профиль"
+};
+
+const resolved = resolveProps(props, "tablet", ["direction", "gap"]);
+
+console.log(resolved);
+// {
+//   direction: "column",
+//   gap: 12,
+//   title: "Профиль"
+// }
+```
+
+`title` не был перечислен, поэтому скопирован как есть.
+
+### Типобезопасный список keys
+
+Объявляйте стабильный список рядом с component:
+
+```ts
+const RESPONSIVE_KEYS = ["direction", "gap"] as const satisfies readonly (keyof LayoutProps)[];
+```
+
+`satisfies` проверит опечатку:
+
+```ts
+const BAD_KEYS = ["direciton"] as const satisfies readonly (keyof LayoutProps)[];
+// Ошибка TypeScript: такого key нет.
+```
+
+### Разрешаются только перечисленные поля
+
+```ts
+resolveProps(
+	{
+		gap: {
+			mobile: 8,
+			laptop: 16
+		},
+		padding: {
+			mobile: 4,
+			laptop: 12
+		}
+	},
+	"laptop",
+	["gap"]
+);
+// {
+//   gap: 16,
+//   padding: { mobile: 4, laptop: 12 }
+// }
+```
+
+`padding` остаётся map. Тип результата предполагает развёрнутые responsive fields, поэтому consumer обязан правильно перечислить все поля, которые действительно имеют `ResponsiveValue`. TypeScript не может проверить semantic полноту списка.
+
+### Поверхностная копия
+
+Исходный object верхнего уровня не изменяется:
+
+```ts
+const original = {
+	size: {
+		mobile: "small",
+		laptop: "large"
+	},
+	meta: {
+		id: 1
+	}
+};
+
+const resolved = resolveProps(original, "laptop", ["size"]);
+
+console.log(resolved === original); // false
+console.log(resolved.meta === original.meta); // true
+```
+
+Вложенные обычные objects сохраняют reference. Это не deep clone.
+
+### Отсутствующий key
+
+Если `responsiveKeys` содержит optional key, которого нет в `props`, результат получит это поле со значением `undefined`:
+
+```ts
+const result = resolveProps(
+	{
+		title: "Карточка"
+	} as {
+		title: string;
+		gap?: ResponsiveValue<number>;
+	},
+	"mobile",
+	["gap"]
+);
+
+console.log("gap" in result); // true
+console.log(result.gap); // undefined
+```
+
+Это может иметь значение при `Object.keys`, spread или сериализации custom replacer.
+
+### Нет рекурсивного обхода
+
+```ts
+const props = {
+	layout: {
+		gap: {
+			mobile: 8,
+			laptop: 16
+		}
+	}
+};
+
+resolveProps(props, "laptop", ["layout"]);
+```
+
+`layout` — обычный object без breakpoint keys, поэтому возвращается целиком. Вложенный `layout.gap` не разрешается. Вызовите resolver на нужном уровне самостоятельно.
+
+## Полный React-пример
+
+Ниже component принимает обычные или responsive props, получает текущий breakpoint и разрешает их перед созданием styles.
+
+```tsx
+import { useMemo } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+import { resolveProps, useMatchMedia } from "@ryuzaki13/react-foundation-lib/media";
+import type { ResponsiveValue } from "@ryuzaki13/react-foundation-lib/media";
+
+type AdaptiveCardProps = {
+	children: ReactNode;
+	direction?: ResponsiveValue<"row" | "column">;
+	gap?: ResponsiveValue<number>;
+};
+
+const RESPONSIVE_KEYS = ["direction", "gap"] as const satisfies readonly (keyof AdaptiveCardProps)[];
+
+export function AdaptiveCard({ children, direction = "column", gap = 12 }: AdaptiveCardProps) {
+	const { activeBreakpoint } = useMatchMedia();
+
+	const resolved = useMemo(
+		() =>
+			resolveProps(
+				{
+					children,
+					direction,
+					gap
+				},
+				activeBreakpoint,
+				RESPONSIVE_KEYS
+			),
+		[activeBreakpoint, children, direction, gap]
+	);
+
+	const style: CSSProperties = {
+		display: "flex",
+		flexDirection: resolved.direction,
+		gap: resolved.gap
+	};
+
+	return <section style={style}>{resolved.children}</section>;
+}
+```
+
+Использование:
+
+```tsx
+<AdaptiveCard
+	direction={{
+		mobile: "column",
+		laptop: "row"
+	}}
+	gap={{
+		mobile: 8,
+		tablet: 12,
+		laptop: 16
+	}}>
+	<div>Основная часть</div>
+	<aside>Дополнительная часть</aside>
+</AdaptiveCard>
+```
+
+На mobile результат `column / 8`. На tablet `direction` fallback-ится к mobile и получится `column / 12`. На laptop результат `row / 16`.
+
+### Когда `useMemo` действительно полезен
+
+`resolveProps` создаёт новый object при каждом вызове. Если результат передаётся в memoized child, используется как effect dependency или участвует в дорогом вычислении, `useMemo` сохраняет reference до изменения dependencies.
+
+Если object сразу превращается в пару primitive и component простой, memoization может быть лишней. Не добавляйте её механически.
+
+### Почему styles всё равно лучше держать в CSS
+
+Пример показывает runtime API, но responsive layout часто проще выразить так:
+
+```css
+.card {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+@media (width >= 48em) {
+	.card {
+		gap: 0.75rem;
+	}
+}
+
+@media (width >= 72em) {
+	.card {
+		flex-direction: row;
+		gap: 1rem;
+	}
+}
+```
+
+CSS меняет layout без React render и начинает действовать до hydration. Runtime responsive props оправданы, когда это контракт общего UI primitive или значение нужно JavaScript-коду.
+
+Этот CSS-фрагмент показывает сам подход, но не обещает математически идентичные границы: семантику `em` внутри CSS media query определяет browser, а `useMatchMedia` явно умножает constants на текущий computed `font-size` корневого элемента. Если CSS и JavaScript обязаны совпадать до долей пикселя, используйте единый build-time token contract и отдельно проверьте его в поддерживаемых browsers.
+
+## DOM-метрики
+
+Модуль экспортирует три функции, которые читают computed styles. Они не являются hooks и могут вызываться в обычном TypeScript-коде, но реальное DOM-значение доступно только в браузере.
+
+## `getCurrentFontSize`
+
+### Сигнатура
+
+```ts
+function getCurrentFontSize(element?: HTMLElement | null): number;
+```
+
+### Поведение
+
+1. Если `window` или `document` отсутствует, возвращается `16`.
+2. Если `element` передан, читается его computed `fontSize`.
+3. Если `element` отсутствует или равен `null`, используется `document.documentElement`.
+4. Строка разбирается через `Number.parseFloat`.
+5. Если результат не finite или меньше либо равен нулю, возвращается `16`.
+6. Иначе возвращается число в пикселях.
+
+Пример:
+
+```ts
+import { getCurrentFontSize } from "@ryuzaki13/react-foundation-lib/media";
+
+const rootSize = getCurrentFontSize();
+
+const element = document.querySelector<HTMLElement>(".card");
+const cardSize = getCurrentFontSize(element);
+```
+
+Если browser вернул `"20px"`, функция вернёт `20`. Суффикс `px` в результате отсутствует.
+
+### Fallback
+
+| Среда или computed value | Результат |
+| ------------------------ | --------: |
+| SSR / Node.js            |      `16` |
+| `"20px"`                 |      `20` |
+| `"16.5px"`               |    `16.5` |
+| `"normal"`               |      `16` |
+| `""`                     |      `16` |
+| `"0px"`                  |      `16` |
+| отрицательное значение   |      `16` |
+
+Функция не проверяет, подключён ли element к DOM. Результат для detached element определяет browser/test environment.
+
+## `getCurrentLineHeight`
+
+### Сигнатура
+
+```ts
+function getCurrentLineHeight(element?: HTMLElement | null): number;
+```
+
+### Точное вычисление
+
+1. Без `window` или `document` возвращается `1.2`.
+2. Target выбирается так же, как в `getCurrentFontSize`.
+3. Читается computed `lineHeight`.
+4. Значение разбирается через `Number.parseFloat`.
+5. Невалидное или неположительное значение даёт fallback `1.2`.
+6. Валидное значение делится на константу `16`.
+
+```text
+result = parseFloat(computed line-height) / 16
+```
+
+Примеры:
+
+```ts
+// computed line-height: "24px"
+getCurrentLineHeight(element); // 1.5
+
+// computed line-height: "32px"
+getCurrentLineHeight(element); // 2
+
+// computed line-height: "normal"
+getCurrentLineHeight(element); // 1.2
+```
+
+### Важное ограничение
+
+Функция не делит `line-height` на фактический `font-size` переданного element. Делитель всегда равен `16`.
+
+Если element имеет `font-size: 20px` и `line-height: 24px`, результат всё равно `24 / 16 = 1.5`, а не `24 / 20 = 1.2`.
+
+Поэтому воспринимайте результат как проектную нормализацию относительно базовых `16px`, а не как универсальный CSS unitless line-height конкретного элемента.
+
+Если computed style неожиданно возвращает unitless строку `"1.5"`, функция вычислит `1.5 / 16 = 0.09375`. В обычном браузере computed `lineHeight` чаще представлен в пикселях, но mocks должны возвращать контракт, близкий к browser.
+
+## `getControlHeight`
+
+### Сигнатура
+
+```ts
+function getControlHeight(): number;
+```
+
+Функция не принимает element и использует root DOM-метрики:
+
+```text
+getControlHeight()
+= getCurrentFontSize()
+  + getCurrentLineHeight() × 10
+```
+
+Примеры:
+
+| Root computed styles                   | Расчёт          | Результат |
+| -------------------------------------- | --------------- | --------: |
+| server fallback                        | `16 + 1.2 × 10` |      `28` |
+| `font-size: 16px; line-height: 19.2px` | `16 + 1.2 × 10` |      `28` |
+| `font-size: 20px; line-height: 24px`   | `20 + 1.5 × 10` |      `35` |
+
+`getControlHeight` только возвращает number. Он не устанавливает CSS custom property `--control-height` и не меняет DOM.
+
+```ts
+import { getControlHeight } from "@ryuzaki13/react-foundation-lib/media";
+
+const controlHeight = getControlHeight();
+
+document.documentElement.style.setProperty("--control-height", controlHeight + "px");
+```
+
+Вызов во время React render прочитает computed styles синхронно. Если значение нужно после изменения DOM, читайте его в подходящем effect или внешнем layout-measurement слое.
+
+## `pxToEm`
+
+`pxToEm` делит количество пикселей на базовый размер.
+
+### Сигнатура
+
+```ts
+function pxToEm(px: number, baseEm?: number): string;
+```
+
+### Формула
+
+```text
+result = String(px / (baseEm ?? getCurrentFontSize()))
+```
+
+Если `baseEm` передан, DOM не читается:
+
+```ts
+import { pxToEm } from "@ryuzaki13/react-foundation-lib/media";
+
+pxToEm(24, 12); // "2"
+pxToEm(10, 20); // "0.5"
+```
+
+Если `baseEm` не передан, используется текущий root font-size:
+
+```ts
+// При root font-size: 20px.
+pxToEm(10); // "0.5"
+```
+
+### Результат не содержит `em`
+
+Несмотря на имя функции, возвращается только числовая строка:
+
+```ts
+pxToEm(32, 16); // "2", а не "2em"
+```
+
+Чтобы получить готовое CSS-значение, добавьте unit:
+
+```ts
+const padding = pxToEm(32, 16) + "em";
+// "2em"
+```
+
+Не добавляйте unit, если consumer ожидает unitless число в строковой форме.
+
+### Нет округления
+
+```ts
+pxToEm(10, 3);
+// "3.3333333333333335"
+```
+
+Если UI contract требует фиксированное количество знаков, округляйте результат отдельно и осознанно.
+
+### Валидация отсутствует
+
+Функция не проверяет вход:
+
+```ts
+pxToEm(10, 0); // "Infinity"
+pxToEm(-10, 20); // "-0.5"
+pxToEm(Number.NaN, 16); // "NaN"
+```
+
+Передавайте finite `px` и положительный finite `baseEm`. `baseEm = 0` не означает «использовать default», потому что оператор `??` считает ноль переданным значением.
+
+### SSR
+
+Без `window` и `document` `getCurrentFontSize` возвращает `16`:
+
+```ts
+// В Node.js.
+pxToEm(32); // "2"
+```
+
+Это делает вызов предсказуемым, но server result может отличаться от browser result, если root font-size в браузере не равен `16px`.
+
+## CSS или JavaScript
+
+Выбор инструмента влияет на производительность, SSR и доступность.
+
+### Используйте CSS, когда
+
+- меняется только display, spacing, grid/flex layout, typography или decoration;
+- обе версии контента семантически одинаковы;
+- адаптивность должна работать до загрузки JavaScript;
+- условие относится к размеру конкретного container;
+- не нужен boolean в TypeScript.
+
+```css
+.navigation {
+	display: none;
+}
+
+@media (width >= 48em) {
+	.navigation {
+		display: flex;
+	}
+}
+```
+
+### Используйте `useMediaQuery`, когда
+
+- нужен произвольный user preference;
+- результат передаётся в JavaScript API;
+- меняется алгоритм, а не только style;
+- нужен один boolean, не связанный с project breakpoint;
+- SSR fallback можно определить явно.
+
+### Используйте `useMatchMedia`, когда
+
+- нужен единый `Breakpoint`;
+- component принимает `ResponsiveValue`;
+- несколько foundation UI primitives должны использовать одинаковые границы;
+- требуется динамическая привязка границ к root font-size.
+
+### Не дублируйте один layout без необходимости
+
+```tsx
+// Рискованный вариант: две большие ветви DOM.
+return isMobile ? <MobileCheckout /> : <DesktopCheckout />;
+```
+
+Такой код может дать заметную замену после hydration, создаёт две реализации одного сценария, усложняет focus/state и требует тестировать обе ветви.
+
+Предпочтительнее одна семантическая разметка и CSS layout. Разделяйте component по breakpoint только когда поведение действительно различается.
+
+## SSR и hydration
+
+### Сводная таблица
+
+| API                                           | Server result                         | Первый hydration snapshot | Browser update                    |
+| --------------------------------------------- | ------------------------------------- | ------------------------- | --------------------------------- |
+| `useMediaQuery(query)`                        | `false`                               | `false`                   | реальный `matches`                |
+| `useMediaQuery(query, { ssrFallback: true })` | `true`                                | `true`                    | реальный `matches`                |
+| `useMatchMedia()`                             | все `matches: false`, active `laptop` | тот же default snapshot   | реальный breakpoint               |
+| `getCurrentFontSize()`                        | `16`                                  | не является hook          | browser computed value при вызове |
+| `getCurrentLineHeight()`                      | `1.2`                                 | не является hook          | browser computed value при вызове |
+| `getControlHeight()`                          | `28`                                  | не является hook          | browser calculation при вызове    |
+| `pxToEm(px)`                                  | база `16`                             | не является hook          | текущая root-база при вызове      |
+
+### Hook безопасен не значит UI неизменен
+
+`useSyncExternalStore` согласует server snapshot с начальной hydration-фазой. После подключения browser snapshot может отличаться, и React выполнит обычный update:
+
+```text
+server: laptop fallback
+hydration start: laptop fallback
+browser subscription: mobile
+React update: mobile UI
+```
+
+Hydration error не обязателен, но пользователь может увидеть layout shift. CSS обычно лучше для геометрии.
+
+### Не используйте browser API в module scope
+
+```tsx
+// Неправильно для SSR: выполняется при импорте module.
+const IS_MOBILE = window.matchMedia("(width < 768px)").matches;
+
+// Правильно внутри React component.
+function Component() {
+	const isMobile = useMediaQuery("(width < 768px)");
+	return <span>{isMobile ? "mobile" : "wide"}</span>;
+}
+```
+
+Server fallback должен быть детерминированным. Не используйте `Math.random()`, текущее время или другой нестабильный источник для `ssrFallback`.
+
+## Доступность
+
+### User preferences
+
+```tsx
+const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+
+const highContrast = useMediaQuery("(prefers-contrast: more)");
+```
+
+Не заставляйте пользователя включать preference внутри приложения, если browser уже сообщает её. При наличии явной настройки приложения заранее определите приоритет: explicit user setting обычно важнее system preference.
+
+### Не удаляйте смысловой контент по ширине
+
+Mobile-пользователь должен получать ту же основную информацию и действия. Можно менять порядок и плотность, но нельзя делать ключевой action доступным только на `laptop`.
+
+### Focus при смене breakpoint
+
+Если React ветка с focused element unmount-ится при изменении breakpoint, focus может потеряться. Для responsive overlay/navigation:
+
+- сохраняйте логическую action;
+- восстанавливайте focus осознанно;
+- используйте DOM focus helpers из соседнего модуля;
+- тестируйте keyboard navigation до и после смены диапазона.
+
+### Query не доказывает способ ввода
+
+`(pointer: coarse)` или `(hover: none)` описывает возможности среды. Hybrid device может иметь touch, mouse и keyboard одновременно. Не отключайте keyboard behavior и доступные click targets на основании одного query.
+
+`prefers-reduced-motion` не означает «удалить всю обратную связь». Уберите декоративное перемещение и длительные переходы, но сохраните понятное состояние завершения действия.
+
+## Производительность и lifecycle
+
+### `useMediaQuery`
+
+Каждый вызов создаёт собственную subscription. Для нескольких разных preferences это нормально. Не создавайте сотни одинаковых calls в элементах большого списка.
+
+Поднимите общее значение выше:
+
+```tsx
+function Results({ items }: { items: Item[] }) {
+	const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+
+	return items.map((item) => <ResultRow key={item.id} item={item} reduceMotion={reduceMotion} />);
+}
+```
+
+### `useMatchMedia`
+
+Hook уже разделяет singleton store между всеми consumers. Дополнительный React context только ради уменьшения числа browser listeners не нужен.
+
+Каждый subscriber всё равно получает React update при изменении общего snapshot. Не запускайте в render тяжёлый transformation.
+
+### Responsive resolvers
+
+- `resolveResponsiveValue` выполняет несколько сравнений и очень дешёв;
+- `resolveProps` выполняет shallow spread и проходит только по `responsiveKeys`;
+- `resolveProps` всегда создаёт новый top-level object;
+- вложенные references не клонируются;
+- функция не кеширует результат.
+
+### DOM reads
+
+`getCurrentFontSize` и `getCurrentLineHeight` вызывают `window.getComputedStyle`. Это синхронный DOM read. В hot loop или для тысяч elements он может быть дорогим.
+
+```ts
+// Не делайте так для большой коллекции.
+for (const element of thousandsOfElements) {
+	getCurrentFontSize(element);
+}
+```
+
+Если метрика одна и та же, прочитайте её один раз и переиспользуйте. Не смешивайте множество DOM writes и reads в цикле.
+
+### Изменение root font-size
+
+`useMatchMedia` debounce-ит observer events на `80ms` и игнорирует изменение меньше `0.25px`. Поэтому update breakpoint после смены theme/class не обязан произойти синхронно в той же строке JavaScript.
+
+После `document.documentElement.classList.add("large-font")` дождитесь React update.
+
+## Тестирование
+
+### Pure helpers
+
+`resolveResponsiveValue` и `resolveProps` тестируются без DOM:
+
+```ts
+import { describe, expect, it } from "vitest";
+
+import { resolveProps, resolveResponsiveValue } from "@ryuzaki13/react-foundation-lib/media";
+
+describe("responsive layout", () => {
+	it("использует mobile fallback на tablet", () => {
+		expect(
+			resolveResponsiveValue(
+				{
+					mobile: "column",
+					laptop: "row"
+				},
+				"tablet"
+			)
+		).toBe("column");
+	});
+
+	it("разрешает только перечисленные props", () => {
+		expect(
+			resolveProps(
+				{
+					gap: {
+						mobile: 8,
+						laptop: 16
+					},
+					title: "Карточка"
+				},
+				"laptop",
+				["gap"]
+			)
+		).toEqual({
+			gap: 16,
+			title: "Карточка"
+		});
+	});
+});
+```
+
+Обязательно проверяйте exact match, fallback для каждого breakpoint, `false`, `0`, `""`, `null`, пустую map, обычный object и object с конфликтующим key.
+
+### DOM metrics
+
+В jsdom явно mock-айте `getComputedStyle`:
+
+```ts
+import { afterEach, expect, it, vi } from "vitest";
+
+import { getCurrentFontSize, getCurrentLineHeight } from "@ryuzaki13/react-foundation-lib/media";
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
+it("читает font metrics", () => {
+	const element = document.createElement("div");
+
+	vi.spyOn(window, "getComputedStyle").mockReturnValue({
+		fontSize: "20px",
+		lineHeight: "24px"
+	} as CSSStyleDeclaration);
+
+	expect(getCurrentFontSize(element)).toBe(20);
+	expect(getCurrentLineHeight(element)).toBe(1.5);
+});
+```
+
+Не рассчитывайте, что jsdom сам выполнит полноценную CSS layout engine.
+
+### Mock `matchMedia`
+
+Mock должен разделять состояние между всеми вызовами одного query. Реализация hook может отдельно запросить snapshot и отдельно создать subscription.
+
+Минимальный contract:
+
+```ts
+type ChangeListener = (event: MediaQueryListEvent) => void;
+
+const listeners = new Map<string, Set<ChangeListener>>();
+const matchesByQuery = new Map<string, boolean>();
+
+Object.defineProperty(window, "matchMedia", {
+	configurable: true,
+	value: vi.fn((query: string): MediaQueryList => {
+		const queryListeners = listeners.get(query) ?? new Set<ChangeListener>();
+
+		listeners.set(query, queryListeners);
+
+		return {
+			media: query,
+			get matches() {
+				return matchesByQuery.get(query) ?? false;
+			},
+			onchange: null,
+			addEventListener: (_type: "change", listener: ChangeListener) => {
+				queryListeners.add(listener);
+			},
+			removeEventListener: (_type: "change", listener: ChangeListener) => {
+				queryListeners.delete(listener);
+			},
+			addListener: (listener: ChangeListener) => {
+				queryListeners.add(listener);
+			},
+			removeListener: (listener: ChangeListener) => {
+				queryListeners.delete(listener);
+			},
+			dispatchEvent: () => true
+		} as MediaQueryList;
+	})
+});
+```
+
+Для переключения состояния обновите `matchesByQuery` и вызовите listeners внутри `act` вашей React test utility.
+
+### Особенности теста `useMatchMedia`
+
+- hook создаёт три query с динамическими pixel values;
+- перед тестом задайте ожидаемый root `font-size`;
+- jsdom обычно требует mock `ResizeObserver` либо его отсутствие;
+- `MutationObserver` должен существовать в browser-like среде;
+- после теста unmount component, чтобы singleton store очистился;
+- при проверке font-size учитывайте debounce `80ms`;
+- fake timers нужно продвинуть минимум на `80ms` внутри React `act`;
+- module-level snapshot может сохраняться между тестами.
+
+В consumer component проверяйте server fallback, переходы между breakpoint, cleanup после unmount, изменение root font-size и focus при смене layout.
+
+## Частые ошибки
+
+| Ошибка                                   | Фактическое поведение / исправление                             |
+| ---------------------------------------- | --------------------------------------------------------------- |
+| Импорт из корня пакета                   | Используйте точный `@ryuzaki13/react-foundation-lib/media`      |
+| Hook внутри `if (window)`                | SSR-защита встроена; условный hook нарушает Rules of Hooks      |
+| `desktop` как breakpoint                 | Публичное имя широкого диапазона — `laptop`                     |
+| Ожидание другого tablet fallback         | Порядок: `tablet → mobile → laptop`                             |
+| Ожидание truthy fallback                 | `false`, `0` и `""` сохраняются; используется `??`              |
+| Business object имеет key `mobile`       | Он будет распознан как responsive map                           |
+| Ожидание deep resolve                    | `resolveProps` обрабатывает только перечисленные top-level keys |
+| Неполный `responsiveKeys`                | Runtime не разрешит пропущенное responsive-поле                 |
+| Ожидание `"2em"` от `pxToEm`             | Функция вернёт `"2"`; unit добавляет consumer                   |
+| `pxToEm(10, 0)`                          | Получится `"Infinity"`; валидации нет                           |
+| Line-height делится на font-size element | Он всегда делится на `16`                                       |
+| Style-only layout сделан через hook      | Предпочтите CSS и избегайте post-hydration render               |
+| Проверка сразу после смены root class    | Observer path имеет debounce `80ms`                             |
+| В jsdom нет mock                         | Предоставьте `matchMedia` и при необходимости observers         |
+
+## API-справочник
+
+### Runtime exports
+
+| Export                   | Сигнатура / результат                           | Назначение                                        |
+| ------------------------ | ----------------------------------------------- | ------------------------------------------------- |
+| `BREAKPOINTS_EM`         | readonly object                                 | четыре границы mobile/tablet/laptop в `em`        |
+| `getCurrentFontSize`     | `(element?: HTMLElement \| null) => number`     | computed font-size или fallback `16`              |
+| `getCurrentLineHeight`   | `(element?: HTMLElement \| null) => number`     | parsed line-height, делённый на `16`, либо `1.2`  |
+| `getControlHeight`       | `() => number`                                  | root font-size + нормализованный line-height × 10 |
+| `pxToEm`                 | `(px: number, baseEm?: number) => string`       | числовая строка `px / base` без unit              |
+| `isResponsiveMap`        | type guard                                      | проверка breakpoint keys в object                 |
+| `resolveResponsiveValue` | `(value, breakpoint) => T \| undefined`         | выбор exact/fallback значения                     |
+| `resolveProps`           | `(props, breakpoint, keys) => ResolvedProps<T>` | shallow resolve выбранных top-level props         |
+| `useMediaQuery`          | `(query, options?) => boolean`                  | React subscription на произвольный query          |
+| `useMatchMedia`          | `() => { matches, activeBreakpoint }`           | singleton subscription на project breakpoints     |
+
+### Type exports
+
+| Export                | Contract                                          |
+| --------------------- | ------------------------------------------------- |
+| `Breakpoint`          | `"mobile" \| "tablet" \| "laptop"`                |
+| `MediaMatches`        | `Record<Breakpoint, boolean>`                     |
+| `ResponsiveMap<T>`    | optional `mobile` / `tablet` / `laptop` values    |
+| `ResponsiveValue<T>`  | `T \| ResponsiveMap<T>`                           |
+| `UnwrapResponsive<T>` | conditional type, извлекающий inner value         |
+| `ResolvedProps<T>`    | mapped type с `UnwrapResponsive` для каждого поля |
+
+Options `useMediaQuery` и snapshot `useMatchMedia` видны в сигнатурах, но не экспортируются отдельными type aliases. Используйте inline object type или `ReturnType<typeof useMatchMedia>`.
+
+## Вопросы и ответы
+
+### Можно ли использовать pure helpers без React?
+
+Да, они не вызывают React. Но entrypoint содержит React hooks, поэтому package resolver host-приложения должен разрешить peer dependency `react`.
+
+### Можно ли вызвать `useMediaQuery` в обычной функции?
+
+Нет. Это React hook. Создайте custom hook или передайте уже вычисленный boolean.
+
+### Почему server breakpoint — laptop?
+
+Сервер не знает viewport. Default snapshot имеет все matches false, а fallback алгоритма выбирает laptop.
+
+### Можно ли настроить SSR fallback у `useMatchMedia`?
+
+Нет. Настраиваемый fallback есть только у `useMediaQuery`.
+
+### Можно ли добавить четвёртый breakpoint?
+
+Через публичный API — нет. Используйте `useMediaQuery` либо расширяйте общий module contract, если новый breakpoint нужен всему пакету.
+
+### Почему `BREAKPOINTS_EM`, если query строятся в px?
+
+Границы описаны относительно базового размера текста. `useMatchMedia` читает root font-size и конвертирует их в px перед `matchMedia`.
+
+### Можно ли использовать `BREAKPOINTS_EM` в CSS?
+
+TypeScript constant нельзя напрямую прочитать из статического CSS. Не копируйте числа в десятки мест; используйте единый styling build contract или design tokens проекта.
+
+### Возвращает ли `pxToEm` CSS unit?
+
+Нет. Она возвращает только числовую строку.
+
+### Что произойдёт с `null`?
+
+Top-level `null` может вернуться как обычное value. `null` внутри responsive map считается отсутствующим и запускает fallback.
+
+### Нужно ли memoize результат `useMatchMedia`?
+
+Нет. Store сохраняет snapshot reference, пока matches не изменились. Memoize может понадобиться для object, который consumer создаёт на его основе.
+
+### Hook отслеживает browser zoom?
+
+Store реагирует на фактическое изменение root `em` через observers. Конкретное влияние zoom на CSS pixels и computed font-size зависит от browser.
+
+### Что выбрать для адаптивной карточки?
+
+Сначала проверьте готовые Flex/Grid/layout primitives в `@ryuzaki13/react-foundation-ui`. Низкоуровневый `media` нужен при создании общего primitive или когда готового контракта недостаточно.
+
+## Связанные документы
+
+- [Обзор foundation-lib](../foundationLib.mdx)
+- [Корневой README пакета](../../README.md)
+- [DOM helpers](../dom/README.mdx)
+- [Общие React hooks](../hooks/README.mdx)
+
+Исходный публичный entrypoint — `@ryuzaki13/react-foundation-lib/media`. Внутренние файлы модуля не являются отдельными package subpaths.

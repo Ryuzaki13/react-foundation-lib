@@ -3,7 +3,7 @@
 // 	[K in Pairs[number] as K[0] | K[1]]: string;
 // };
 
-// Тип для элементов коллекции
+// Общий строковый элемент OData-коллекции для code/text helpers.
 // export type CollectionItem<CodeKey extends string = string, TextKey extends string = string> = {
 // 	[K in CodeKey | TextKey]: string;
 // };

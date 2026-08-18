@@ -1,4 +1,4 @@
-import { CollectionItem, CollectionPair } from "./types";
+import { CollectionItem, CollectionPair } from "./collectionTypes";
 
 export function findCollectionPairs(
 	item: CollectionItem,

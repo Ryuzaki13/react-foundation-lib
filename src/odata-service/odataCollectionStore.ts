@@ -1,4 +1,4 @@
-// Глобальные конфигурируемые параметры
+// Глобальные конфигурируемые параметры отображения OData-коллекций.
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";

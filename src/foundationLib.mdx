@@ -40,63 +40,61 @@ import { formatDateAsDate } from "@ryuzaki13/react-foundation-lib";
 
 Большинство pure helpers не требуют React. Entry point с React hook, DOM, browser storage или Service Worker должен вызываться только в браузерном runtime и по правилам React hooks. Совместимые peer dependencies должны быть разрешены host-проектом для используемого entrypoint.
 
-| Возможность                                     | Когда нужна в host                                                           |
-| ----------------------------------------------- | ---------------------------------------------------------------------------- |
-| `react`                                         | `hooks`, `dom`, `copy`, `media`, `pwa`, `three-scene`, selection/table hooks |
-| `@tanstack/react-query`, persistence, broadcast | `query-client`, часть `error-report`                                         |
-| `@tanstack/react-table`                         | `table`                                                                      |
-| `@tanstack/react-virtual`                       | `virtualizer`                                                                |
-| `@tanstack/react-router`                        | search helpers из `hooks`                                                    |
-| `@floating-ui/react`                            | `useFloatingListbox`, DOM reference guards                                   |
-| `@dnd-kit/core`, `@dnd-kit/sortable`            | `useDndSortableSensors`                                                      |
-| `zustand`, `immer`                              | `notifications`, OData store                                                 |
-| `zod`                                           | `odata-service` schemas                                                      |
-| `write-excel-file`                              | `excel`                                                                      |
+| Возможность                                     | Когда нужна в host                                                                               |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `react`                                         | `hooks`, `dom`, `copy`, `media`, `pwa`, `three-scene`, selection/table и OData store hooks       |
+| `@tanstack/react-query`, persistence, broadcast | `query-client`, часть `error-report`                                                             |
+| `@tanstack/react-table`                         | `table`                                                                                          |
+| `@tanstack/react-virtual`                       | `virtualizer`                                                                                    |
+| `@tanstack/react-router`                        | search helpers из `hooks`                                                                        |
+| `@floating-ui/react`                            | `useFloatingListbox`, DOM reference guards                                                       |
+| `@dnd-kit/core`, `@dnd-kit/sortable`            | `useDndSortableSensors`                                                                          |
+| `zustand`, `immer`, `zod`                       | единый `odata-service`: collection store и OData schemas; `notifications` также использует store |
+| `write-excel-file`                              | `excel`                                                                                          |
 
 ## Выбор entrypoint
 
-| Сценарий                                             | Точный import                                         |
-| ---------------------------------------------------- | ----------------------------------------------------- |
-| Массивы, дедупликация, grouping, reorder             | `@ryuzaki13/react-foundation-lib/array`               |
-| Base64 и `Blob`                                      | `@ryuzaki13/react-foundation-lib/binary`              |
-| Ограниченный стек копий                              | `@ryuzaki13/react-foundation-lib/bounded-copy-stack`  |
-| Anchor и state контекстного меню                     | `@ryuzaki13/react-foundation-lib/context-menu`        |
-| Clipboard и feedback hooks                           | `@ryuzaki13/react-foundation-lib/copy`                |
-| Hash и UUID                                          | `@ryuzaki13/react-foundation-lib/crypto`              |
-| Валютные labels по OData-параметрам                  | `@ryuzaki13/react-foundation-lib/currency`            |
-| Сегменты маски даты                                  | `@ryuzaki13/react-foundation-lib/date-segments`       |
-| Portal, focus, observers, browser download           | `@ryuzaki13/react-foundation-lib/dom`                 |
-| Ошибка отсутствующего React context                  | `@ryuzaki13/react-foundation-lib/error`               |
-| Подготовка и диагностика error report                | `@ryuzaki13/react-foundation-lib/error-report`        |
-| Excel и экспорт таблиц                               | `@ryuzaki13/react-foundation-lib/excel`               |
-| `FileReader`, MIME, Content-Disposition, изображения | `@ryuzaki13/react-foundation-lib/file`                |
-| Client fingerprint                                   | `@ryuzaki13/react-foundation-lib/fingerprint`         |
-| Form errors и presets                                | `@ryuzaki13/react-foundation-lib/form`                |
-| Даты, числа, строки, pipeline и value state          | `@ryuzaki13/react-foundation-lib/formatters`          |
-| Реестр и выполнение клиентских формул таблицы        | `@ryuzaki13/react-foundation-lib/formulas`            |
-| Общие React hooks                                    | `@ryuzaki13/react-foundation-lib/hooks`               |
-| HTTP headers и text `Response`                       | `@ryuzaki13/react-foundation-lib/http`                |
-| Breakpoints и media-query hooks                      | `@ryuzaki13/react-foundation-lib/media`               |
-| Imperative notifications и store                     | `@ryuzaki13/react-foundation-lib/notifications`       |
-| Математика slider/scale                              | `@ryuzaki13/react-foundation-lib/number-scale`        |
-| OData code/text collections и store                  | `@ryuzaki13/react-foundation-lib/odata`               |
-| OData V2 metadata, builder, filters, formats         | `@ryuzaki13/react-foundation-lib/odata-service`       |
-| Нормализация сохранённых preset ids                  | `@ryuzaki13/react-foundation-lib/presets`             |
-| Service Worker update и cache policy                 | `@ryuzaki13/react-foundation-lib/pwa`                 |
-| Только cache policy                                  | `@ryuzaki13/react-foundation-lib/pwa/sw-cache-policy` |
-| QueryClient, persistence, broadcast                  | `@ryuzaki13/react-foundation-lib/query-client`        |
-| Вывод открытых границ диапазона                      | `@ryuzaki13/react-foundation-lib/range-output`        |
-| SEO/head metadata contracts                          | `@ryuzaki13/react-foundation-lib/seo`                 |
-| ID в `sessionStorage`                                | `@ryuzaki13/react-foundation-lib/session-storage`     |
-| Предсказуемое строковое сравнение                    | `@ryuzaki13/react-foundation-lib/string-comparison`   |
-| TanStack Table layout, selection и OData adapter     | `@ryuzaki13/react-foundation-lib/table`               |
-| Проверка доступности Three.js                        | `@ryuzaki13/react-foundation-lib/three-scene`         |
-| Построение tree-table rows                           | `@ryuzaki13/react-foundation-lib/tree-table`          |
-| Общие TypeScript contracts                           | `@ryuzaki13/react-foundation-lib/types`               |
-| Clone, className, keyboard, stable stringify, tree   | `@ryuzaki13/react-foundation-lib/utils`               |
-| Runtime guards и URL/image validation                | `@ryuzaki13/react-foundation-lib/validators`          |
-| Infinite-query подгрузка virtualizer                 | `@ryuzaki13/react-foundation-lib/virtualizer`         |
-| XML parse/build                                      | `@ryuzaki13/react-foundation-lib/xml`                 |
+| Сценарий                                                                          | Точный import                                         |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Массивы, дедупликация, grouping, reorder                                          | `@ryuzaki13/react-foundation-lib/array`               |
+| Base64 и `Blob`                                                                   | `@ryuzaki13/react-foundation-lib/binary`              |
+| Ограниченный стек копий                                                           | `@ryuzaki13/react-foundation-lib/bounded-copy-stack`  |
+| Anchor и state контекстного меню                                                  | `@ryuzaki13/react-foundation-lib/context-menu`        |
+| Clipboard и feedback hooks                                                        | `@ryuzaki13/react-foundation-lib/copy`                |
+| Hash и UUID                                                                       | `@ryuzaki13/react-foundation-lib/crypto`              |
+| Валютные labels по OData-параметрам                                               | `@ryuzaki13/react-foundation-lib/currency`            |
+| Сегменты маски даты                                                               | `@ryuzaki13/react-foundation-lib/date-segments`       |
+| Portal, focus, observers, browser download                                        | `@ryuzaki13/react-foundation-lib/dom`                 |
+| Ошибка отсутствующего React context                                               | `@ryuzaki13/react-foundation-lib/error`               |
+| Подготовка и диагностика error report                                             | `@ryuzaki13/react-foundation-lib/error-report`        |
+| Excel и экспорт таблиц                                                            | `@ryuzaki13/react-foundation-lib/excel`               |
+| `FileReader`, MIME, Content-Disposition, изображения                              | `@ryuzaki13/react-foundation-lib/file`                |
+| Client fingerprint                                                                | `@ryuzaki13/react-foundation-lib/fingerprint`         |
+| Form errors и presets                                                             | `@ryuzaki13/react-foundation-lib/form`                |
+| Даты, числа, строки, pipeline и value state                                       | `@ryuzaki13/react-foundation-lib/formatters`          |
+| Реестр и выполнение клиентских формул таблицы                                     | `@ryuzaki13/react-foundation-lib/formulas`            |
+| Общие React hooks                                                                 | `@ryuzaki13/react-foundation-lib/hooks`               |
+| HTTP headers и text `Response`                                                    | `@ryuzaki13/react-foundation-lib/http`                |
+| Breakpoints и media-query hooks                                                   | `@ryuzaki13/react-foundation-lib/media`               |
+| Imperative notifications и store                                                  | `@ryuzaki13/react-foundation-lib/notifications`       |
+| Математика slider/scale                                                           | `@ryuzaki13/react-foundation-lib/number-scale`        |
+| OData V2 metadata, values, builder, filters, sorts, code/text collections и store | `@ryuzaki13/react-foundation-lib/odata-service`       |
+| Нормализация сохранённых preset ids                                               | `@ryuzaki13/react-foundation-lib/presets`             |
+| Service Worker update и cache policy                                              | `@ryuzaki13/react-foundation-lib/pwa`                 |
+| Только cache policy                                                               | `@ryuzaki13/react-foundation-lib/pwa/sw-cache-policy` |
+| QueryClient, persistence, broadcast                                               | `@ryuzaki13/react-foundation-lib/query-client`        |
+| Вывод открытых границ диапазона                                                   | `@ryuzaki13/react-foundation-lib/range-output`        |
+| SEO/head metadata contracts                                                       | `@ryuzaki13/react-foundation-lib/seo`                 |
+| ID в `sessionStorage`                                                             | `@ryuzaki13/react-foundation-lib/session-storage`     |
+| Предсказуемое строковое сравнение                                                 | `@ryuzaki13/react-foundation-lib/string-comparison`   |
+| TanStack Table layout, selection и OData adapter                                  | `@ryuzaki13/react-foundation-lib/table`               |
+| Проверка доступности Three.js                                                     | `@ryuzaki13/react-foundation-lib/three-scene`         |
+| Построение tree-table rows                                                        | `@ryuzaki13/react-foundation-lib/tree-table`          |
+| Общие TypeScript contracts                                                        | `@ryuzaki13/react-foundation-lib/types`               |
+| Clone, className, keyboard, stable stringify, tree                                | `@ryuzaki13/react-foundation-lib/utils`               |
+| Runtime guards и URL/image validation                                             | `@ryuzaki13/react-foundation-lib/validators`          |
+| Infinite-query подгрузка virtualizer                                              | `@ryuzaki13/react-foundation-lib/virtualizer`         |
+| XML parse/build                                                                   | `@ryuzaki13/react-foundation-lib/xml`                 |
 
 ## Как читать справочник
 

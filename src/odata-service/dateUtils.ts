@@ -1,7 +1,7 @@
 import { formatDateAsODataDatetime, formatDateAsODataTime } from "../formatters/date/formatDate";
 
 /**
- * Форматы в стиле OData (совместимы с SAP UI5 DateFormat)
+ * Форматирование дат в литералы OData, совместимые с SAP UI5 DateFormat.
  *
  * Примеры:
  * * datetime'2025-11-11T12:00:00'

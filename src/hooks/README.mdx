@@ -1,0 +1,988 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/API/Hooks" />
+
+# React и browser hooks
+
+Модуль `@ryuzaki13/react-foundation-lib/hooks` содержит общие React hooks для задач, которые повторяются в разных приложениях:
+
+- задержка часто меняющегося значения;
+- debounce и throttle callback-функций;
+- настройка сенсоров sortable drag-and-drop;
+- управление floating listbox и клавиатурной навигацией;
+- чтение и изменение search-параметров TanStack Router;
+- построение ссылки на текущий route с другими search-параметрами;
+- создание лениво загружаемого React-компонента;
+- диагностика изменения ссылок между render;
+- блокировка browser zoom через `Ctrl + wheel`.
+
+Документ рассчитан на разработчиков с небольшой базой JavaScript, TypeScript и React. Здесь объясняются не только сигнатуры, но и lifecycle, ограничения и типичные ошибки.
+
+> Все функции этого entrypoint являются React hooks. Их нельзя вызывать как обычные utilities, внутри условий, циклов, event handlers или вложенных функций.
+
+## Граница ответственности
+
+Модуль предоставляет низкоуровневое поведение. Он не создаёт готовые кнопки, select, popup, router или drag-and-drop интерфейс.
+
+| Задача                                   | Ответственность                                          |
+| ---------------------------------------- | -------------------------------------------------------- |
+| Таймер, debounce или throttle            | `@ryuzaki13/react-foundation-lib/hooks`                  |
+| Готовый Select, Picker или Sortable UI   | соответствующий subpath `@ryuzaki13/react-foundation-ui` |
+| Search schema, route и navigation policy | host-приложение и TanStack Router                        |
+| Получение backend-данных                 | TanStack Query и API-слой host-приложения                |
+| Бизнес-правила выбора и сохранения       | entity или feature host-приложения                       |
+
+Если в UI-пакете уже есть готовый `Select`, `Picker` или `Sortable`, используйте его. `useFloatingListbox` и `useDndSortableSensors` нужны при создании нового предметно-независимого primitive.
+
+## Установка
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+`react` является peer dependency пакета. Отдельным hooks также нужны:
+
+| API                                | Peer dependencies                    |
+| ---------------------------------- | ------------------------------------ |
+| `useDndSortableSensors`            | `@dnd-kit/core`, `@dnd-kit/sortable` |
+| `useFloatingListbox`               | `@floating-ui/react`                 |
+| `useSearchParams`, `useSearchLink` | `@tanstack/react-router`             |
+
+Используйте только опубликованный subpath:
+
+```ts
+// Правильно.
+import { useDebounce } from "@ryuzaki13/react-foundation-lib/hooks";
+
+// Неправильно: корневой entrypoint не опубликован.
+// import { useDebounce } from "@ryuzaki13/react-foundation-lib";
+
+// Неправильно: private import зависит от структуры исходников.
+// import { useDebounce } from "@ryuzaki13/react-foundation-lib/src/hooks/useDebounce";
+```
+
+## Публичный API
+
+Runtime hooks:
+
+```ts
+import {
+	useBlockBrowserZoom,
+	useDebounce,
+	useDebouncedCallback,
+	useDndSortableSensors,
+	useFloatingListbox,
+	useLazyComponent,
+	useReferenceTrace,
+	useSearchLink,
+	useSearchParams,
+	useThrottledCallback
+} from "@ryuzaki13/react-foundation-lib/hooks";
+```
+
+Публичные типы:
+
+```ts
+import type {
+	FloatingListboxPlacementStrategy,
+	FloatingListboxSizeContext,
+	FloatingListboxSizeResolver,
+	FloatingListboxSizeStyle,
+	ThrottledCallback,
+	UseDndSortableSensorsOptions
+} from "@ryuzaki13/react-foundation-lib/hooks";
+```
+
+Всего entrypoint экспортирует 16 публичных имён: 10 hooks и 6 типов.
+
+`ParamValue`, `SearchParams`, `SearchParamsUpdater` и `UseFloatingListboxParams` используются внутри деклараций, но не экспортируются из package subpath. Не импортируйте их через private paths.
+
+## Правила React hooks
+
+Вызывайте hook только на верхнем уровне React component или собственного hook:
+
+```tsx
+function SearchPanel() {
+	const query = useDebounce("text", 300);
+	return <div>{query}</div>;
+}
+```
+
+Условный вызов запрещён:
+
+```tsx
+function SearchPanel({ enabled }: { enabled: boolean }) {
+	if (enabled) {
+		// Неправильно: hook вызывается условно.
+		const query = useDebounce("text", 300);
+		return <div>{query}</div>;
+	}
+
+	return null;
+}
+```
+
+В event handler вызывайте функцию, которую вернул hook:
+
+```tsx
+function Toolbar() {
+	const { call } = useDebouncedCallback((value: string) => {
+		console.log(value);
+	}, 300);
+
+	return (
+		<button type="button" onClick={() => call("save")}>
+			Сохранить
+		</button>
+	);
+}
+```
+
+В development Strict Mode может выполнить дополнительный setup/cleanup cycle. Timers и listeners очищаются, но callback с `flushOnUnmount: true` является side effect cleanup и должен быть идемпотентным.
+
+## Быстрый выбор
+
+| Сценарий                                          | API                     |
+| ------------------------------------------------- | ----------------------- |
+| Значение после паузы во вводе                     | `useDebounce`           |
+| Callback после паузы от последнего события        | `useDebouncedCallback`  |
+| Ограничение частоты с leading и trailing вызовами | `useThrottledCallback`  |
+| Pointer и Keyboard sensors DnD Kit                | `useDndSortableSensors` |
+| Собственный доступный floating listbox            | `useFloatingListbox`    |
+| Чтение и replace-navigation search state          | `useSearchParams`       |
+| Построение `href` без navigation                  | `useSearchLink`         |
+| Lazy component внутри component/custom hook       | `useLazyComponent`      |
+| Диагностика reference identity                    | `useReferenceTrace`     |
+| Блокировка `Ctrl + wheel`                         | `useBlockBrowserZoom`   |
+
+## Debounce и throttle простыми словами
+
+Debounce ждёт тишины:
+
+```text
+события:       A -- B -- C ----------------
+таймер:        x    x    |--- delay ---|
+callback:                          C
+```
+
+Throttle ограничивает частоту:
+
+```text
+события:       A - B - C - D - E ----------
+callback:      A ------- D ------- E
+               leading   trailing
+```
+
+## `useDebounce`
+
+`useDebounce` возвращает задержанную копию React-значения:
+
+```ts
+function useDebounce<T>(value: T, delay: number): T;
+```
+
+### Пример
+
+```tsx
+import { useMemo, useState } from "react";
+
+import { useDebounce } from "@ryuzaki13/react-foundation-lib/hooks";
+
+type User = {
+	id: string;
+	name: string;
+};
+
+function UserList({ users }: { users: readonly User[] }) {
+	const [draftQuery, setDraftQuery] = useState("");
+	const query = useDebounce(draftQuery, 300);
+
+	const visibleUsers = useMemo(() => {
+		const normalized = query.trim().toLowerCase();
+		if (!normalized) return users;
+		return users.filter((user) => user.name.toLowerCase().includes(normalized));
+	}, [query, users]);
+
+	return (
+		<>
+			<input value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} />
+			<ul>
+				{visibleUsers.map((user) => (
+					<li key={user.id}>{user.name}</li>
+				))}
+			</ul>
+		</>
+	);
+}
+```
+
+### Точное поведение
+
+1. На первом render возвращается исходный `value`.
+2. После изменения `value` или `delay` создаётся timeout.
+3. Новое изменение удаляет предыдущий timeout.
+4. После delay значение записывается во внутренний state.
+5. При unmount timeout очищается.
+
+### Ограничения
+
+- Новый object/array reference на каждом render перезапускает timeout.
+- `delay` не валидируется. Нулевое или отрицательное значение практически убирает задержку.
+- Hook не отменяет network request, а только задерживает значение.
+- Не копируйте debounced Query data в ещё один state.
+
+Нестабильный object:
+
+```tsx
+// Новый объект на каждом render.
+const delayedFilters = useDebounce({ status, query }, 300);
+```
+
+При реальной необходимости стабилизируйте input:
+
+```tsx
+const filters = useMemo(() => ({ status, query }), [query, status]);
+const delayedFilters = useDebounce(filters, 300);
+```
+
+## `useDebouncedCallback`
+
+Hook откладывает callback до окончания периода тишины:
+
+```ts
+function useDebouncedCallback<T>(
+	cb: (arg: T) => void,
+	delayMs: number,
+	options?: { flushOnUnmount?: boolean }
+): {
+	call: (arg: T) => void;
+	flush: () => void;
+	cancel: () => void;
+};
+```
+
+### Пример
+
+```tsx
+function DraftEditor({ onSave }: { onSave: (value: string) => void }) {
+	const [value, setValue] = useState("");
+	const { call, flush, cancel } = useDebouncedCallback(onSave, 500);
+
+	return (
+		<div>
+			<input
+				value={value}
+				onChange={(event) => {
+					const next = event.target.value;
+					setValue(next);
+					call(next);
+				}}
+				onBlur={flush}
+			/>
+			<button type="button" onClick={cancel}>
+				Отменить pending save
+			</button>
+		</div>
+	);
+}
+```
+
+| Функция       | Поведение                                             |
+| ------------- | ----------------------------------------------------- |
+| `call(value)` | Сохраняет последнее значение и перезапускает timeout. |
+| `flush()`     | Немедленно вызывает callback с pending-значением.     |
+| `cancel()`    | Удаляет timeout и забывает значение без callback.     |
+
+Это last-write-wins: после `call("A")`, `call("B")` и `call("C")` callback получит только `"C"`.
+
+Актуальная `cb` хранится в ref после commit, поэтому pending timer не использует старое замыкание. `flush` и `cancel` стабильны; `call` меняется при изменении `delayMs`.
+
+### `flushOnUnmount`
+
+Default cleanup выполняет `cancel()`. Для попытки применить последнее значение:
+
+```tsx
+const deferred = useDebouncedCallback(onSave, 500, {
+	flushOnUnmount: true
+});
+```
+
+Callback должен быть безопасен во время cleanup и не обновлять state размонтированного component. Изменение самого `flushOnUnmount` запускает cleanup предыдущего effect, поэтому держите option стабильной.
+
+### Критическое ограничение `null`
+
+`null` используется как внутренний признак «pending-значения нет». Поэтому `call(null)` не вызывает callback, хотя generic формально разрешает nullable type.
+
+Заверните nullable value:
+
+```tsx
+type SavePayload = {
+	value: string | null;
+};
+
+const { call } = useDebouncedCallback<SavePayload>((payload) => {
+	saveValue(payload.value);
+}, 300);
+
+call({ value: null });
+```
+
+Изменение `delayMs` не пересчитывает уже запланированный timeout. Новый delay используется следующим `call`.
+
+## `useThrottledCallback`
+
+Hook вызывает callback не чаще одного раза за interval и сохраняет последнее значение:
+
+```ts
+function useThrottledCallback<T>(cb: (arg: T) => void, intervalMs: number, options?: { flushOnUnmount?: boolean }): ThrottledCallback<T>;
+
+type ThrottledCallback<T> = {
+	call: (arg: T) => void;
+	flush: () => void;
+	cancel: () => void;
+};
+```
+
+### Пример
+
+```tsx
+type Point = {
+	x: number;
+	y: number;
+};
+
+function PointerTracker({ onChange }: { onChange: (point: Point) => void }) {
+	const { call, flush, cancel } = useThrottledCallback(onChange, 100);
+
+	return (
+		<div onPointerMove={(event) => call({ x: event.clientX, y: event.clientY })} onPointerUp={flush} onPointerCancel={cancel}>
+			Перемещайте указатель
+		</div>
+	);
+}
+```
+
+### Точное поведение
+
+1. Первый обычный `call` выполняет callback сразу — leading edge.
+2. Вызовы внутри `intervalMs` сохраняют только последнее значение.
+3. В конце окна выполняется trailing callback.
+4. `flush` немедленно применяет pending value и начинает новое окно.
+5. `cancel` забывает pending value, но не сбрасывает timestamp последнего callback.
+
+Если после `cancel` вызвать `call` до окончания текущего окна, значение всё равно будет отложено.
+
+Ограничения:
+
+- `null` нельзя использовать как payload; применяйте object-wrapper;
+- interval не валидируется;
+- изменение interval не пересчитывает pending timeout;
+- `flushOnUnmount` имеет те же cleanup-риски;
+- throttle не переносит тяжёлую работу в Worker.
+
+## Сравнение timer hooks
+
+| Свойство              | `useDebounce`      | `useDebouncedCallback` | `useThrottledCallback`       |
+| --------------------- | ------------------ | ---------------------- | ---------------------------- |
+| Результат             | задержанное value  | `call/flush/cancel`    | `call/flush/cancel`          |
+| Первый callback сразу | не применимо       | нет                    | да                           |
+| Частые события        | value после тишины | callback после тишины  | leading + последнее trailing |
+| Ручной flush/cancel   | нет                | да                     | да                           |
+| `null`                | допустим           | недопустим             | недопустим                   |
+
+## `useDndSortableSensors`
+
+Hook создаёт стандартный набор DnD Kit sensors:
+
+- `PointerSensor` с activation distance;
+- `KeyboardSensor` с `sortableKeyboardCoordinates`.
+
+```ts
+interface UseDndSortableSensorsOptions {
+	activationDistance?: number;
+}
+
+function useDndSortableSensors(distanceOrOptions?: number | UseDndSortableSensorsOptions): SensorDescriptor<SensorOptions>[];
+```
+
+### Использование
+
+```tsx
+import { DndContext } from "@dnd-kit/core";
+
+import { useDndSortableSensors } from "@ryuzaki13/react-foundation-lib/hooks";
+
+function SortableArea({ children }: { children: React.ReactNode }) {
+	const sensors = useDndSortableSensors({
+		activationDistance: 8
+	});
+
+	return <DndContext sensors={sensors}>{children}</DndContext>;
+}
+```
+
+Числовой shorthand также поддерживается:
+
+```tsx
+const sensors = useDndSortableSensors(8);
+```
+
+Default distance равен `6` pixels. Значение `0` активирует pointer drag без минимального движения. Значение не валидируется.
+
+Hook не создаёт `DndContext`, `SortableContext`, collision detection, modifiers, items или drag overlay. Keyboard sensor не заменяет доступный drag handle: trigger должен иметь понятное имя и keyboard focus.
+
+## `useSearchParams`
+
+Hook читает search state текущего TanStack Router route и возвращает replace-navigation.
+
+Он должен находиться внутри `RouterProvider`. Вне Router context TanStack Router выбросит ошибку.
+
+### Типизированный пример
+
+```tsx
+import { useSearchParams } from "@ryuzaki13/react-foundation-lib/hooks";
+
+type PageSearchKey = "page" | "filter" | "showAll";
+
+function PageToolbar() {
+	const { params, setParams } = useSearchParams<PageSearchKey>();
+	const page = Number(params.page ?? "1");
+	const showAll = params.showAll === "X";
+
+	return (
+		<>
+			<button type="button" onClick={() => void setParams({ page: page + 1 })}>
+				Следующая страница
+			</button>
+			<button type="button" onClick={() => void setParams({ showAll: showAll ? "" : "X" })}>
+				Показать все
+			</button>
+		</>
+	);
+}
+```
+
+### Возвращаемые поля
+
+| Поле              | Поведение                                                             |
+| ----------------- | --------------------------------------------------------------------- |
+| `params`          | Полный search result текущего route в non-strict режиме.              |
+| `setParams(next)` | Relative navigation на `"."`, merge `prev` и `next`, `replace: true`. |
+| `filteredParams`  | View по `allowedKeys`; без списка совпадает с `params`.               |
+
+Merge выглядит так:
+
+```ts
+search: (prev) => ({
+	...prev,
+	...next
+});
+```
+
+Ключи, которых нет в `next`, сохраняются. `string`, `number` и `boolean` передаются Router-у; окончательная сериализация зависит от search schema host-приложения.
+
+`replace: true` заменяет текущую history entry. Browser Back не получает отдельный шаг для каждого вызова.
+
+### Ограничение `allowedKeys`
+
+Runtime фильтрации существует, но текущая public signature объявляет argument как `(keyof K)[]` вместо ожидаемого `K[]`. Обычный intended вызов не компилируется:
+
+```tsx
+type SearchKey = "page" | "filter";
+
+// Текущий public type отвергает "page".
+// useSearchParams<SearchKey>(["page"]);
+```
+
+Не обходите это broad cast. Пока API не исправлен, вызывайте hook без списка и создавайте нужный view явно:
+
+```tsx
+const { params } = useSearchParams<SearchKey>();
+
+const filteredParams = {
+	page: params.page
+};
+```
+
+Это ограничение типов текущей версии, а не TanStack Router.
+
+Дополнительно:
+
+- `allowedKeys` влияет только на `filteredParams`;
+- `setParams` по-прежнему меняет полный search object;
+- inline `allowedKeys` создаёт новую array reference для `useMemo`;
+- используйте string keys, несмотря на формальный constraint `PropertyKey`.
+
+## `useSearchLink`
+
+Hook строит URL текущего route, не выполняя navigation:
+
+```tsx
+import { useSearchLink } from "@ryuzaki13/react-foundation-lib/hooks";
+
+type SearchKey = "page" | "filter";
+
+function PaginationLink() {
+	const { buildLink } = useSearchLink<SearchKey>();
+
+	return <a href={buildLink({ page: "2" })}>Страница 2</a>;
+}
+```
+
+`buildLink(params)`:
+
+1. копирует `location.searchStr` в `URLSearchParams`;
+2. устанавливает переданные truthy values через `String(value)`;
+3. удаляет keys с falsy values;
+4. сохраняет pathname и hash;
+5. возвращает string, но не меняет browser URL.
+
+Удаление:
+
+```tsx
+const hrefWithoutFilter = buildLink({
+	filter: ""
+});
+```
+
+Неуказанные параметры сохраняются.
+
+Ограничения:
+
+- требуется Router context;
+- `buildLink` создаётся заново на каждом render;
+- runtime удаляет любое falsy value;
+- используется raw `URLSearchParams` без route validation;
+- для programmatic navigation используйте Router API или `useSearchParams`.
+
+## `useLazyComponent`
+
+Hook создаёт `LazyExoticComponent` через общий `createLazyComponent` и memoizes результат по `importFn`, `componentName` и `cacheKey`.
+
+```ts
+function useLazyComponent<TProps extends object>(
+	importFn: () => Promise<Record<string, ComponentType<TProps>> | null>,
+	componentName: string,
+	cacheKey?: string
+): LazyExoticComponent<ComponentType<TProps>>;
+```
+
+### Пример
+
+```tsx
+import { Suspense } from "react";
+
+import { useLazyComponent } from "@ryuzaki13/react-foundation-lib/hooks";
+
+type ReportProps = {
+	reportId: string;
+};
+
+const importReportModule = () =>
+	import("./Report").then((module) => ({
+		Report: module.Report
+	}));
+
+function ReportHost({ reportId }: ReportProps) {
+	const LazyReport = useLazyComponent<ReportProps>(importReportModule, "Report", "report");
+
+	return (
+		<Suspense fallback={<div>Загрузка отчёта...</div>}>
+			<LazyReport reportId={reportId} />
+		</Suspense>
+	);
+}
+```
+
+`Suspense` показывает loading fallback. Ошибку import/render должен обрабатывать Error Boundary.
+
+### Кеширование
+
+Без `cacheKey` кеш определяется reference `importFn` и `componentName`. Inline loader создаёт новую function reference:
+
+```tsx
+// Нежелательно без cacheKey.
+const LazyReport = useLazyComponent(() => import("./Report"), "Report");
+```
+
+Вынесите loader на уровень модуля либо задайте уникальный стабильный `cacheKey`.
+
+С `cacheKey` используется общий ключ из cache key и component name. Одинаковая пара для разных loaders возвращает первый кешированный component. Ключ должен однозначно обозначать реальный модуль.
+
+### Выбор export
+
+После import helper ищет:
+
+1. export `componentName`;
+2. `default` export;
+3. первый export модуля.
+
+`null` или отсутствие подходящего component приводит к lazy error.
+
+Если component можно объявить один раз на уровне модуля, предпочитайте utility:
+
+```tsx
+import { createLazyComponent } from "@ryuzaki13/react-foundation-lib/utils";
+
+const LazyReport = createLazyComponent(importReportModule, "Report", "report");
+```
+
+Hook нужен, когда loader, name или cache key действительно зависят от component/custom hook contract.
+
+## `useReferenceTrace`
+
+Diagnostic hook пишет в `console.debug` изменение object reference:
+
+```tsx
+function Table({ columns }: { columns: readonly object[] }) {
+	useReferenceTrace("table columns", columns);
+	return <div>Колонок: {columns.length}</div>;
+}
+```
+
+После каждого committed render выводится:
+
+```text
+[render trace] table columns
+{
+  referenceChanged: true,
+  previous: ...,
+  current: ...
+}
+```
+
+Сравнение выполняется через `Object.is`. На первом effect previous и current совпадают. Hook не вызывает rerender; в Strict Mode development logs могут повторяться.
+
+### Обязательный `__DEV__`
+
+Опубликованный runtime обращается к compile-time global `__DEV__` без fallback. Host bundler должен определить его, например:
+
+```ts
+export default defineConfig(({ mode }) => ({
+	define: {
+		__DEV__: JSON.stringify(mode !== "production")
+	}
+}));
+```
+
+Без replacement effect выбросит `ReferenceError`. При `false` hook ничего не логирует.
+
+Не передавайте secrets, tokens и персональные данные: previous/current попадают в console. Hook предназначен для временной диагностики, не для бизнес-логики.
+
+## `useBlockBrowserZoom`
+
+Hook подписывается на `window` и вызывает `preventDefault()` для `wheel` с `ctrlKey === true`:
+
+```tsx
+function DiagramViewport({ active }: { active: boolean }) {
+	useBlockBrowserZoom(active);
+	return <div>Рабочая область диаграммы</div>;
+}
+```
+
+Lifecycle:
+
+- при `false` listener отсутствует;
+- при `true` добавляется non-passive `wheel` listener;
+- при смене enabled и unmount listener удаляется;
+- блокируется только `Ctrl + wheel`, но не keyboard zoom shortcuts.
+
+Browser zoom важен для accessibility. Не блокируйте его на обычных страницах, формах и текстовом UI. Допустимый сценарий — специальный diagram/canvas viewport с альтернативным управлением масштабом.
+
+## `useFloatingListbox`
+
+Этот headless hook объединяет open state, Floating UI positioning/dismiss, active index, disabled options, keyboard navigation, focus, DOM refs, ARIA ids и size resolver. Он не рендерит JSX. Для обычного интерфейса предпочитайте готовые Select/Picker primitives foundation UI.
+
+### Параметры
+
+| Параметр                  | Default          | Назначение                               |
+| ------------------------- | ---------------- | ---------------------------------------- |
+| `options`                 | обязателен       | Ordered options.                         |
+| `selectedIndex`           | обязателен       | Выбранный index или `-1`.                |
+| `open` / `onOpenChange`   | internal state   | Controlled open contract.                |
+| `getOptionDisabled`       | все доступны     | Disabled predicate.                      |
+| `onSelect`                | отсутствует      | Callback выбранной option.               |
+| `disabled`                | `false`          | Запрещает открытие через open helpers.   |
+| `placement`               | `"bottom-start"` | Initial Floating UI placement.           |
+| `placementStrategy`       | `"flip"`         | `"flip"` или `"auto"`.                   |
+| `closeOnSelect`           | `true`           | Закрыть после select.                    |
+| `focusFloatingOnOpen`     | `true`           | Фокусировать popup после открытия.       |
+| `allowOpenWithoutOptions` | `false`          | Разрешить пустой popup.                  |
+| `restoreFocusOnClose`     | `true`           | Фокусировать reference внутри `close()`. |
+| `resolveFloatingSize`     | отсутствует      | Вычислить CSS sizes/custom properties.   |
+
+`placement` использует `Placement` из `@floating-ui/react` и не реэкспортируется из `/hooks`.
+
+### Controlled режим
+
+```tsx
+const [open, setOpen] = useState(false);
+
+const listbox = useFloatingListbox({
+	options,
+	selectedIndex,
+	open,
+	onOpenChange: setOpen
+});
+```
+
+Передавайте `open` и `onOpenChange` вместе. Только `open` оставляет actions без рабочего setter. Только callback не меняет internal state, пока parent не вернёт controlled value.
+
+### Минимальный пример
+
+```tsx
+import { useId, useState } from "react";
+
+import { useFloatingListbox } from "@ryuzaki13/react-foundation-lib/hooks";
+
+type City = {
+	id: string;
+	label: string;
+	disabled?: boolean;
+};
+
+const cities: readonly City[] = [
+	{ id: "ekb", label: "Екатеринбург" },
+	{ id: "msk", label: "Москва" },
+	{ id: "spb", label: "Санкт-Петербург", disabled: true }
+];
+
+function CityListbox() {
+	const listId = useId();
+	const [selected, setSelected] = useState<City | undefined>();
+	const selectedIndex = selected ? cities.findIndex((city) => city.id === selected.id) : -1;
+	const {
+		open,
+		activeIndex,
+		floatingStyles,
+		setReference,
+		setFloating,
+		setOptionRef,
+		toggleOpen,
+		selectOption,
+		handleReferenceKeyDown,
+		handleFloatingKeyDown,
+		getFloatingProps,
+		getOptionId,
+		getActiveOptionId
+	} = useFloatingListbox({
+		options: cities,
+		selectedIndex,
+		getOptionDisabled: (city) => city.disabled === true,
+		onSelect: setSelected
+	});
+
+	return (
+		<div>
+			<button
+				ref={setReference}
+				type="button"
+				aria-haspopup="listbox"
+				aria-expanded={open}
+				aria-controls={open ? listId : undefined}
+				aria-activedescendant={open ? getActiveOptionId(listId) : undefined}
+				onClick={toggleOpen}
+				onKeyDown={handleReferenceKeyDown}>
+				{selected?.label ?? "Выберите город"}
+			</button>
+
+			{open ? (
+				<div
+					ref={setFloating}
+					style={floatingStyles}
+					{...getFloatingProps({
+						id: listId,
+						tabIndex: 0,
+						"aria-activedescendant": getActiveOptionId(listId),
+						onKeyDown: handleFloatingKeyDown
+					})}>
+					{cities.map((city, index) => {
+						const optionDisabled = city.disabled === true;
+
+						return (
+							<div
+								key={city.id}
+								id={getOptionId(listId, index)}
+								ref={(node) => setOptionRef(index, node)}
+								role="option"
+								aria-selected={selectedIndex === index}
+								aria-disabled={optionDisabled || undefined}
+								data-active={activeIndex === index || undefined}>
+								<button
+									type="button"
+									tabIndex={-1}
+									disabled={optionDisabled}
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => selectOption(city)}>
+									{city.label}
+								</button>
+							</div>
+						);
+					})}
+				</div>
+			) : null}
+		</div>
+	);
+}
+```
+
+Production primitive дополнительно отвечает за styles, labels, validation и visible focus.
+
+### Возвращаемые поля
+
+| Поле                                        | Назначение                                   |
+| ------------------------------------------- | -------------------------------------------- |
+| `open` / `activeIndex`                      | Resolved open и enabled active index.        |
+| `setOpen`                                   | Raw setter; обходит disabled/options checks. |
+| `refs` / `context`                          | Floating UI integration.                     |
+| `floatingStyles`                            | Position styles popup.                       |
+| `getFloatingProps`                          | Dismiss и listbox role props.                |
+| `setReference` / `setFloating`              | Ref callbacks trigger и popup.               |
+| `setOptionRef`                              | Option node для `scrollIntoView`.            |
+| `close`                                     | Close и optional focus restore.              |
+| `openList` / `openWithIndex` / `toggleOpen` | Проверяемое открытие/переключение.           |
+| `selectOption` / `selectActiveOption`       | Select с disabled check.                     |
+| keyboard handlers                           | Обработчики reference и popup root.          |
+| `getOptionId` / `getActiveOptionId`         | ARIA ids.                                    |
+
+Используйте open helpers вместо raw `setOpen(true)`, который не проверяет `disabled` и отсутствие options.
+
+### Keyboard
+
+| Контекст         | Клавиши                                                           |
+| ---------------- | ----------------------------------------------------------------- |
+| Reference        | ArrowDown/Up открывают или двигают; Home/End; Escape; Tab.        |
+| Floating root    | ArrowDown/Up без wrap; Home/End; Enter/Space select; Escape; Tab. |
+| Вложенный target | Hook обрабатывает только Escape.                                  |
+
+Disabled options пропускаются. Если options пусты или все disabled, active index равен `-1`. Typeahead по буквам отсутствует.
+
+### Positioning и размеры
+
+Defaults: fixed strategy, `transform: false`, offset `4`, padding `8`, `autoUpdate`. `"auto"` сравнивает start/end варианты снизу, сверху, слева и справа.
+
+Без resolver:
+
+```text
+minWidth = referenceWidth + "px"
+maxHeight = max(availableHeight, 120) + "px"
+```
+
+`FloatingListboxSizeContext` содержит available, viewport и reference width/height. `FloatingListboxSizeStyle`:
+
+```ts
+type FloatingListboxSizeStyle = {
+	width?: string;
+	minWidth?: string;
+	maxWidth?: string;
+	maxHeight?: string;
+	[customProperty: `--${string}`]: string | undefined;
+};
+```
+
+Пример resolver:
+
+```tsx
+const resolveSize: FloatingListboxSizeResolver = ({ availableWidth, referenceWidth }) => ({
+	width: String(Math.min(Math.max(referenceWidth, 280), availableWidth)) + "px",
+	"--listbox-available-width": String(availableWidth) + "px"
+});
+```
+
+Resolver применяется после defaults. Старые custom properties очищаются. При открытом popup изменение `options.length` запускает дополнительный `update()`; изменение содержимого при той же длине — нет.
+
+### Focus и accessibility
+
+- Popup должен быть focusable, например `tabIndex={0}`.
+- `getFloatingProps` обязательно spread на popup.
+- `close()` может восстановить focus reference.
+- `context` подходит для `FloatingFocusManager`.
+- Внешний `setOpen(false)` не проходит через focus restore `close()`.
+
+Consumer обязан настроить trigger semantics, `aria-expanded`, `aria-controls`, `aria-activedescendant`, option ids/refs, `role="option"`, selected/disabled ARIA, label и visible focus.
+
+## Runtime boundaries и identity
+
+| Hook             | Requirement                |
+| ---------------- | -------------------------- |
+| Timer hooks      | React и timers.            |
+| DnD              | DnD Kit.                   |
+| Floating listbox | DOM и Floating UI.         |
+| Search hooks     | TanStack `RouterProvider`. |
+| Lazy component   | Suspense/Error Boundary.   |
+| Reference trace  | host-defined `__DEV__`.    |
+| Browser zoom     | `window` и `WheelEvent`.   |
+
+Не переносите hooks в Worker или Node tooling.
+
+`flush/cancel` timer hooks стабильны; `call` меняется вместе с delay/interval. `buildLink` и большинство методов floating listbox создаются заново на render. Не рассчитывайте на identity без contract.
+
+## Тестирование
+
+Timer hooks тестируйте fake timers внутри React `act`:
+
+```tsx
+vi.useFakeTimers();
+
+await act(async () => {
+	vi.advanceTimersByTime(300);
+});
+```
+
+Проверяйте leading/trailing, last-write-wins, flush, cancel, unmount, новую callback и nullable wrapper.
+
+Search hooks требуют test Router. Floating listbox требует DOM и проверок ARIA, keyboard, disabled options, dismiss, focus, dynamic options и size resolver.
+
+Repository test покрывает auto placement, update после изменения количества options и актуальный resolver после rerender.
+
+## Частые ошибки
+
+| Симптом                             | Причина / решение                              |
+| ----------------------------------- | ---------------------------------------------- |
+| Invalid hook call                   | Вызов вне component/custom hook или условно.   |
+| Callback не получил `null`          | Передайте `{ value: null }`.                   |
+| Throttle ждёт после cancel          | Cancel не сбрасывает timestamp.                |
+| Search allowedKeys не компилируется | Фильтруйте result явно до исправления generic. |
+| Escape/outside click не работают    | Не применён `getFloatingProps`.                |
+| Active option не scroll-ится        | Нет `setOptionRef`.                            |
+| Popup не фокусируется               | Нет `setFloating` или `tabIndex`.              |
+| Controlled popup не закрывается     | Нужны и `open`, и `onOpenChange`.              |
+| Lazy component remount-ится         | Стабилизируйте loader/cacheKey.                |
+| `__DEV__ is not defined`            | Настройте host bundler.                        |
+
+## API-справочник
+
+| Экспорт                            | Contract                            |
+| ---------------------------------- | ----------------------------------- |
+| `useBlockBrowserZoom`              | Global `Ctrl + wheel` prevention.   |
+| `useDebounce`                      | Debounced value.                    |
+| `useDebouncedCallback`             | Trailing debounce.                  |
+| `useDndSortableSensors`            | Pointer/Keyboard sensors.           |
+| `useFloatingListbox`               | Headless listbox.                   |
+| `useLazyComponent`                 | Memoized lazy factory.              |
+| `useReferenceTrace`                | Reference diagnostics.              |
+| `useSearchLink`                    | Link builder.                       |
+| `useSearchParams`                  | Search read/replace navigation.     |
+| `useThrottledCallback`             | Leading/trailing throttle.          |
+| `FloatingListboxPlacementStrategy` | `"flip" \| "auto"`.                 |
+| `FloatingListboxSizeContext`       | Геометрия popup/reference/viewport. |
+| `FloatingListboxSizeResolver`      | Context → style.                    |
+| `FloatingListboxSizeStyle`         | Size fields и CSS properties.       |
+| `ThrottledCallback`                | `call/flush/cancel`.                |
+| `UseDndSortableSensorsOptions`     | `activationDistance`.               |
+
+## Что модуль не делает
+
+- не выполняет requests и не хранит backend state;
+- не создаёт route search schema;
+- не рендерит готовый select или DnD UI;
+- не валидирует intervals/distance;
+- не гарантирует accessibility без JSX consumer-а;
+- не экспортирует внутренние search types.
+
+## Связанные документы
+
+- [Обзор пакета](../../README.md)
+- [DOM, focus и overlay helpers](../dom/README.mdx)
+- [Clipboard hooks](../copy/README.mdx)
+- [Public utilities](../utils/index.ts)

@@ -27,19 +27,19 @@ import type { RowRecord } from "@ryuzaki13/react-foundation-lib/types";
 
 Большинство внешних пакетов объявлены как optional peers. Это означает только то, что их не нужно ставить для каждого сценария. Если host использует entrypoint, который импортирует внешний пакет, совместимая peer-зависимость должна быть установлена в host-проекте.
 
-| Entry point                                 | Что может потребоваться в host-проекте                                                                 |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `formatters`, `array`, `utils`, `validators` | Обычно не требуют дополнительных runtime-зависимостей.                                                   |
-| `hooks`, `binary`, `dom`, `copy`, `media`, `pwa` | `react`: `binary` экспортирует `useBinaryFile`, остальные entrypoints требуют React при использовании hooks. |
-| `query-client`, `error-report`              | `@tanstack/react-query`, `@tanstack/query-persist-client-core`, `@tanstack/query-broadcast-client-experimental`. |
-| `odata-service`                             | `zod`; отдельные helpers типизируются вокруг `@tanstack/react-query`.                                    |
-| `odata`, `notifications`                    | `zustand`, для отдельных store-helpers также `immer`.                                                    |
-| `table`                                     | `@tanstack/react-table` и `react` для selection hooks.                                                   |
-| `virtualizer`                               | `@tanstack/react-virtual` и `react`.                                                                    |
-| `hooks` search helpers                      | `@tanstack/react-router`.                                                                               |
-| `hooks` DnD helpers                         | `@dnd-kit/core`, `@dnd-kit/sortable`.                                                                   |
-| `hooks` floating/listbox и DOM references   | `@floating-ui/react`.                                                                                   |
-| `excel`                                     | `write-excel-file`.                                                                                     |
+| Entry point                                      | Что может потребоваться в host-проекте                                                                           |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `formatters`, `array`, `utils`, `validators`     | Обычно не требуют дополнительных runtime-зависимостей.                                                           |
+| `hooks`, `binary`, `dom`, `copy`, `media`, `pwa` | `react`: `binary` экспортирует `useBinaryFile`, остальные entrypoints требуют React при использовании hooks.     |
+| `query-client`, `error-report`                   | `@tanstack/react-query`, `@tanstack/query-persist-client-core`, `@tanstack/query-broadcast-client-experimental`. |
+| `odata-service`                                  | `zod`, `zustand`, `immer`, `react`; `unwrapODataQueryResult` типизирован вокруг `@tanstack/react-query`.         |
+| `notifications`                                  | `zustand`, для store-helpers также `immer`.                                                                      |
+| `table`                                          | `@tanstack/react-table` и `react` для selection hooks.                                                           |
+| `virtualizer`                                    | `@tanstack/react-virtual` и `react`.                                                                             |
+| `hooks` search helpers                           | `@tanstack/react-router`.                                                                                        |
+| `hooks` DnD helpers                              | `@dnd-kit/core`, `@dnd-kit/sortable`.                                                                            |
+| `hooks` floating/listbox и DOM references        | `@floating-ui/react`.                                                                                            |
+| `excel`                                          | `write-excel-file`.                                                                                              |
 
 Такая схема оставляет пакет библиотечным: зависимости не зашиваются в bundle, а host-приложение контролирует версии React, TanStack, Zod и других runtime-библиотек.
 
@@ -74,25 +74,25 @@ npm run pack:dry-run
 
 ## Быстрый выбор модуля
 
-| Нужно                                                  | Идти сюда                                                                                                                                                                                                           |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Даты, диапазоны, ABAP/OData date literals              | [`formatters/date`](./src/formatters/date/index.ts), тесты: [`formatDate.test.ts`](./src/formatters/date/formatDate.test.ts), [`dateRange.test.ts`](./src/formatters/date/dateRange.test.ts)                                    |
-| Числа, проценты, валютные числа, compact axis labels   | [`formatters/number`](./src/formatters/number/index.ts), тесты: [`formatNumber.test.ts`](./src/formatters/number/formatNumber.test.ts), [`parseNumber.test.ts`](./src/formatters/number/parseNumber.test.ts)                    |
-| Строки, ФИО, телефон, leading zeros, SAP boolean       | [`formatters`](./src/formatters/index.ts), тесты: [`common.test.ts`](./src/formatters/common.test.ts), [`boolean.test.ts`](./src/formatters/boolean/boolean.test.ts), [`strings.test.ts`](./src/formatters/strings/strings.test.ts) |
-| Runtime-форматирование ячеек таблицы                   | [`formatters/pipeline`](./src/formatters/pipeline/index.ts), тесты в [`formatters/pipeline`](./src/formatters/pipeline)                                                                                                     |
-| Группировка, дедупликация, порядок и нормализация массивов | [`array`](./src/array/index.ts), подробный README: [`array/README.mdx`](./src/array/README.mdx)                                                                                                                          |
-| OData metadata, filters, sorts, path, values           | [`odata-service`](./src/odata-service/index.ts), тесты в [`odata-service`](./src/odata-service)                                                                                                                             |
-| Справочные code/text пары OData collections            | [`odata`](./src/odata/index.ts), тест: [`odata.test.ts`](./src/odata/odata.test.ts)                                                                                                                                         |
-| TanStack Table helpers                                 | [`table`](./src/table/index.ts), тесты в [`table`](./src/table)                                                                                                                                                             |
-| Tree table преобразования                              | [`tree-table`](./src/tree-table/index.ts), тесты в [`tree-table`](./src/tree-table)                                                                                                                                         |
-| Excel export                                           | [`excel`](./src/excel/index.ts), тесты: [`excel.test.ts`](./src/excel/excel.test.ts), [`tableExport.test.ts`](./src/excel/tableExport.test.ts)                                                                                  |
-| FileReader, изображения, base64 Blob                   | [`file`](./src/file/index.ts), [`binary`](./src/binary/index.ts)                                                                                                                                                            |
-| DOM overlay, portal, focus, download                   | [`dom`](./src/dom/index.ts), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx)                                                                                                                                                 |
-| Debounce/throttle, DnD sensors, search params, listbox | [`hooks`](./src/hooks/index.ts), [`utils/keyboard.ts`](./src/utils/keyboard.ts)                                                                                                                                             |
-| QueryClient, persistence, broadcast                    | [`query-client`](./src/query-client/index.ts), README: [`query-client/README.md`](./src/query-client/README.md)                                                                                                             |
-| PWA service worker update и `x-sw-cache` policy        | [`pwa`](./src/pwa/index.ts), README: [`pwa/README.md`](./src/pwa/README.md)                                                                                                                                                 |
-| Подстановки открытых границ диапазона                  | [`range-output`](./src/range-output/index.ts), тест: [`rangeOutput.test.ts`](./src/range-output/rangeOutput.test.ts)                                                                                                        |
-| Unknown guards, className, stable stringify, clone     | [`validators`](./src/validators/index.ts), [`utils`](./src/utils/index.ts)                                                                                                                                                  |
+| Нужно                                                                       | Идти сюда                                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Даты, диапазоны, ABAP/OData date literals                                   | [`formatters/date`](./src/formatters/date/index.ts), тесты: [`formatDate.test.ts`](./src/formatters/date/formatDate.test.ts), [`dateRange.test.ts`](./src/formatters/date/dateRange.test.ts)                                        |
+| Числа, проценты, валютные числа, compact axis labels                        | [`formatters/number`](./src/formatters/number/index.ts), тесты: [`formatNumber.test.ts`](./src/formatters/number/formatNumber.test.ts), [`parseNumber.test.ts`](./src/formatters/number/parseNumber.test.ts)                        |
+| Строки, ФИО, телефон, leading zeros, SAP boolean                            | [`formatters`](./src/formatters/index.ts), тесты: [`common.test.ts`](./src/formatters/common.test.ts), [`boolean.test.ts`](./src/formatters/boolean/boolean.test.ts), [`strings.test.ts`](./src/formatters/strings/strings.test.ts) |
+| Runtime-форматирование ячеек таблицы                                        | [`formatters/pipeline`](./src/formatters/pipeline/index.ts), тесты в [`formatters/pipeline`](./src/formatters/pipeline)                                                                                                             |
+| Группировка, дедупликация, порядок и нормализация массивов                  | [`array`](./src/array/index.ts), подробный README: [`array/README.mdx`](./src/array/README.mdx)                                                                                                                                     |
+| OData metadata, values, path, filters, sorts, code/text collections и store | [`odata-service`](./src/odata-service/index.ts), подробный README: [`odata-service/README.mdx`](./src/odata-service/README.mdx), тесты в [`odata-service`](./src/odata-service)                                                     |
+| TanStack Table helpers                                                      | [`table`](./src/table/index.ts), тесты в [`table`](./src/table)                                                                                                                                                                     |
+| Tree table преобразования                                                   | [`tree-table`](./src/tree-table/index.ts), тесты в [`tree-table`](./src/tree-table)                                                                                                                                                 |
+| Excel export                                                                | [`excel`](./src/excel/index.ts), тесты: [`excel.test.ts`](./src/excel/excel.test.ts), [`tableExport.test.ts`](./src/excel/tableExport.test.ts)                                                                                      |
+| FileReader, изображения, base64 Blob                                        | [`file`](./src/file/index.ts), [`binary`](./src/binary/index.ts)                                                                                                                                                                    |
+| DOM overlay, portal, focus, download                                        | [`dom`](./src/dom/index.ts), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx)                                                                                                                                                         |
+| Debounce/throttle, DnD sensors, search params, listbox                      | [`hooks`](./src/hooks/index.ts), подробный README: [`hooks/README.mdx`](./src/hooks/README.mdx), [`utils/keyboard.ts`](./src/utils/keyboard.ts)                                                                                     |
+| Breakpoints, media queries и responsive props                               | [`media`](./src/media/index.ts), подробный README: [`media/README.mdx`](./src/media/README.mdx), тест: [`media.test.ts`](./src/media/media.test.ts)                                                                                 |
+| QueryClient, persistence, broadcast                                         | [`query-client`](./src/query-client/index.ts), README: [`query-client/README.md`](./src/query-client/README.md)                                                                                                                     |
+| PWA service worker update и `x-sw-cache` policy                             | [`pwa`](./src/pwa/index.ts), README: [`pwa/README.md`](./src/pwa/README.md)                                                                                                                                                         |
+| Подстановки открытых границ диапазона                                       | [`range-output`](./src/range-output/index.ts), тест: [`rangeOutput.test.ts`](./src/range-output/rangeOutput.test.ts)                                                                                                                |
+| Unknown guards, className, stable stringify, clone                          | [`validators`](./src/validators/index.ts), [`utils`](./src/utils/index.ts)                                                                                                                                                          |
 
 ## Форматирование и значения
 
@@ -277,8 +277,8 @@ Pipeline — runtime форматирования ячейки. Он прини�
 | `compileTableFormula`                        | Компилирует formulaId + keys в executor; не кидает runtime errors наружу.                |
 | `executeTableFormula`                        | Разовый запуск формулы.                                                                  |
 | `createTableFormulaRegistry`                 | Нормализует definitions и запрещает дубли.                                               |
-| `configureTableFormulaRegistry`              | Устанавливает созданный host-приложением реестр до первого runtime-вызова.                |
-| `getTableFormulaList`, `getTableFormulaById` | Доступ к активному реестру host-приложения.                                               |
+| `configureTableFormulaRegistry`              | Устанавливает созданный host-приложением реестр до первого runtime-вызова.               |
+| `getTableFormulaList`, `getTableFormulaById` | Доступ к активному реестру host-приложения.                                              |
 | `validateTableFormulaDependencies`           | Проверяет наличие formula, доступность dependencies, out-of-range и unused dependencies. |
 
 Поведение из тестов: невалидный результат формулы дает `invalid_result`, runtime exception дает `runtime_error`, отсутствующая формула дает `formula_not_found`.
@@ -330,7 +330,9 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `odata-service`
 
-Файл: [`odata-service/index.ts`](./src/odata-service/index.ts). Это чистый слой metadata/value/filter helpers. Transport и fetch лежат в пакете `@ryuzaki13/react-foundation-api/odata`.
+Файл: [`odata-service/index.ts`](./src/odata-service/index.ts), подробный справочник: [`odata-service/README.mdx`](./src/odata-service/README.mdx). Это единый entrypoint metadata/value/path/filter/sort helpers, code/text collections и общих настроек OData-справочников. Transport и fetch лежат в пакете `@ryuzaki13/react-foundation-api/odata`.
+
+Прежний subpath `@ryuzaki13/react-foundation-lib/odata` удалён без compatibility alias. Его API перенесён в `@ryuzaki13/react-foundation-lib/odata-service`.
 
 #### Metadata и path
 
@@ -384,6 +386,17 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 Тесты: [`filters.test.ts`](./src/odata-service/filters.test.ts), [`filterDefinitions.test.ts`](./src/odata-service/filterDefinitions.test.ts), [`sorts.ts`](./src/odata-service/sorts.ts), [`sqlFilters.test.ts`](./src/odata-service/sqlFilters.test.ts).
 
+#### Справочные коллекции и store
+
+| API                                                | Поведение                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `findCollectionPairs`                              | Ищет пары `code` + `*_txt/_text/_t`, поддерживает custom suffixes.             |
+| `buildSeparatedArrays`                             | Строит отдельные code/text массивы для каждой пары, дедуплицирует и сортирует. |
+| `ODataDateFormat`                                  | Форматирует `Date` в `datetime'...'`, `datetimeoffset'...'`, `time'...'`.      |
+| `useODataCollectionStore`, `odataCollectionConfig` | Zustand-store общих defaults: visible limit, search thresholds и debounce.     |
+
+Тест: [`collection.test.ts`](./src/odata-service/collection.test.ts).
+
 ### `range-output`
 
 Файлы: [`range-output/index.ts`](./src/range-output/index.ts), тест: [`rangeOutput.test.ts`](./src/range-output/rangeOutput.test.ts).
@@ -392,17 +405,6 @@ Pipeline — runtime форматирования ячейки. Он прини�
 | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `readRangeOutputValueFallback` | Читает сериализуемые подстановки `start/end` из объекта с `outputValueFallback` через переданный парсер. |
 | `resolveRangeOutputValue`      | Заменяет `null` в открытых границах диапазона на заданные подстановочные значения для внешней передачи.  |
-
-### `odata`
-
-Файлы: [`odata/index.ts`](./src/odata/index.ts), тест: [`odata.test.ts`](./src/odata/odata.test.ts).
-
-| API                                                | Поведение                                                                                         |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `buildSeparatedArrays`                             | Из одной коллекции строит отдельные массивы code/text для каждой пары, дедуплицирует и сортирует. |
-| `findCollectionPairs`                              | Ищет пары `code` + `*_txt/_text/_t`, поддерживает custom suffixes.                                |
-| `ODataDateFormat`                                  | Форматирует `Date` в `datetime'...'`, `datetimeoffset'...'`, `time'...'`.                         |
-| `useODataCollectionStore`, `odataCollectionConfig` | Zustand-store настроек коллекции: pagination, search, selected, dependent filters.                |
 
 ### `table`
 
@@ -417,8 +419,8 @@ Pipeline — runtime форматирования ячейки. Он прини�
 | `normalizeTableColumnWidth`, `normalizeTableColumnSizing`, `patchTableColumnWidth`, `removeTableColumnWidth` | Column sizing с min width, default `60`.                                       |
 | `pruneTableRowSelection`, `toggleTableRowSelection`                                                          | `none`, `single`, `multi`; single не снимается повторным кликом.               |
 | `useTableRowSelection`                                                                                       | Hook поверх selection helpers.                                                 |
-| `pruneTableCellSelection`, `toggleTableCellSelection`                                                        | Детерминированный выбор координат `rowId + columnId`.                           |
-| `shouldActivateTableCellSelection`                                                                           | Direct либо безопасная активация по Ctrl/Command без Shift/Alt.                 |
+| `pruneTableCellSelection`, `toggleTableCellSelection`                                                        | Детерминированный выбор координат `rowId + columnId`.                          |
+| `shouldActivateTableCellSelection`                                                                           | Direct либо безопасная активация по Ctrl/Command без Shift/Alt.                |
 | `resolveTableColumnFormattingContextFromODataColumn`                                                         | OData column -> pipeline context; numeric types force measure.                 |
 | `createTableColumnVisibilityFromODataMetadata`                                                               | Стартовая visibility; code скрывается, если есть text-пара.                    |
 | `createTableColumnsFromODataMetadata`                                                                        | Генерация TanStack columns из metadata.                                        |
@@ -510,7 +512,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `hooks`
 
-Файлы: [`hooks/index.ts`](./src/hooks/index.ts).
+Файлы: [`hooks/index.ts`](./src/hooks/index.ts), подробный README: [`hooks/README.mdx`](./src/hooks/README.mdx).
 
 | API                     | Поведение                                                                                    |
 | ----------------------- | -------------------------------------------------------------------------------------------- |
@@ -539,15 +541,16 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `media`
 
-Файлы: [`media/index.ts`](./src/media/index.ts), тест: [`media.test.ts`](./src/media/media.test.ts).
+Файлы: [`media/index.ts`](./src/media/index.ts), подробный README: [`media/README.mdx`](./src/media/README.mdx), тест: [`media.test.ts`](./src/media/media.test.ts).
 
-| API                                                              | Поведение                                                                          |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `BREAKPOINTS_EM`, `Breakpoint`, `MediaMatches`                   | Проектные брейкпоинты в `em`: mobile/tablet/laptop.                                |
-| `useMatchMedia`                                                  | Singleton external store на `useSyncExternalStore`; учитывает изменение root `em`. |
-| `ResponsiveValue`, `resolveResponsiveValue`, `resolveProps`      | Responsive props с fallback по брейкпоинтам.                                       |
-| `getCurrentFontSize`, `getCurrentLineHeight`, `getControlHeight` | DOM font metrics с safe defaults.                                                  |
-| `pxToEm`                                                         | px -> em строка.                                                                   |
+| API                                                                                             | Поведение                                                                                   |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `BREAKPOINTS_EM`, `Breakpoint`, `MediaMatches`                                                  | Проектные брейкпоинты в `em`: mobile/tablet/laptop.                                         |
+| `useMediaQuery`                                                                                 | SSR-safe подписка на произвольный media query с настраиваемым fallback.                     |
+| `useMatchMedia`                                                                                 | Singleton external store на `useSyncExternalStore`; учитывает изменение root `em`.          |
+| `ResponsiveMap`, `ResponsiveValue`, `isResponsiveMap`, `resolveResponsiveValue`, `resolveProps` | Responsive props с точным fallback-порядком по брейкпоинтам.                                |
+| `getCurrentFontSize`, `getCurrentLineHeight`, `getControlHeight`                                | DOM font metrics с server/invalid-value fallback; line-height нормализуется через `16`.     |
+| `pxToEm`                                                                                        | Числовая строка `px / base` без суффикса `em`; при отсутствии base читается root font-size. |
 
 ### `context-menu`
 
@@ -639,19 +642,19 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 Файлы: [`array/index.ts`](./src/array/index.ts), подробный README: [`array/README.mdx`](./src/array/README.mdx), тесты: [`array.test.ts`](./src/array/array.test.ts), [`reorder.test.ts`](./src/array/reorder.test.ts).
 
-| API                                                 | Поведение                                                                  |
-| --------------------------------------------------- | -------------------------------------------------------------------------- |
-| `arrayGroupBy`, `arrayGroupByToArray`               | Группировка по ключу, порядок элементов внутри группы сохраняется.         |
-| `arrayToMap`                                        | Map-object по первому встреченному значению ключа.                         |
-| `arrayUniqueBy`                                     | Дедупликация по ключу без перестановки первого значения.                   |
+| API                                                 | Поведение                                                                    |
+| --------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `arrayGroupBy`, `arrayGroupByToArray`               | Группировка по ключу, порядок элементов внутри группы сохраняется.           |
+| `arrayToMap`                                        | Map-object по первому встреченному значению ключа.                           |
+| `arrayUniqueBy`                                     | Дедупликация по ключу без перестановки первого значения.                     |
 | `arrayDeduplicate`                                  | Дедупликация значений через семантику `Set` с сохранением первого вхождения. |
-| `filterAndDeduplicateIds`                           | Оставляет только allowed ids, убирает пустые и дубли.                      |
-| `appendMissingIds`                                  | Добавляет отсутствующие ids в конец базового списка.                       |
-| `pickExistingMapValues`                             | Значения `Map` в порядке keys, отсутствующие ключи пропускаются.           |
-| `arraysEqual`                                       | Строго по длине, порядку и ссылочным значениям.                            |
-| `moveItem`, `moveArrayItem`, `moveArrayItemByIndex` | Immutable reorder; некорректные индексы возвращают копию без перестановки. |
-| `normalizeObjects`                                  | Trim key, отсекает пустые/дубли, по умолчанию shallow copy.                |
-| `normalizeStringArray`, `addUnique`                 | Нормализация string ids.                                                   |
+| `filterAndDeduplicateIds`                           | Оставляет только allowed ids, убирает пустые и дубли.                        |
+| `appendMissingIds`                                  | Добавляет отсутствующие ids в конец базового списка.                         |
+| `pickExistingMapValues`                             | Значения `Map` в порядке keys, отсутствующие ключи пропускаются.             |
+| `arraysEqual`                                       | Строго по длине, порядку и ссылочным значениям.                              |
+| `moveItem`, `moveArrayItem`, `moveArrayItemByIndex` | Immutable reorder; некорректные индексы возвращают копию без перестановки.   |
+| `normalizeObjects`                                  | Trim key, отсекает пустые/дубли, по умолчанию shallow copy.                  |
+| `normalizeStringArray`, `addUnique`                 | Нормализация string ids.                                                     |
 
 ### `utils`
 
@@ -676,12 +679,12 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 Файлы: [`validators/index.ts`](./src/validators/index.ts), [`types/index.ts`](./src/types/index.ts), тест: [`validators.test.ts`](./src/validators/validators.test.ts).
 
-| API                                                                                                     | Поведение                                                   |
-| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `isSafe`                                                                                                | Type guard от `null/undefined`.                             |
-| `isObject`, `isRecord`, `asRecord`, `isPlainObject`                                                     | Guards для object-like values; массивы не считаются record. |
-| `IMAGE_EXTENSIONS`, `isImageExtension`                                                                  | Проверка image extension без учета регистра.                |
-| `isDomReference`                                                                                        | Floating UI reference -> DOM `Element`.                     |
+| API                                                                                    | Поведение                                                   |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `isSafe`                                                                               | Type guard от `null/undefined`.                             |
+| `isObject`, `isRecord`, `asRecord`, `isPlainObject`                                    | Guards для object-like values; массивы не считаются record. |
+| `IMAGE_EXTENSIONS`, `isImageExtension`                                                 | Проверка image extension без учета регистра.                |
+| `isDomReference`                                                                       | Floating UI reference -> DOM `Element`.                     |
 | `State`, `AbapBoolean`, `Primitive`, `BaseType`, `InputType`, `RangeType`, `RowRecord` | Общие технические типы.                                     |
 
 ### `string-comparison`

@@ -4,8 +4,8 @@ import { parseAbapBoolean } from "../formatters/boolean/parseAbapBoolean";
 import { formatDateAsAbapDate } from "../formatters/date/formatDate";
 import { parseDate } from "../formatters/date/parseDate";
 import { parseNumber } from "../formatters/number/parseNumber";
-import { ODataDateFormat } from "../odata/dateUtils";
 
+import { ODataDateFormat } from "./dateUtils";
 import { odataTypeSchemas } from "./schema";
 
 import type {

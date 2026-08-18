@@ -1,6 +1,6 @@
 import { compareStrings } from "../string-comparison";
 
-import { CollectionItem, CollectionPair } from "./types";
+import { CollectionItem, CollectionPair } from "./collectionTypes";
 
 function createEmptySeparated<T extends CollectionItem>(pairs: CollectionPair[]) {
 	const resultRef: Record<string, T[]> = {};

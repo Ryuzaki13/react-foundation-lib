@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ODataDateFormat } from "../odata";
-
+import { ODataDateFormat } from "./dateUtils";
 import {
 	createBooleanFormatter,
 	createDateFormatter,

@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeparatedArrays } from "./buildSeparatedArrays";
 import { ODataDateFormat } from "./dateUtils";
 import { findCollectionPairs } from "./findCollectionPairs";
-import { useODataCollectionStore } from "./store";
+import { useODataCollectionStore } from "./odataCollectionStore";
 
-import type { CollectionItem, CollectionPair } from "./types";
+import type { CollectionItem, CollectionPair } from "./collectionTypes";
 
 describe("buildSeparatedArrays", () => {
 	const pairs: CollectionPair[] = [

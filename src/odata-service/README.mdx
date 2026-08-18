@@ -1,0 +1,2916 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/API/OData Service" />
+
+# OData Service
+
+Модуль `@ryuzaki13/react-foundation-lib/odata-service` — единая библиотечная точка входа для работы с техническими контрактами OData V2:
+
+- чтения XML metadata сервиса;
+- описания сущностей, колонок, параметров и Function Import;
+- преобразования JavaScript-значений в OData literals и обратно;
+- построения path для EntitySet и Function Import;
+- построения `$filter` и `$orderby`;
+- нормализации конфигурации пользовательских фильтров;
+- поиска пар «код + текст» в справочных коллекциях;
+- хранения общих настроек OData-справочников.
+
+README рассчитан на разработчика без доступа к исходному коду и с минимальным знанием JavaScript/TypeScript. В примерах объясняется не только вызов функции, но и смысл входных данных, результат, ограничения и типичные ошибки.
+
+> Ранее helpers справочных коллекций публиковались через отдельный subpath `@ryuzaki13/react-foundation-lib/odata`. Теперь этот код входит в `odata-service`. Старый subpath удалён без compatibility alias.
+
+## Содержание
+
+- [Что делает и чего не делает модуль](#что-делает-и-чего-не-делает-модуль)
+- [Установка и импорт](#установка-и-импорт)
+- [Зависимости и среда выполнения](#зависимости-и-среда-выполнения)
+- [OData V2 простыми словами](#odata-v2-простыми-словами)
+- [Быстрый старт](#быстрый-старт)
+- [Общий маршрут данных](#общий-маршрут-данных)
+- [Базовые типы](#базовые-типы)
+- [Чтение metadata](#чтение-metadata)
+- [Типы результата metadata](#типы-результата-metadata)
+- [Форматирование OData-значений](#форматирование-odata-значений)
+- [Парсинг значений](#парсинг-значений)
+- [Значения по умолчанию и formatter registry](#значения-по-умолчанию-и-formatter-registry)
+- [Wrapped и unwrapped параметры](#wrapped-и-unwrapped-параметры)
+- [Построение параметров и path](#построение-параметров-и-path)
+- [Простые OData-фильтры](#простые-odata-фильтры)
+- [Compiled filter definitions](#compiled-filter-definitions)
+- [Сортировка и `$orderby`](#сортировка-и-orderby)
+- [SQL-like фильтры](#sql-like-фильтры)
+- [Пары «код + текст»](#пары-код--текст)
+- [Настройки OData-коллекций](#настройки-odata-коллекций)
+- [Маленькие helpers](#маленькие-helpers)
+- [Ошибки, безопасность и ограничения](#ошибки-безопасность-и-ограничения)
+- [SSR, браузер и React](#ssr-браузер-и-react)
+- [Тестирование consumer-кода](#тестирование-consumer-кода)
+- [Миграция с `/odata`](#миграция-с-odata)
+- [Полная карта API](#полная-карта-api)
+- [Частые вопросы](#частые-вопросы)
+
+## Что делает и чего не делает модуль
+
+### Делает
+
+Модуль выполняет локальные, предсказуемые преобразования:
+
+```text
+XML metadata ──> ServiceMetadata
+JS value     ──> OData literal
+params       ──> operation path
+filter tree  ──> строка $filter
+sort state   ──> строка $orderby
+rows         ──> пары code/text
+```
+
+Большая часть функций не обращается к сети и не знает адрес backend.
+
+### Не делает
+
+Модуль не выполняет HTTP-запросы и не управляет транспортом:
+
+- не вызывает `fetch`;
+- не добавляет SAP SSO credentials;
+- не получает и не обновляет X-CSRF token;
+- не формирует TanStack Query keys;
+- не хранит server response cache;
+- не выполняет mutations;
+- не знает бизнес-правила конкретной таблицы или feature.
+
+Для транспорта используйте отдельный пакет:
+
+```ts
+import {} from /* transport API */ "@ryuzaki13/react-foundation-api/odata";
+```
+
+Граница пакетов выглядит так:
+
+```text
+react-foundation-lib/odata-service
+  metadata, types, values, path, filter, sort
+                    │
+                    ▼
+react-foundation-api/odata
+  HTTP, SAP Gateway, SSO, X-CSRF, Query/Mutation
+                    │
+                    ▼
+host entity / feature / widget
+  бизнес-правила, экран, пользовательский сценарий
+```
+
+## Установка и импорт
+
+Установите пакет:
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+Для полного entrypoint также разрешите совместимые peer dependencies, если package manager не сделал этого автоматически:
+
+```bash
+npm install zod zustand immer @tanstack/react-query
+```
+
+Импортируйте API только из опубликованного subpath:
+
+```ts
+import {
+	buildEntityOperationPath,
+	buildODataFilter,
+	buildODataOrderBy,
+	odataFormatValue,
+	parseServiceMetadata
+} from "@ryuzaki13/react-foundation-lib/odata-service";
+
+import type {
+	EntityMetadata,
+	FilterExpression,
+	ServiceMetadata,
+	WrappedODataParameters
+} from "@ryuzaki13/react-foundation-lib/odata-service";
+```
+
+Не используйте корневой или приватный импорт:
+
+```ts
+// Неверно: корневой entrypoint не опубликован.
+import { buildODataFilter } from "@ryuzaki13/react-foundation-lib";
+
+// Неверно: внутреннее расположение файлов не является публичным контрактом.
+import { buildODataFilter } from "@ryuzaki13/react-foundation-lib/dist/odata-service/filters";
+
+// Неверно: прежний subpath удалён после объединения модулей.
+import { findCollectionPairs } from "@ryuzaki13/react-foundation-lib/odata";
+```
+
+### `import type` для TypeScript-типов
+
+TypeScript-типы исчезают из JavaScript после сборки. Для них предпочтителен `import type`:
+
+```ts
+import type { ServiceMetadata } from "@ryuzaki13/react-foundation-lib/odata-service";
+```
+
+Обычные функции и constants требуют обычного `import`:
+
+```ts
+import { parseServiceMetadata } from "@ryuzaki13/react-foundation-lib/odata-service";
+```
+
+## Зависимости и среда выполнения
+
+После объединения один entrypoint содержит и pure helpers, и Zustand store. Поэтому host, который импортирует `odata-service`, должен уметь разрешить runtime dependencies entrypoint.
+
+| Зависимость             | Зачем нужна                                                               |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `zod`                   | Runtime-проверка OData primitive values и аргументов formatter factories. |
+| `react`                 | Runtime для React-oriented Zustand hook API.                              |
+| `zustand`               | Глобальный store настроек OData-коллекций.                                |
+| `immer`                 | Middleware для обновления Zustand store.                                  |
+| `@tanstack/react-query` | Тип и helper `unwrapODataQueryResult`.                                    |
+
+Среда выполнения различается по API:
+
+| Группа                                             | Где можно использовать                                                    |
+| -------------------------------------------------- | ------------------------------------------------------------------------- |
+| Форматирование, filters, sorts, builders           | Browser и Node.js, если не вызывается browser-only API.                   |
+| `parseServiceMetadata`                             | Среда с глобальным `DOMParser`; обычно browser или DOM-полифил в Node.js. |
+| `useODataCollectionStore`, `odataCollectionConfig` | React/browser runtime; selector hooks вызываются по правилам React hooks. |
+
+Пакет распространяется как ESM. Используйте `import`, а не CommonJS `require`.
+
+## OData V2 простыми словами
+
+### Сервис
+
+OData service — набор HTTP endpoints, объединённых общей схемой. Например:
+
+```text
+/sap/opu/odata/sap/REPORT_SRV
+```
+
+В `ODataServiceConfig` имя сервиса хранится без предположений о полном origin:
+
+```ts
+const config = {
+	service: "REPORT_SRV",
+	target: "Sales"
+};
+```
+
+### Metadata
+
+Metadata — XML-документ, описывающий структуру сервиса:
+
+- какие сущности существуют;
+- какие поля есть у сущности;
+- какой тип у каждого поля;
+- какие параметры обязательны;
+- какие Function Import доступны;
+- какое поле является текстом для code-поля.
+
+Обычно metadata получает transport-слой, а `parseServiceMetadata` превращает XML в удобный JavaScript-объект.
+
+### EntitySet и EntityType
+
+`EntityType` описывает форму записи, например поля `ID`, `NAME`, `AMOUNT`.
+
+`EntitySet` — адресуемая коллекция записей этого типа, например `Sales`.
+
+В config свойство `target` обычно содержит имя EntitySet.
+
+### Function Import
+
+Function Import — операция OData V2, похожая на именованный backend-метод. Она может принимать query parameters и иметь HTTP method из metadata.
+
+```text
+/REPORT_SRV/Recalculate?p_year=2026
+```
+
+### Параметр и literal
+
+JavaScript-строку нельзя бездумно вставлять в OData URL. Backend ожидает OData literal:
+
+```text
+JavaScript:  O'Reilly
+OData:       'O''Reilly'
+
+JavaScript:  true
+OData ABAP:  'X'
+
+JavaScript:  12.5
+Edm.Decimal: 12.5M
+```
+
+`odataFormatValue` знает эти правила, а builder применяет их в metadata-порядке.
+
+### `$filter` и `$orderby`
+
+`$filter` ограничивает записи:
+
+```text
+STATUS eq 'A' and AMOUNT ge 100M
+```
+
+`$orderby` задаёт сортировку:
+
+```text
+YEAR asc,AMOUNT desc
+```
+
+Модуль строит только значение query option. Передачу в HTTP request выполняет transport.
+
+### Code/text pair
+
+SAP-сервисы часто возвращают технический код и читаемый текст разными полями:
+
+```ts
+{
+  COMPANY: "1000",
+  COMPANY_txt: "Основная организация"
+}
+```
+
+`findCollectionPairs` находит такие пары, а `buildSeparatedArrays` создаёт из rows отдельные справочные массивы.
+
+## Быстрый старт
+
+Представим, что transport уже получил XML metadata как строку.
+
+```ts
+import {
+	buildEntityOperationPath,
+	buildODataFilter,
+	buildODataOrderBy,
+	createFilterEqual,
+	parseServiceMetadata,
+	wrapODataParams
+} from "@ryuzaki13/react-foundation-lib/odata-service";
+
+type SalesRow = {
+	COMPANY: string;
+	YEAR: number;
+	AMOUNT: number;
+};
+
+const serviceMetadata = parseServiceMetadata(metadataXml);
+const salesMetadata = serviceMetadata.entities.Sales;
+
+if (!salesMetadata) {
+	throw new Error("В metadata отсутствует EntitySet Sales");
+}
+
+const params = wrapODataParams({
+	p_company: "1000",
+	p_year: 2026
+});
+
+const path = buildEntityOperationPath(salesMetadata, { service: "REPORT_SRV", target: "Sales" }, params, "query");
+
+const filter = buildODataFilter(createFilterEqual<SalesRow, string>("COMPANY", "1000"));
+
+const orderBy = buildODataOrderBy<SalesRow>([], [{ key: "AMOUNT", desc: true }]);
+
+console.log(path);
+console.log(filter); // COMPANY eq '1000'
+console.log(orderBy); // AMOUNT desc
+```
+
+Transport затем использует `path`, `filter` и `orderBy` при создании request. Сам `odata-service` request не отправляет.
+
+## Общий маршрут данных
+
+Для большинства экранов полезен такой порядок:
+
+1. Transport загружает metadata XML.
+2. `parseServiceMetadata` создаёт `ServiceMetadata`.
+3. Consumer выбирает `entities[target]` или `functionImports[target]`.
+4. Значения формы оборачиваются через `wrapODataParams` или сразу создаются как `{ value }`.
+5. Builder проверяет параметры по metadata и создаёт path.
+6. Filter helpers создают `$filter`.
+7. Sort helpers создают `$orderby`.
+8. API-пакет выполняет HTTP request.
+9. UI форматирует ответ через `formatters`/table pipeline, а не через path builder.
+
+```text
+metadata XML
+    │ parseServiceMetadata
+    ▼
+ServiceMetadata ──────────────┐
+                             │
+form values ─ wrap params ───┼─> path builder ─┐
+                             │                 │
+filter values ─ compile ─────┼─> $filter ──────┼─> API transport
+                             │                 │
+sort state ──────────────────┴─> $orderby ─────┘
+```
+
+## Базовые типы
+
+### `BaseMetaType`
+
+UI работает с четырьмя укрупнёнными типами:
+
+```ts
+type BaseMetaType = "string" | "number" | "boolean" | "date";
+```
+
+Constants и helpers:
+
+```ts
+import {
+	BASE_META_TYPES,
+	BASE_META_TYPE_LABELS,
+	isBaseMetaType,
+	resolveBaseTypeLabel
+} from "@ryuzaki13/react-foundation-lib/odata-service";
+
+console.log(BASE_META_TYPES);
+// ["string", "number", "boolean", "date"]
+
+console.log(BASE_META_TYPE_LABELS.number); // "число"
+console.log(isBaseMetaType("date")); // true
+console.log(isBaseMetaType("datetime")); // false
+console.log(resolveBaseTypeLabel("boolean")); // "boolean"
+```
+
+`datetime` — OData type, а `date` — укрупнённый UI type. Это разные уровни модели.
+
+### `ODataMetaType`
+
+Поддерживаемые нормализованные OData-типы:
+
+| Группа      | Значения TypeScript                                             |
+| ----------- | --------------------------------------------------------------- |
+| String-like | `"string"`, `"guid"`, `"binary"`                                |
+| Numeric     | `"byte"`, `"int"`, `"long"`, `"float"`, `"decimal"`, `"double"` |
+| Boolean     | `"boolean"`                                                     |
+| Date/time   | `"datetime"`, `"datetimeOffset"`, `"time"`                      |
+
+Связанные типы:
+
+```ts
+type ODataBooleanType = "boolean";
+type ODataNumericType = "byte" | "int" | "long" | "float" | "decimal" | "double";
+type ODataIntegerType = "byte" | "int" | "long";
+type ODataDateType = "datetime" | "datetimeOffset" | "time";
+type ODataStringType = "string" | "guid" | "binary";
+```
+
+Type guards не проверяют значение поля. Они проверяют только строку типа:
+
+```ts
+isODataBooleanType("boolean"); // true
+isODataNumericType("decimal"); // true
+isODataIntegerType("float"); // false
+isODataDateType("datetime"); // true
+```
+
+### `getBaseTypeFromODataType`
+
+Преобразует подробный OData type в укрупнённый UI type:
+
+```ts
+getBaseTypeFromODataType("guid"); // "string"
+getBaseTypeFromODataType("decimal"); // "number"
+getBaseTypeFromODataType("boolean"); // "boolean"
+getBaseTypeFromODataType("datetimeOffset"); // "date"
+```
+
+### HTTP и operation types
+
+```ts
+type BaseMethod = "GET" | "POST" | "PUT" | "DELETE";
+
+type ODataOperationMethod = "create" | "update" | "delete" | "read" | "query" | "fi";
+```
+
+`ODataOperationMethod` описывает намерение consumer-кода. Это не готовый HTTP method. Например, Function Import отдельно хранит `httpMethod` из metadata.
+
+## Чтение metadata
+
+### `parseServiceMetadata`
+
+```ts
+function parseServiceMetadata(xmlText: string): ServiceMetadata;
+```
+
+Функция принимает полный EDMX/XML текст и возвращает:
+
+```ts
+type ServiceMetadata = {
+	entities: Record<string, EntityMetadata>;
+	functionImports: Record<string, FunctionImportMetadata>;
+};
+```
+
+Пример:
+
+```ts
+const metadata = parseServiceMetadata(xmlText);
+
+const entity = metadata.entities.Sales;
+const action = metadata.functionImports.Recalculate;
+```
+
+Если имя неизвестно, результат обращения по ключу будет `undefined`. Проверяйте это явно до использования:
+
+```ts
+const entity = metadata.entities[target];
+
+if (!entity) {
+	throw new Error(`EntitySet ${target} отсутствует в metadata`);
+}
+```
+
+### Какие XML-типы поддерживаются
+
+Parser нормализует следующие EDM-типы:
+
+| EDMX                     | `ODataMetaType`  |
+| ------------------------ | ---------------- |
+| `Edm.String`             | `string`         |
+| `Edm.Guid`               | `guid`           |
+| `Edm.Boolean`            | `boolean`        |
+| `Edm.Byte`               | `byte`           |
+| `Edm.Int16`, `Edm.Int32` | `int`            |
+| `Edm.Int64`              | `long`           |
+| `Edm.Single`             | `float`          |
+| `Edm.Decimal`            | `decimal`        |
+| `Edm.Double`             | `double`         |
+| `Edm.DateTime`           | `datetime`       |
+| `Edm.DateTimeOffset`     | `datetimeOffset` |
+| `Edm.Time`               | `time`           |
+| `Edm.Binary`             | `binary`         |
+
+Неподдерживаемый scalar EDM type приводит к ошибке. Это намеренное поведение: неизвестный тип нельзя безопасно сериализовать как строку по догадке.
+
+### Nullable, mandatory и параметры
+
+Parser учитывает несколько источников обязательности:
+
+- `Nullable="false"`;
+- SAP attribute `sap:parameter="mandatory"`;
+- key-поля параметризованной сущности;
+- action-for key для Function Import.
+
+Для Function Import поддерживаются входные scalar параметры. Параметры с неподдерживаемым mode или не-scalar типом отклоняются.
+
+### ABAP boolean-like string
+
+Строковое поле `Edm.String` с `MaxLength="1"` помечается:
+
+```ts
+abapBooleanLike: true;
+```
+
+Это не превращает metadata type в `boolean`. Маркер нужен `odataParseValueByMetadata`, чтобы значения `"X"`, `" "` и `""` читать как boolean.
+
+### Колонки, роли и code/text
+
+Parser определяет:
+
+- `label` из SAP metadata с fallback на id;
+- `sortable` и `filterable`;
+- аналитическую роль `measure` или `dimension`;
+- семантику `none`, `code` или `text`;
+- `linkedColumnId` для пары code/text.
+
+Связь code/text ищется по SAP attribute и распространённым suffixes `_txt`, `_text`, `_t`. Дополнительно существуют проектные forced ids:
+
+```ts
+FORCED_CODE_TEXT_IDS; // Set с "ZDIV" и "ZCFO1"
+```
+
+Helpers:
+
+```ts
+resolveMetadataColumnLabel({ id: "BUKRS", label: "" }); // "BUKRS"
+isForcedCodeTextId("ZDIV"); // true
+isForcedCodeTextFamilyId("zdiv_txt"); // true
+```
+
+Сравнение forced family выполняется без учёта регистра.
+
+### Filterable columns
+
+```ts
+const columns = collectFilterableColumns(entity.columns);
+const ids = collectFilterableColumnsIds(entity.columns);
+
+console.log(ids.has("COMPANY"));
+```
+
+`collectFilterableColumns` возвращает новый массив только с `filterable: true`.
+
+`collectFilterableColumnsIds` возвращает readonly `Set<string>`, удобный для быстрых проверок.
+
+### Важные ограничения parser
+
+- Нужен глобальный `DOMParser`.
+- Функция не загружает metadata по URL.
+- Функция не кеширует результат.
+- Функция не проверяет server data rows по metadata.
+- Complex types не превращаются в обычные filterable scalar columns.
+- Служебные result-wrapper сущности могут быть скрыты из итоговой карты, а их columns перенесены к публичной parameterized entity.
+- Entity type с именем, заканчивающимся на `Type`, без result navigation не считается автоматически параметризованным.
+
+## Типы результата metadata
+
+### `EntityParameterProperty`
+
+```ts
+type EntityParameterProperty = {
+	id: string;
+	label: string;
+	type: ODataMetaType;
+	originalType: string;
+	abapBooleanLike?: true;
+	nullable?: true;
+	mandatory?: true;
+	maxLength?: number;
+	precision?: number;
+	scale?: number;
+	parameter?: string;
+};
+```
+
+Обратите внимание на optional flags: отсутствие `mandatory` означает «не отмечен обязательным», а не обязательно явное `false`.
+
+### `EntityColumnProperty`
+
+Колонка содержит основную информацию параметра и UI/runtime metadata:
+
+```ts
+type EntityColumnProperty = {
+	id: string;
+	label: string;
+	type: ODataMetaType;
+	originalType: string;
+	abapBooleanLike?: true;
+	maxLength?: number;
+	precision?: number;
+	scale?: number;
+	parameter?: string;
+	linkedColumnId?: string;
+	semanticType: "none" | "code" | "text";
+	sortable: boolean;
+	filterable: boolean;
+	role: "measure" | "dimension";
+};
+```
+
+### `EntityMetadata`
+
+```ts
+type EntityMetadata = {
+	title: string;
+	columns: EntityColumnProperty[];
+	parameters?: EntityParameterProperty[];
+	result?: "Set" | "Results";
+};
+```
+
+`result` задаёт navigation segment для параметризованной сущности.
+
+### `FunctionImportMetadata`
+
+```ts
+type FunctionImportMetadata = {
+	name: string;
+	title: string;
+	httpMethod?: "GET" | "POST" | "PUT" | "DELETE";
+	parameters?: EntityParameterProperty[];
+	returnType: string;
+	entitySet?: string;
+	actionFor?: string;
+	resultEntity?: string;
+};
+```
+
+### Остальные metadata-типы
+
+```ts
+type ServiceEntities = Record<string, EntityMetadata>;
+type ServiceFunctionImports = Record<string, FunctionImportMetadata>;
+type ODataTargetMetadata = EntityMetadata | FunctionImportMetadata;
+
+type EntityPropertyBase = {
+	id: string;
+	label: string;
+};
+
+type EntityPropertyBaseWithType = EntityPropertyBase & {
+	type: ODataMetaType;
+};
+```
+
+`ODataTargetMetadata` удобен для generic UI, который умеет показывать как entity, так и Function Import.
+
+## Форматирование OData-значений
+
+### `odataFormatValue`
+
+```ts
+function odataFormatValue(type: ODataMetaType, value: unknown): string;
+```
+
+Функция сначала проверяет значение через Zod schema соответствующего типа, затем создаёт OData literal.
+
+```ts
+odataFormatValue("string", "O'Reilly");
+// 'O''Reilly'
+
+odataFormatValue("boolean", true);
+// 'X'
+
+odataFormatValue("decimal", 12.5);
+// 12.5M
+```
+
+### Таблица сериализации
+
+| Тип              | Допустимое JavaScript-значение        | Пример результата                            |
+| ---------------- | ------------------------------------- | -------------------------------------------- |
+| `string`         | `string`                              | `'Текст'`                                    |
+| `guid`           | UUID или строка из hex-символов и `-` | `guid'550e8400-e29b-41d4-a716-446655440000'` |
+| `boolean`        | `boolean`                             | `true` → `'X'`, `false` → `' '`              |
+| `byte`           | integer `0..255`                      | `255`                                        |
+| `int`            | integer                               | `42`                                         |
+| `long`           | integer                               | `42L`                                        |
+| `float`          | `number`                              | `12.5F`                                      |
+| `decimal`        | `number`                              | `12.5M`                                      |
+| `double`         | `number`                              | `12.5D`                                      |
+| `datetime`       | valid `Date`                          | `datetime'2026-08-18T10:30:00'`              |
+| `datetimeOffset` | valid `Date`                          | `datetimeoffset'2026-08-18T05:30:00.000Z'`   |
+| `time`           | valid `Date`                          | `time'PT10H30M00S'`                          |
+| `binary`         | `string`                              | `binary'BASE64...'`                          |
+
+### Строки и одинарные кавычки
+
+Одинарная кавычка внутри OData string literal удваивается:
+
+```ts
+odataFormatValue("string", "Иванов 'Тест'");
+// 'Иванов ''Тест'''
+```
+
+Не экранируйте строку вручную перед вызовом. Иначе кавычки будут удвоены повторно.
+
+### Boolean в SAP/ABAP форме
+
+`boolean` сериализуется не как `true`/`false`, а как ABAP-like char:
+
+```ts
+odataFormatValue("boolean", true); // "'X'"
+odataFormatValue("boolean", false); // "' '"
+```
+
+Если конкретный endpoint ждёт `0`/`1`, выберите custom formatter из registry или передайте собственный formatter в wrapped parameter.
+
+### Даты и timezone
+
+`ODataDateFormat` предоставляет три formatter-а:
+
+```ts
+ODataDateFormat.datetime(date);
+ODataDateFormat.datetimeOffset(date);
+ODataDateFormat.time(date);
+```
+
+Их семантика различается:
+
+- `datetime` использует видимые локальные календарные компоненты `Date` без suffix timezone;
+- `datetimeOffset` вызывает `date.toISOString()` и поэтому сериализует UTC-время с `Z`;
+- `time` использует локальные компоненты времени как ISO duration `PT...`.
+
+Не заменяйте один тип другим только потому, что оба принимают `Date`. Выбирайте тип из metadata endpoint.
+
+### Runtime validation
+
+Некорректное значение приводит к `Error`:
+
+```ts
+odataFormatValue("int", 1.5);
+// Error: значение не является integer
+
+odataFormatValue("byte", 300);
+// Error: значение больше 255
+
+odataFormatValue("datetime", "2026-08-18");
+// Error: ожидался Date, а не string
+```
+
+Основные schemas доступны напрямую:
+
+```ts
+const result = odataTypeSchemas.decimal.safeParse(12.5);
+
+if (!result.success) {
+	console.error(result.error);
+}
+```
+
+`guid` принимает canonical UUID и более мягкую строку, содержащую только hex-символы и дефисы. Не считайте этот schema полной бизнес-проверкой UUID, если backend требует конкретную версию/форму.
+
+### Primitive guards
+
+```ts
+isStringSafe("A"); // true
+isNumberSafe(10); // true
+isNumberSafe("10"); // false
+isBooleanSafe(false); // true
+isDateSafe(new Date()); // true для valid Date
+```
+
+Guards ничего не преобразуют. Например, `isNumberSafe("10")` не парсит строку.
+
+## Парсинг значений
+
+### `odataParseValue`
+
+Преобразует raw server/control value в JavaScript-представление по нормализованному OData type.
+
+```ts
+odataParseValue("boolean", "X"); // true
+odataParseValue("boolean", " "); // false
+odataParseValue("int", "1 234"); // 1234
+odataParseValue("datetime", "2026-08-18"); // Date или null по правилам date parser
+odataParseValue("string", 123); // "123"
+```
+
+### Boolean parsing
+
+Распознаются:
+
+| Input                 | Result        |
+| --------------------- | ------------- |
+| `true`, `false`       | то же boolean |
+| `1`, `"1"`, `"true"`  | `true`        |
+| `0`, `"0"`, `"false"` | `false`       |
+| `"X"`                 | `true`        |
+| `" "`, `""`           | `false`       |
+
+Регистр учитывается только для ABAP `"X"`: именно uppercase `X` распознаётся напрямую. Обычные `true`/`false` приводятся к lower case после `trim`.
+
+Если значение не распознано, функция возвращает исходное значение:
+
+```ts
+odataParseValue("boolean", "maybe"); // "maybe"
+odataParseValue("boolean", 2); // 2
+```
+
+Поэтому результат нельзя без проверки безусловно присвоить переменной `boolean`.
+
+### Numbers и dates
+
+Numeric types делегируют parsing общему `parseNumber`, а date/time types — общему `parseDate` из `formatters`.
+
+Это означает:
+
+- строковые числа могут быть преобразованы;
+- невалидное число не обязано приводить к exception;
+- результат даты может быть `Date`, `null` или исходным/промежуточным значением согласно date parser contract.
+
+Для форматирования данных в UI используйте `@ryuzaki13/react-foundation-lib/formatters`, а не `odataParseValue` как display formatter.
+
+### String-like types
+
+`string`, `guid` и `binary` используют `String(value)`:
+
+```ts
+odataParseValue("string", null); // "null"
+odataParseValue("string", undefined); // "undefined"
+```
+
+Если `null` должен остаться `null`, отфильтруйте его до вызова.
+
+### `odataParseValueByMetadata`
+
+```ts
+odataParseValueByMetadata({ type: "string", abapBooleanLike: true }, "X"); // true
+```
+
+Дополнительные правила для `abapBooleanLike`:
+
+- `null` и `undefined` → `false`;
+- `"X"` → `true`;
+- `" "` и `""` → `false`;
+- другое строковое значение проходит обычный parsing типа;
+- non-string значение не считается ABAP char и тоже проходит обычный parsing.
+
+Например, boolean `true` при descriptor type `string` в итоге станет строкой `"true"`.
+
+## Значения по умолчанию и formatter registry
+
+### `defaultODataTypeValue`
+
+```ts
+defaultODataTypeValue("boolean"); // false
+defaultODataTypeValue("decimal"); // 0
+defaultODataTypeValue("datetime"); // новый Date
+defaultODataTypeValue("string"); // ""
+```
+
+Для каждого вызова date/time создаётся новый `Date` с текущим моментом. Не используйте функцию как стабильную constant.
+
+### `defaultControlTypeValue`
+
+То же правило на уровне `BaseMetaType`:
+
+```ts
+defaultControlTypeValue("boolean"); // false
+defaultControlTypeValue("number"); // 0
+defaultControlTypeValue("date"); // новый Date
+defaultControlTypeValue("string"); // ""
+```
+
+Это технический default, а не утверждение, что пустое поле пользователя должно иметь `0`, `false` или текущую дату. Решение о null/empty принадлежит форме и бизнес-сценарию.
+
+### Formatter description
+
+```ts
+type ODataFormatterDescription = {
+	id: string;
+	label: string;
+	description: string;
+	fn: (...args: unknown[]) => string;
+};
+```
+
+Registry нужен UI-редактору mapping, где пользователь выбирает способ сериализации.
+
+```ts
+const items = getFormattersFor("datetime");
+
+for (const item of items) {
+	console.log(item.id, item.label);
+}
+```
+
+Доступные ids:
+
+| Base type | Id               | Назначение                           |
+| --------- | ---------------- | ------------------------------------ |
+| `date`    | `base`           | OData `datetime`                     |
+| `date`    | `datetimeOffset` | OData `datetimeoffset`               |
+| `date`    | `time`           | OData `time`                         |
+| `date`    | `stringAbapDate` | Строка ABAP `YYYYMMDD`               |
+| `boolean` | `base`           | ABAP boolean `'X'`/`' '`             |
+| `boolean` | `asChar`         | Строка `'0'`/`'1'`                   |
+| `boolean` | `asByte`         | Число `0`/`1`                        |
+| `string`  | `base`           | Экранированная OData string          |
+| `number`  | —                | Встроенных registry formatter-ов нет |
+
+API поиска:
+
+```ts
+getFormattersFor("datetime");
+getFormattersForBaseType("date");
+getFormatter("boolean", "asByte");
+getFormatterForBaseType("boolean", "asChar");
+```
+
+`getFormattersFor*` возвращает массив с `id`.
+
+`getFormatter*` возвращает внутреннее описание конкретного элемента без добавленного поля `id` либо `undefined`, если id отсутствует.
+
+### Formatter factories
+
+```ts
+const joinStrings = createStringFormatter((...values) => {
+	return `'${values.join("-")}'`;
+});
+
+joinStrings("A", "B"); // 'A-B'
+joinStrings("A", 10); // Error validation
+```
+
+Фабрики:
+
+- `createFormatter(schema, fn)` — общий Zod-validated wrapper;
+- `createBooleanFormatter(fn)` — все аргументы обязаны быть boolean;
+- `createStringFormatter(fn)` — все аргументы обязаны быть string;
+- `createNumberFormatter(fn)` — все аргументы обязаны быть number;
+- `createDateFormatter(fn)` — все аргументы обязаны быть valid `Date`.
+
+Фабрика проверяет весь массив аргументов при каждом вызове. Она не проверяет, что возвращённая строка действительно является корректным OData literal; это ответственность функции `fn`.
+
+## Wrapped и unwrapped параметры
+
+### Зачем нужна обёртка `{ value }`
+
+Плоские параметры удобны для формы:
+
+```ts
+const flat = {
+	p_company: "1000",
+	p_year: 2026
+};
+```
+
+Builder принимает wrapped форму, потому что каждому параметру можно назначить formatter:
+
+```ts
+const wrapped = {
+	p_company: { value: "1000" },
+	p_year: { value: 2026 },
+	p_date: {
+		value: selectedDate,
+		formatter: ODataDateFormat.datetime
+	}
+};
+```
+
+Основные типы:
+
+```ts
+type ODataParameterValue = BaseType | BaseType[];
+
+type ODataValue<T extends ODataParameterValue = ODataParameterValue> = {
+	value: T;
+	formatter?: (...args: unknown[]) => string;
+};
+
+type UnwrappedODataParameters = Record<string, ODataParameterValue>;
+type WrappedODataParameters = Record<string, ODataValue>;
+```
+
+`InputValue`, `UnwrappedInputParameters` и `WrappedInputParameters` — аналогичные generic UI-контракты поверх `InputType`.
+
+### `wrapODataParams`
+
+```ts
+const wrapped = wrapODataParams({
+	p_zero: 0,
+	p_enabled: false,
+	p_empty: ""
+});
+```
+
+Результат:
+
+```ts
+{
+  p_zero: { value: 0 },
+  p_enabled: { value: false },
+  p_empty: { value: "" }
+}
+```
+
+Функция сохраняет `0`, `false`, пустую строку и `null` буквально. Она не форматирует и не нормализует значения.
+
+Для `null` или `undefined` вместо всего объекта возвращается пустой объект.
+
+### `unwrapODataParams`
+
+```ts
+unwrapODataParams({
+	z: { value: false },
+	a: { value: undefined }
+});
+```
+
+Результат:
+
+```ts
+{
+  a: null,
+  z: false
+}
+```
+
+Правила:
+
+- ключи сортируются по имени;
+- `undefined` внутри параметра превращается в `null`;
+- `formatter` отбрасывается;
+- отсутствующий аргумент даёт `undefined`;
+- преобразование shallow: вложенные значения не клонируются.
+
+Generic types `WrapODataParameters<T>` и `UnwrapODataParameters<T>` помогают сохранить имена и типы keys на этапе TypeScript.
+
+## Построение параметров и path
+
+### `buildParameterEntries`
+
+```ts
+function buildParameterEntries(
+	metadata: { parameters?: EntityParameterProperty[] },
+	params: WrappedODataParameters
+): Array<[string, string]>;
+```
+
+Функция идёт по `metadata.parameters`, а не по keys объекта `params`. Поэтому:
+
+- порядок результата совпадает с metadata;
+- лишние keys в `params` игнорируются;
+- отсутствующий optional параметр пропускается;
+- отсутствующий mandatory параметр приводит к `Error`.
+
+```ts
+const entries = buildParameterEntries(
+	{
+		parameters: [
+			{ id: "p_company", label: "Компания", type: "string", originalType: "Edm.String", mandatory: true },
+			{ id: "p_year", label: "Год", type: "int", originalType: "Edm.Int32" }
+		]
+	},
+	{
+		p_company: { value: "1000" },
+		p_year: { value: 2026 }
+	}
+);
+
+// [["p_company", "'1000'"], ["p_year", "2026"]]
+```
+
+### Mandatory и optional
+
+Только `null` и `undefined` считаются отсутствием:
+
+```ts
+{
+	value: 0;
+} // присутствует
+{
+	value: false;
+} // присутствует
+{
+	value: "";
+} // присутствует и будет отформатировано как ''
+```
+
+### Массивы
+
+Обычный OData parameter является scalar. Поэтому массив разрешён только вместе с custom formatter:
+
+```ts
+const params = {
+	p_ids: {
+		value: ["A", "B"],
+		formatter: (value: unknown) => {
+			const values = value as string[];
+			return `'${values.join(",")}'`;
+		}
+	}
+};
+```
+
+Без formatter builder выбросит ошибку «Массив значений OData-параметра требует custom formatter».
+
+### `maxLength`
+
+Если parameter metadata содержит `maxLength`, builder ожидает literal в одинарных кавычках и проверяет число символов внутри них.
+
+Это важно:
+
+- string literal проверяется;
+- custom formatter тоже обязан вернуть `'...'`;
+- numeric literal при наличии `maxLength` не пройдёт проверку, потому что не заключён в кавычки.
+
+Сообщение любой formatting-ошибки дополняется id параметра.
+
+### `buildEntityParameters`
+
+```ts
+const value = buildEntityParameters(entityMetadata, params);
+// (p_company='1000',p_year=2026)
+```
+
+Каждый уже отформатированный literal проходит через `encodeURIComponent`. Не применяйте `encodeURIComponent` к value заранее.
+
+Если параметров нет, функция возвращает пустую строку.
+
+### `buildFunctionImportParameters`
+
+Возвращает стандартный `URLSearchParams`:
+
+```ts
+const searchParams = buildFunctionImportParameters(functionMetadata, params);
+console.log(searchParams.toString());
+```
+
+Values сначала форматируются как OData literals, затем передаются в `URLSearchParams`. Не сравнивайте вручную raw query string, если порядок/encoding можно проверить через `searchParams.get`.
+
+### `ODataServiceConfig`
+
+```ts
+type ODataServiceConfig = {
+	service: string;
+	target: string;
+};
+```
+
+Функции не очищают `/` и не валидируют имена. Передавайте именно ожидаемые segments без query string.
+
+### `buildEntityPath`
+
+```ts
+buildEntityPath(metadata, config, params);
+```
+
+Формат:
+
+```text
+/{service}/{target}{parameters}/{result}
+```
+
+`/{result}` добавляется только если metadata содержит `result: "Set" | "Results"`.
+
+### `buildEntityOperationPath`
+
+```ts
+buildEntityOperationPath(metadata, config, params, method);
+```
+
+| Method                           | Поведение                                                     |
+| -------------------------------- | ------------------------------------------------------------- |
+| `create`                         | Возвращает только `/{service}/{target}`; params игнорируются. |
+| `query` для обычной entity       | Возвращает base path; params игнорируются.                    |
+| `query` для parameterized entity | Добавляет параметры и `/Set` либо `/Results`.                 |
+| `read`, `update`, `delete`       | Добавляет entity parameters, но не result navigation.         |
+
+В development-сборке `query` с params для обычной entity пишет `console.warn`, потому что target не поддерживает parameterized query.
+
+### `buildFunctionImportPath`
+
+```ts
+const path = buildFunctionImportPath(functionMetadata, config, params);
+// /REPORT_SRV/Recalculate?p_year=2026
+```
+
+Если serializable parameters нет, `?` не добавляется.
+
+### Path не является полным URL
+
+Результат начинается с `/`, но не содержит:
+
+- origin;
+- `/sap/opu/odata/sap`;
+- `$filter`, `$orderby`, `$select`, `$expand`;
+- HTTP method и body;
+- authentication headers.
+
+Соединять path с transport base URL должен API-слой.
+
+## Простые OData-фильтры
+
+### Два этапа
+
+Фильтр строится в два этапа:
+
+1. Создать типизированное дерево `FilterExpression`.
+2. Сериализовать дерево через `buildODataFilter`.
+
+```ts
+type Row = {
+	STATUS: string;
+	AMOUNT: number;
+};
+
+const expression = createFilterEqual<Row, string>("STATUS", "A");
+const filter = buildODataFilter(expression);
+
+console.log(filter); // STATUS eq 'A'
+```
+
+Не собирайте `$filter` конкатенацией пользовательских строк. Formatter должен экранировать values.
+
+### Операции
+
+```ts
+FilterOperation.eq; // "eq"
+FilterOperation.ne; // "ne"
+FilterOperation.gt; // "gt"
+FilterOperation.ge; // "ge"
+FilterOperation.lt; // "lt"
+FilterOperation.le; // "le"
+FilterOperation.startswith; // "startswith"
+FilterOperation.endswith; // "endswith"
+FilterOperation.contains; // "contains"
+```
+
+`FILTER_OPERATIONS` — readonly массив всех значений.
+
+```ts
+isFilterOperation("contains"); // true
+isFilterOperation("in"); // false
+
+resolveOperationLabel("ge"); // "больше или равно"
+```
+
+### Структура выражения
+
+Leaf содержит conditions:
+
+```ts
+type FilterCondition<T> = {
+	key: keyof T;
+	value: BaseType;
+	operation?: FilterOperation;
+	type?: ODataMetaType;
+};
+
+type FilterConditionExpression<T> = {
+	and?: boolean;
+	conditions: FilterCondition<T>[];
+};
+```
+
+Nested node содержит другие filters:
+
+```ts
+type FilterNestedExpression<T> = {
+	and?: boolean;
+	filters: FilterExpression<T>[];
+};
+```
+
+Один node не может одновременно содержать `conditions` и `filters`.
+
+### Значение `and`
+
+По умолчанию `and` отсутствует или равно `false`. Это означает OR:
+
+```ts
+{
+	conditions: [
+		{ key: "STATUS", value: "A" },
+		{ key: "STATUS", value: "B" }
+	];
+}
+// (STATUS eq 'A' or STATUS eq 'B')
+```
+
+Для AND укажите `and: true`:
+
+```ts
+{
+  and: true,
+  conditions: [
+    { key: "AMOUNT", operation: "ge", value: 100, type: "decimal" },
+    { key: "AMOUNT", operation: "le", value: 500, type: "decimal" }
+  ]
+}
+// (AMOUNT ge 100M and AMOUNT le 500M)
+```
+
+### Вывод OData type из value
+
+Если `condition.type` отсутствует, используется простое правило:
+
+| JavaScript value      | Выведенный OData type |
+| --------------------- | --------------------- |
+| `number` или `bigint` | `int`                 |
+| `boolean`             | `boolean`             |
+| `Date`                | `datetime`            |
+| остальное             | `string`              |
+
+Для decimal, long, datetimeOffset и других точных типов всегда задавайте `type` явно:
+
+```ts
+{
+  key: "AMOUNT",
+  value: 12.5,
+  operation: "ge",
+  type: "decimal"
+}
+```
+
+Иначе `12.5` будет проверено как `int` и formatting завершится ошибкой.
+
+### Строковые операции
+
+Результат соответствует OData V2 syntax:
+
+```ts
+buildODataFilter(createFilterContains<Row, string>("STATUS", "A"));
+// substringof('A',STATUS)
+```
+
+Для starts/ends:
+
+```text
+startswith(STATUS, 'A')
+endswith(STATUS, 'A')
+```
+
+### `createFilter`
+
+Общая фабрика:
+
+```ts
+createFilter<Row, number>("AMOUNT", 100, "gt");
+```
+
+`null` и `undefined` создают пустой leaf `{ conditions: [] }`.
+
+Массив создаёт несколько conditions с OR по умолчанию:
+
+```ts
+createFilter<Row, string>("STATUS", ["A", "B"], "eq");
+// после serialization: (STATUS eq 'A' or STATUS eq 'B')
+```
+
+`null`/`undefined` элементы массива удаляются. Остальные falsy values сохраняются.
+
+### Фабрики
+
+```ts
+createFilterEqual("STATUS", "A");
+createFilterContains("NAME", "сталь");
+createFilterBetween("AMOUNT", [100, 500]);
+```
+
+`createFilterBetween` создаёт `ge` + `le` с AND.
+
+При одной пустой границе создаётся одностороннее условие. Но текущая реализация проверяет частичную границу по truthiness. Поэтому значения `0`, `false` и `""` как единственная граница будут потеряны:
+
+```ts
+createFilterBetween("AMOUNT", [0, null]);
+// пустое выражение, а не AMOUNT ge 0
+```
+
+Если нулевая открытая граница важна, создайте condition вручную через `createFilter`.
+
+### `createFilterEqualFalsy`
+
+Эта фабрика намеренно удаляет любые falsy values:
+
+```ts
+createFilterEqualFalsy("AMOUNT", 0); // пусто
+createFilterEqualFalsy("ACTIVE", false); // пусто
+createFilterEqualFalsy("TEXT", ""); // пусто
+```
+
+Используйте её только когда `0`, `false` и `""` действительно означают «фильтр не задан». В обычном случае нужен `createFilterEqual`.
+
+### `mergeFilterExpressions`
+
+```ts
+const merged = mergeFilterExpressions(left, right);
+```
+
+- если left отсутствует — возвращается right;
+- если right отсутствует — возвращается left;
+- если есть оба — создаётся nested AND;
+- если отсутствуют оба — результат `undefined`.
+
+### `buildODataFilter`
+
+```ts
+const filterText = buildODataFilter(expression);
+```
+
+Правила:
+
+- `undefined` → `""`;
+- пустой leaf/node → `""`;
+- один child выводится без лишней групповой обёртки;
+- несколько children заключаются в скобки;
+- некорректная runtime-форма expression приводит к `Error`.
+
+### `buildODataFilterRecursive`
+
+Альтернативный serializer использует более агрессивные скобки для вложенных выражений. Логический смысл тот же, но строка может отличаться:
+
+```ts
+const normal = buildODataFilter(expression);
+const explicit = buildODataFilterRecursive(expression);
+```
+
+Если backend/tests завязаны на точную форму строки, выберите один serializer и используйте его последовательно.
+
+### TypeScript не валидирует field id в runtime
+
+`keyof T` помогает только во время компиляции:
+
+```ts
+createFilterEqual<Row, string>("STATUS", "A");
+```
+
+После `as`, JSON parse или plain JavaScript в key может попасть произвольная строка. OData filter builder не имеет runtime allowlist field ids. Если definition приходит извне, сверяйте field id с metadata columns.
+
+## Compiled filter definitions
+
+Этот слой нужен сложным фильтрам, когда UI-конфигурация и текущее значение хранятся отдельно.
+
+```text
+definitions + values
+        │
+        ├─ sanitize
+        ▼
+compileFiltersToExpression
+        │
+        ▼
+FilterExpression
+        │
+        ▼
+buildODataFilter
+```
+
+Для простого программного фильтра этот слой не обязателен. Используйте `createFilterEqual` напрямую.
+
+### Значения
+
+```ts
+type ODataFilterValue = InputType | Record<string, string[]>;
+type ODataFilterValues = Record<string, ODataFilterValue>;
+```
+
+Объект `Record<string, string[]>` представляет выбранные значения разных уровней tree filter:
+
+```ts
+const values = {
+	productTree: {
+		CATEGORY: ["A"],
+		GROUP: ["A1", "A2"]
+	}
+};
+```
+
+### Виды definitions
+
+```ts
+type FilterDefinitionKind = "segment" | "tree" | "advanced" | "local" | "registered" | "column";
+```
+
+| Kind         | Смысл                                                                            |
+| ------------ | -------------------------------------------------------------------------------- |
+| `segment`    | Select/multi-select, обычно загружаемый OData-справочник.                        |
+| `tree`       | Значения распределены по нескольким физическим колонкам уровней.                 |
+| `local`      | Локальный control с декларативным binding.                                       |
+| `registered` | Control предоставлен внешним runtime registry; owner column может отсутствовать. |
+| `advanced`   | Advanced-search выбирает массив значений owner column.                           |
+| `column`     | Обычное scalar/multiple значение колонки.                                        |
+
+Component ids:
+
+```ts
+type FilterSegmentComponentId = "select" | "multi-select";
+type FilterTreeComponentId = "tree-select" | "tree-multi-select";
+type FilterLocalComponentId = "select" | "multi-select" | "checkbox" | "text-input" | "number-input";
+type FilterAdvancedComponentId = "advanced-search-select";
+type FilterRegisteredValueMode = "single" | "multiple";
+```
+
+`isFilterLocalComponentId(value)` проверяет только local component ids.
+
+### Segment
+
+```ts
+const segmentDefinition: ODataCompiledFilterDefinition = {
+	id: "company",
+	ownerColumnId: "BUKRS",
+	columnIds: ["BUKRS"],
+	kind: "segment",
+	componentId: "multi-select",
+	controlType: "string",
+	dictionaryCodeKey: "BUKRS"
+};
+```
+
+Для `select` ожидается scalar. Для `multi-select` ожидается массив. Массив компилируется в OR из `eq` conditions.
+
+`dictionaryCodeKey` задаёт key dependency при загрузке связанного справочника. Если он совпадает с `ownerColumnId`, sanitizer удаляет избыточное поле.
+
+### Tree
+
+```ts
+const treeDefinition: ODataCompiledFilterDefinition = {
+	id: "productTree",
+	ownerColumnId: "CATEGORY",
+	columnIds: ["CATEGORY", "GROUP"],
+	kind: "tree",
+	componentId: "tree-multi-select",
+	controlType: "string",
+	levelOperator: "and"
+};
+```
+
+Внутри каждого уровня значения объединяются OR. Между уровнями по умолчанию используется AND. Укажите `levelOperator: "or"`, чтобы уровни объединялись OR.
+
+Если `ownerColumnId` не входит в нормализованный `columnIds`, sanitizer заменяет owner на первый column id.
+
+### Condition binding
+
+Один local/registered control может создавать conditions по другой физической колонке:
+
+```ts
+type ODataFilterCondition = {
+	columnId?: string;
+	operation: FilterOperation;
+	valueSource: "static" | "input";
+	value?: BaseType;
+};
+
+type ODataFilterConditionGroup = {
+	and?: boolean;
+	conditions: ODataFilterCondition[];
+};
+```
+
+`valueSource: "static"` берёт `condition.value`.
+
+`valueSource: "input"` берёт текущее значение control.
+
+Если `columnId` не указан, local definition использует `ownerColumnId` как fallback. У registered definition искусственного owner нет, поэтому condition должна явно назвать column id.
+
+### List binding
+
+```ts
+const binding: ODataFilterBinding = {
+	kind: "list",
+	and: false,
+	options: [
+		{
+			key: "open",
+			label: "Открытые",
+			filter: {
+				conditions: [
+					{
+						columnId: "STATUS",
+						operation: "eq",
+						valueSource: "static",
+						value: "O"
+					}
+				]
+			}
+		}
+	]
+};
+```
+
+Выбранные options объединяются OR, если `and !== true`.
+
+Для local list option без explicit filter используется fallback `ownerColumnId eq option.key`.
+
+Для registered list такого fallback нет: option без filter не создаёт server filter.
+
+Пустой string `option.key` разрешён и может означать отдельный пользовательский выбор. Дубли option keys sanitizer сейчас не удаляет.
+
+### Boolean binding
+
+```ts
+const binding: ODataFilterBinding = {
+	kind: "boolean",
+	trueFilter: {
+		conditions: [{ columnId: "ACTIVE", operation: "eq", valueSource: "static", value: true }]
+	}
+};
+```
+
+Filter включается только когда control value строго равно `true`.
+
+Local boolean без `trueFilter` создаёт fallback `ownerColumnId eq true`.
+
+Registered boolean без explicit `trueFilter` ничего не создаёт.
+
+### Value binding
+
+```ts
+const binding: ODataFilterBinding = {
+	kind: "value",
+	valueFilter: {
+		conditions: [{ columnId: "AMOUNT", operation: "ge", valueSource: "input" }]
+	}
+};
+```
+
+Local value без explicit group создаёт fallback equality по owner column.
+
+Registered value без explicit group ничего не создаёт.
+
+### Registered filter без binding
+
+Registered definition может быть parameter-only:
+
+```ts
+const definition: ODataCompiledFilterDefinition = {
+	id: "period",
+	kind: "registered",
+	componentId: "period-control",
+	controlType: "date",
+	valueMode: "single",
+	columnIds: []
+};
+```
+
+Значение такого control может использоваться другим уровнем приложения, но `compileFiltersToExpression` не добавит его в `$filter`.
+
+### `sanitizeFilterConditionGroup`
+
+Нормализует condition group:
+
+- trim для `columnId`;
+- невалидное/пустое static value удаляется;
+- input condition может не иметь сохранённого value;
+- пустая после очистки группа становится `undefined`;
+- `and: false` сохраняется как явный OR;
+- `and: true` сохраняется как AND.
+
+### `sanitizeFilterBinding`
+
+Нормализует binding:
+
+- trim для option key и label;
+- пустой key сохраняется;
+- пустой label заменяется key;
+- options не дедуплицируются;
+- list без options становится `undefined`;
+- вложенные condition groups очищаются.
+
+### `sanitizeFilterDefinitions`
+
+Нормализует массив definitions без изменения входных объектов. Это важно для frozen Zustand/Immer snapshots.
+
+Основные правила:
+
+- trim для `id`, `ownerColumnId`, `componentId`, `columnIds`;
+- definitions без обязательного id удаляются;
+- non-registered definition без owner удаляется;
+- tree без физических `columnIds` удаляется;
+- local без валидного binding удаляется;
+- column ids дедуплицируются;
+- `segment.columnIds` пересчитывается как `[ownerColumnId]`;
+- local/registered `columnIds` выводятся из binding conditions;
+- legacy kinds `odata-segment` и `odata-tree` переводятся в `segment` и `tree`;
+- legacy `treeSelect` переводится в `tree-select`; остальное tree legacy значение становится `tree-multi-select`.
+
+Это migration sanitizer сохранённых конфигураций, а не разрешение продолжать создавать legacy definitions в новом коде.
+
+### `sanitizeFilterValue`
+
+Scalar правила:
+
+- string обрезается через `trim`, но пустая строка сохраняется;
+- finite number сохраняется;
+- `NaN`, `Infinity`, `-Infinity` удаляются;
+- boolean сохраняется, включая `false`;
+- valid `Date` сохраняется;
+- invalid `Date` удаляется.
+
+Array правила:
+
+- элементы очищаются как scalar;
+- дубликаты удаляются с учётом типа;
+- результат сортируется детерминированно;
+- пустой массив становится `undefined`.
+
+Tree object правила:
+
+- keys колонок проходят trim;
+- принимаются только string arrays;
+- string values trim/dedupe;
+- пустые строки удаляются;
+- порядок значений tree array сохраняется, сортировка не выполняется;
+- пустые уровни удаляются.
+
+### `sanitizeFilterValues`
+
+```ts
+const normalized = sanitizeFilterValues({
+	" company ": [" 1000 ", "1000", "2000"],
+	broken: Number.NaN
+});
+
+// { company: ["1000", "2000"] }
+```
+
+Filter ids проходят trim. Пустые/невалидные значения удаляются.
+
+### `mergeFilterValuePatch`
+
+```ts
+const next = mergeFilterValuePatch(values, "company", ["1000"]);
+```
+
+Функция сначала нормализует весь snapshot, создаёт новый object и затем:
+
+- устанавливает нормализованное value;
+- либо удаляет key, если новое value стало `undefined`.
+
+Входной object не мутируется.
+
+### Potential и active column ids
+
+```ts
+resolveODataFilterDefinitionColumnIds(definition);
+resolveODataFilterDefinitionActiveColumnIds(definition, value);
+```
+
+Первая функция возвращает все физические колонки, которые definition потенциально может затронуть.
+
+Вторая учитывает текущее value. Например, у list binding options могут ссылаться на разные columns; active helper вернёт только columns выбранных options.
+
+Это полезно при проверке совместимости filter definition с конкретным OData target.
+
+### `compileFiltersToExpression`
+
+```ts
+const expression = compileFiltersToExpression(definitions, values);
+const filter = buildODataFilter(expression);
+```
+
+Компилятор:
+
+1. санитизирует definitions;
+2. санитизирует values;
+3. сопоставляет value по `definition.id`;
+4. отбрасывает definitions без активного server expression;
+5. объединяет expressions разных definitions через AND.
+
+Semantics по kind:
+
+| Kind                   | Как компилируется                                                    |
+| ---------------------- | -------------------------------------------------------------------- |
+| `segment/select`       | scalar `owner eq value`                                              |
+| `segment/multi-select` | массив equality через OR                                             |
+| `tree`                 | values каждого уровня через OR, уровни через AND или `levelOperator` |
+| `local/list`           | option filters либо fallback owner equality                          |
+| `local/boolean`        | только `true`; explicit group либо owner `eq true`                   |
+| `local/value`          | explicit input group либо owner equality                             |
+| `registered`           | только explicit binding conditions; owner fallback отсутствует       |
+| `column`               | scalar/array owner equality                                          |
+| `advanced`             | только массив owner equality                                         |
+
+Если ничего не скомпилировалось, возвращается `undefined`, а `buildODataFilter(undefined)` даст пустую строку.
+
+### Dependencies для справочников
+
+```ts
+const dependencies = flattenFilterValuesToODataDependencies(definitions, values);
+```
+
+В dependencies попадают только `segment` и `tree`:
+
+- segment записывается по `dictionaryCodeKey` либо `ownerColumnId`;
+- tree раскладывает выбранные значения по физическим `columnIds`;
+- local/registered/column/advanced пропускаются.
+
+Результат:
+
+```ts
+{
+  BUKRS: ["1000"],
+  CATEGORY: ["A"],
+  GROUP: ["A1"]
+}
+```
+
+### Цепочки OData-сегментов
+
+```ts
+type ODataChainItem = {
+	codeKey: string;
+	count: number;
+};
+
+type ODataChainsMap = Record<string, ODataChainItem[]>;
+```
+
+`collapseChainedODataSegmentFilterValues` оставляет в каждой известной цепочке самый глубокий выбранный segment:
+
+```ts
+const collapsed = collapseChainedODataSegmentFilterValues(
+	{
+		category: ["A"],
+		group: ["A1"],
+		localStatus: "active"
+	},
+	["category", "group"],
+	{
+		product: [
+			{ codeKey: "category", count: 1 },
+			{ codeKey: "group", count: 2 }
+		]
+	}
+);
+
+// { group: ["A1"], localStatus: "active" }
+```
+
+Non-segment values и values без известной chain сохраняются. Функция не компилирует filter и не проверяет, действительно ли глубокое значение согласовано с родителем.
+
+## Сортировка и `$orderby`
+
+### Тип `Sort`
+
+```ts
+interface Sort<T> {
+	key: T;
+	desc?: true;
+}
+```
+
+Отсутствие `desc` означает ascending. Явное `desc: false` типом не предусмотрено.
+
+```ts
+const sorting = [{ key: "YEAR" }, { key: "AMOUNT", desc: true }] satisfies Sort<"YEAR" | "AMOUNT">[];
+```
+
+### `buildODataOrder`
+
+```ts
+buildODataOrder(sorting);
+// YEAR asc,AMOUNT desc
+```
+
+Пустой массив даёт пустую строку.
+
+### `getSortIndex`
+
+```ts
+getSortIndex(sorting, "AMOUNT"); // 1
+getSortIndex(sorting, "STATUS"); // -1
+```
+
+### `toggleSort`
+
+Цикл одного поля:
+
+```text
+нет → asc → desc → нет
+```
+
+```ts
+let sorting: Sort<keyof Row>[] = [];
+
+sorting = toggleSort(sorting, "AMOUNT", false); // asc
+sorting = toggleSort(sorting, "AMOUNT", false); // desc
+sorting = toggleSort(sorting, "AMOUNT", false); // remove
+```
+
+`multi: true` сохраняет остальные fields.
+
+`multi: false` оставляет только выбранный key. Это обычный single-sort UI.
+
+Функция возвращает новый массив и не мутирует входной.
+
+### Grouping fallback
+
+```ts
+resolveEffectiveSorts(grouping, sorting);
+```
+
+Правило:
+
+- если пользовательская `sorting` непустая — используется только она;
+- если пользовательской сортировки нет — fields `grouping` становятся ascending sorts.
+
+Grouping не дописывается к пользовательской sorting.
+
+### `buildODataOrderBy`
+
+```ts
+buildODataOrderBy<Row>(["YEAR"], []); // "YEAR asc"
+buildODataOrderBy<Row>(["YEAR"], [{ key: "AMOUNT", desc: true }]);
+// "AMOUNT desc"
+
+buildODataOrderBy<Row>([], []); // undefined
+```
+
+В отличие от `buildODataOrder`, пустой эффективный список даёт `undefined`. Это удобно при создании optional query option.
+
+### `getSortIndicator`
+
+```ts
+const indicator = getSortIndicator(grouping, sorting, "YEAR");
+```
+
+Результаты:
+
+```ts
+{ active: false }
+
+{
+  active: true,
+  desc: true,
+  order: 2
+}
+
+{
+  active: true,
+  order: 1,
+  lockedByGrouping: true
+}
+```
+
+`order` начинается с `1`, чтобы напрямую показывать номер при multi-sort.
+
+`lockedByGrouping` появляется только для grouping fallback, когда пользовательской sorting ещё нет.
+
+## SQL-like фильтры
+
+> Это не OData `$filter` и не query option SAP Gateway.
+
+SQL-like API предназначен только для legacy payload, где backend ожидает текст dynamic WHERE в request body.
+
+```ts
+const sql = buildSqlFilter([createSqlFilterEqual("STATUS", "A"), createSqlFilterIn("COMPANY", ["1000", "2000"])]);
+
+// STATUS='A' AND COMPANY IN ('1000', '2000')
+```
+
+### Типы
+
+```ts
+type SqlFilterScalarValue = string | number | boolean;
+type SqlFilterOperation = "eq" | "in";
+type SqlFilterConjunction = "and" | "or";
+type SqlFilterCondition = SqlFilterEqualCondition | SqlFilterInCondition;
+type SqlFilterExpression = SqlFilterCondition | SqlFilterGroup;
+```
+
+### Factory API
+
+```ts
+createSqlFilterEqual("STATUS", "A");
+createSqlFilterIn("COMPANY", ["1000", "2000"]);
+createSqlFilterGroup([createSqlFilterEqual("STATUS", "A"), createSqlFilterEqual("STATUS", "B")], "or");
+```
+
+Group всегда сериализуется в скобках. Выражения top-level всегда объединяются `AND`.
+
+```text
+(STATUS='A' OR STATUS='B') AND COMPANY='1000'
+```
+
+### Field id validation
+
+Разрешены только простые identifiers:
+
+```text
+^[A-Za-z_][A-Za-z0-9_]*$
+```
+
+```ts
+assertSqlFilterFieldId("STATUS"); // ok
+assertSqlFilterFieldId("STATUS_01"); // ok
+assertSqlFilterFieldId("A; DROP"); // Error
+assertSqlFilterFieldId("TABLE.FIELD"); // Error
+```
+
+Validation выполняется при сериализации condition с usable value. Не используйте отсутствие ошибки для empty condition как отдельную проверку field id; для этого вызывайте `assertSqlFilterFieldId` прямо.
+
+### Values
+
+```ts
+isSqlFilterScalarValue("A"); // true
+isSqlFilterScalarValue(10); // true
+isSqlFilterScalarValue(false); // true
+isSqlFilterScalarValue(null); // false
+```
+
+Все values, включая numbers и booleans, сериализуются как quoted strings:
+
+```text
+COUNT='10'
+ACTIVE='true'
+```
+
+Одинарные кавычки внутри value удваиваются.
+
+Пропускаются:
+
+- `null` и `undefined`;
+- пустая/whitespace-only строка;
+- `NaN` и infinity;
+- objects, arrays и другие неподдерживаемые values.
+
+`Date` не пропускается молча, а приводит к ошибке. Caller обязан заранее выбрать формат даты и передать string.
+
+Пустые groups и conditions не попадают в результат. Если всё пусто, `buildSqlFilter` возвращает `""`.
+
+### Почему нельзя применять для URL
+
+SQL-like syntax содержит `IN`, quoted payload values и field identifiers по собственному контракту backend. Это другой язык выражений. Для OData URL используйте `createFilter*` + `buildODataFilter`.
+
+## Пары «код + текст»
+
+### Типы
+
+```ts
+type CollectionItem = {
+	[key: string]: string;
+};
+
+interface CollectionPair {
+	codeKey: string;
+	textKey: string;
+}
+
+interface DependencyFilter {
+	key: string;
+	values: CollectionItem[];
+}
+```
+
+`CollectionItem` типизирован как string record. Если transport возвращает `null`, number или missing key, сначала нормализуйте row. Runtime helper не проверяет соответствие типу TypeScript.
+
+### `findCollectionPairs`
+
+```ts
+const result = findCollectionPairs(
+	{
+		code: "A",
+		code_TEXT: "Альфа",
+		alone: "1"
+	},
+	{ returnUnpaired: true }
+);
+```
+
+Результат:
+
+```ts
+{
+  pairs: [{ codeKey: "code", textKey: "code_TEXT" }],
+  pairsMap: { code: "code_TEXT" },
+  unpaired: ["alone"]
+}
+```
+
+Options:
+
+```ts
+type FindOptions = {
+	textSuffixes?: string[];
+	caseSensitive?: boolean;
+	returnUnpaired?: boolean;
+};
+```
+
+Default suffixes:
+
+```text
+_txt, _text, _t, _Text, _TXT, _T
+```
+
+Поиск suffix по умолчанию нечувствителен к регистру. Custom suffixes экранируются как regexp text, поэтому `".label"` работает буквально:
+
+```ts
+findCollectionPairs({ material: "1", "material.label": "Материал" }, { textSuffixes: [".label"] });
+```
+
+Важная тонкость: после удаления suffix base field ищется через точное `fields.includes(baseName)`. Поэтому case-insensitive suffix не делает поиск base key полностью case-insensitive:
+
+```ts
+{
+  CODE: "A",
+  code_txt: "Альфа"
+}
+```
+
+Такая пара может не найтись из-за различия `CODE` и `code`. Лучше нормализовать имена полей или передавать согласованную metadata-пару.
+
+Каждое поле используется максимум в одной найденной паре.
+
+### `buildSeparatedArrays`
+
+Функция из общей коллекции создаёт отдельный массив для каждой code/text pair:
+
+```ts
+const rows = [
+	{ code: "B", text: "Бета", group: "2", groupText: "Группа 2" },
+	{ code: "A", text: "Альфа", group: "1", groupText: "Группа 1" },
+	{ code: "A", text: "Альфа", group: "1", groupText: "Группа 1" }
+];
+
+const result = buildSeparatedArrays(rows, [
+	{ codeKey: "code", textKey: "text" },
+	{ codeKey: "group", textKey: "groupText" }
+]);
+```
+
+Результат:
+
+```ts
+{
+  code: [
+    { code: "A", text: "Альфа" },
+    { code: "B", text: "Бета" }
+  ],
+  group: [
+    { group: "1", groupText: "Группа 1" },
+    { group: "2", groupText: "Группа 2" }
+  ]
+}
+```
+
+Signature:
+
+```ts
+buildSeparatedArrays(items, pairs, (excludeEmpty = true), (sortByCode = true));
+```
+
+Правила:
+
+- pair считается валидной, только если оба key есть в первом item;
+- невалидная pair всё равно получает пустой массив в result;
+- output row содержит только code и text fields;
+- одинаковая комбинация `code + "|" + text` удаляется;
+- по умолчанию rows с пустой строкой text пропускаются;
+- по умолчанию результат сортируется по code;
+- `sortByCode: false` сортирует по text через общий `compareStrings`;
+- пустой `items` создаёт пустые массивы для всех pairs.
+
+### Ограничения `buildSeparatedArrays`
+
+Функция приводит значения через `String` до проверки. Поэтому invalid runtime rows могут дать неожиданный текст:
+
+```ts
+String(undefined); // "undefined"
+String(null); // "null"
+```
+
+Из-за этого missing/null в последующих rows могут попасть в справочник как строки `"undefined"` или `"null"`. `excludeEmpty` удаляет только реально пустую строку после преобразования.
+
+Кроме того, структура валидируется только по первому item. Если первый row не содержит поле, которое есть в остальных rows, pair будет считаться невалидной.
+
+Правильный путь для ненадёжного backend payload:
+
+1. проверить/нормализовать rows;
+2. убедиться в одинаковой форме элементов;
+3. затем вызвать `buildSeparatedArrays`.
+
+## Настройки OData-коллекций
+
+### Глобальный Zustand store
+
+`useODataCollectionStore` — один singleton на загруженный экземпляр модуля.
+
+Default state:
+
+```ts
+{
+  defaultMaxVisibleItems: 200,
+  defaultMinSearchCodeLength: 3,
+  defaultMinSearchTextLength: 1,
+  defaultSearchDebounceDelay: 100
+}
+```
+
+Значения обозначают:
+
+| Field                        | Смысл                                                     |
+| ---------------------------- | --------------------------------------------------------- |
+| `defaultMaxVisibleItems`     | Максимум показываемых элементов справочника по умолчанию. |
+| `defaultMinSearchCodeLength` | Минимальная длина поиска по коду.                         |
+| `defaultMinSearchTextLength` | Минимальная длина поиска по тексту.                       |
+| `defaultSearchDebounceDelay` | Задержка поиска в миллисекундах.                          |
+
+### Чтение и изменение вне React
+
+```ts
+const state = useODataCollectionStore.getState();
+
+state.setDefaultMaxVisibleItems(100);
+state.setDefaultMinSearchCodeLength(2);
+state.setDefaultMinSearchTextLength(2);
+state.setDefaultSearchDebounceDelay(250);
+```
+
+Setters не валидируют числа. Отрицательное значение, дробь или `NaN` будут сохранены. Host config обязан проверить значения до записи.
+
+### Использование в React
+
+```tsx
+function CollectionInfo() {
+	const maxVisible = useODataCollectionStore((state) => state.defaultMaxVisibleItems);
+
+	return <span>Показываем не более {maxVisible}</span>;
+}
+```
+
+Convenience selectors:
+
+```ts
+odataCollectionConfig.useMaxVisibleItems();
+odataCollectionConfig.useMinSearchCodeLength();
+odataCollectionConfig.useMinSearchTextLength();
+odataCollectionConfig.useSearchDebounce();
+```
+
+Это React hooks, несмотря на размещение внутри объекта. Вызывайте их только:
+
+- на верхнем уровне React component;
+- внутри custom hook;
+- не внутри condition, loop, event handler или обычной utility function.
+
+`odataCollectionConfig` экспортирует только selectors. Для setters используйте `useODataCollectionStore`.
+
+### Глобальная инициализация
+
+Если host меняет defaults, сделайте это один раз в application bootstrap, а не при каждом render:
+
+```ts
+export function configureODataCollections() {
+	const state = useODataCollectionStore.getState();
+	state.setDefaultMaxVisibleItems(100);
+	state.setDefaultSearchDebounceDelay(200);
+}
+```
+
+Store не сохраняется автоматически в localStorage/sessionStorage и не синхронизируется между browser tabs.
+
+## Маленькие helpers
+
+### `normalizeRangeValue`
+
+Преобразует `InputType` в двухэлементный range:
+
+```ts
+normalizeRangeValue([10, 20]); // [10, 20]
+normalizeRangeValue([10]); // [10, null]
+normalizeRangeValue(10); // [10, null]
+normalizeRangeValue(null); // [null, null]
+normalizeRangeValue({}); // [null, null]
+```
+
+Если массив длиннее двух элементов, используются только первые два. Nested objects не поддерживаются.
+
+### `normalizeBaseValue`
+
+```ts
+normalizeBaseValue("A"); // "A"
+normalizeBaseValue(0); // 0
+normalizeBaseValue(false); // false
+normalizeBaseValue(date); // тот же Date reference
+normalizeBaseValue([1, 2]); // null
+normalizeBaseValue({ a: 1 }); // null
+```
+
+Функция не клонирует `Date`.
+
+### `isBaseValue`
+
+Возвращает `true` для:
+
+- `null` и `undefined`;
+- string, number, boolean;
+- любого `Date` instance.
+
+Она не проверяет finite number и valid date:
+
+```ts
+isBaseValue(Number.NaN); // true
+isBaseValue(new Date("bad")); // true
+```
+
+Для строгой проверки используйте schemas/guards конкретного OData type.
+
+### `unwrapODataQueryResult`
+
+Некоторые OData query functions возвращают envelope:
+
+```ts
+{
+  data: rows,
+  totalCount: 123
+}
+```
+
+TanStack Query result тогда имеет `query.data.data`. Helper выносит fields наружу:
+
+```ts
+const result = unwrapODataQueryResult(query);
+
+result.data; // rows или undefined
+result.totalCount; // number или undefined
+result.isLoading; // остальные поля UseQueryResult сохранены
+```
+
+Тип:
+
+```ts
+type UnwrappedODataQueryResult<T> = Omit<UseQueryResult<{ data: T; totalCount?: number }>, "data"> & {
+	data: T | undefined;
+	totalCount?: number;
+};
+```
+
+Функция делает shallow spread query result. Она не меняет cache и не создаёт новый query.
+
+## Ошибки, безопасность и ограничения
+
+### Какие функции бросают ошибки
+
+Основные error boundaries:
+
+| API                       | Причина ошибки                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------- |
+| `parseServiceMetadata`    | Неподдерживаемый EDM type, mode/shape параметра или неразбираемая структура metadata. |
+| `odataFormatValue`        | Значение не прошло Zod schema выбранного OData type.                                  |
+| `create*Formatter` result | Аргументы вызова не соответствуют schema фабрики.                                     |
+| `buildParameterEntries`   | Нет mandatory value, массив без formatter, formatting error, нарушение `maxLength`.   |
+| `assertSqlFilterFieldId`  | Field id не соответствует безопасному pattern.                                        |
+| `buildSqlFilter`          | Попытка сериализовать `Date` без заранее выбранного формата.                          |
+
+Filter/sanitizer helpers чаще удаляют невалидные optional values и возвращают пустое выражение, а не бросают ошибку. Это разные контракты: builder параметров строгий, sanitizer сохранённого UI snapshot терпимый.
+
+### Не скрывайте ошибку пустой строкой
+
+Плохой вариант:
+
+```ts
+let path = "";
+
+try {
+	path = buildEntityPath(metadata, config, params);
+} catch {
+	// Ошибка потеряна, request уйдёт по неправильному адресу.
+}
+```
+
+Лучше показать пользователю/разработчику контекст и не отправлять request:
+
+```ts
+try {
+	return buildEntityPath(metadata, config, params);
+} catch (error) {
+	throw new Error(`Не удалось подготовить OData target ${config.target}`, {
+		cause: error
+	});
+}
+```
+
+### Values и field names защищаются по-разному
+
+`odataFormatValue` экранирует string values и проверяет primitive type.
+
+Но имена полей/сервисов не проходят общий runtime allowlist:
+
+- `FilterCondition.key` вставляется как field id;
+- `ODataServiceConfig.service` и `target` вставляются как path segments;
+- metadata ids считаются доверенными server metadata;
+- custom formatter может вернуть любую строку.
+
+Если field/service/target приходит из пользовательского JSON, сверяйте его с заранее известным allowlist или разобранной metadata.
+
+### Custom formatter — доверенная функция
+
+```ts
+{
+  value,
+  formatter: (raw) => "..."
+}
+```
+
+Builder не понимает семантику строки custom formatter. Он не может гарантировать корректное escaping и тип literal. Не создавайте formatter из произвольного пользовательского JavaScript и не используйте `eval`.
+
+Formatter должен быть заранее написан и протестирован.
+
+### Не кодируйте всё URL целиком
+
+Entity parameters кодируются builder-ом на уровне отдельных values. Function Import использует `URLSearchParams`.
+
+Если после этого вызвать `encodeURIComponent` на всём path, `/`, `?`, `=` и уже encoded проценты будут испорчены.
+
+Transport должен соединять подготовленный path с base URL через свой проверенный URL builder.
+
+### Metadata не является validation server rows
+
+`ServiceMetadata` описывает ожидаемую структуру, но library не проверяет каждую запись ответа. TypeScript type assertion не заменяет runtime validation:
+
+```ts
+const rows = response as SalesRow[]; // не проверяет данные
+```
+
+Если backend payload недоверенный, валидируйте его на transport/domain boundary.
+
+### SQL-like API не делает dynamic SQL безопасным целиком
+
+Library ограничивает field id и экранирует quotes в values. Но окончательная безопасность зависит от backend:
+
+- backend не должен добавлять raw user fragments;
+- backend должен ограничить доступные поля;
+- лучше использовать parameterized database query;
+- request body не должен давать пользователю произвольный WHERE.
+
+## SSR, браузер и React
+
+### `DOMParser` и Node.js
+
+В обычном browser `DOMParser` существует глобально. В чистом Node.js это не гарантируется.
+
+```ts
+if (typeof DOMParser === "undefined") {
+	throw new Error("Для parseServiceMetadata требуется DOMParser");
+}
+```
+
+Для SSR есть три безопасных варианта:
+
+1. парсить metadata только в browser;
+2. предоставить совместимый DOM implementation в server runtime;
+3. парсить metadata в transport/server layer и передавать сериализуемый `ServiceMetadata` дальше.
+
+Не добавляйте случайный DOM polyfill внутрь feature: настройте его один раз на границе runtime.
+
+### Zustand store на server
+
+`useODataCollectionStore` является singleton module state. В долгоживущем SSR process глобальное изменение может разделяться между requests.
+
+Не храните в нём пользовательские или request-specific values. Текущий store предназначен только для общих defaults приложения.
+
+### Rules of Hooks
+
+Следующий код неверен:
+
+```ts
+function readConfig() {
+	return odataCollectionConfig.useMaxVisibleItems();
+}
+```
+
+Обычная функция может быть вызвана вне React render.
+
+Для non-React чтения используйте:
+
+```ts
+const maxVisible = useODataCollectionStore.getState().defaultMaxVisibleItems;
+```
+
+### Server Components
+
+Pure helpers можно использовать в server code при доступности их runtime dependencies. Hook selectors нужно вызывать только в client component. Помечайте component согласно framework contract, например `"use client"`, когда это требуется.
+
+## Тестирование consumer-кода
+
+### Тест value formatting
+
+```ts
+import { describe, expect, it } from "vitest";
+import { odataFormatValue } from "@ryuzaki13/react-foundation-lib/odata-service";
+
+describe("OData parameter values", () => {
+	it("экранирует одинарную кавычку", () => {
+		expect(odataFormatValue("string", "O'Reilly")).toBe("'O''Reilly'");
+	});
+});
+```
+
+### Тест builder по metadata
+
+Создавайте минимальную metadata, которая важна сценарию:
+
+```ts
+it("не позволяет пропустить обязательную компанию", () => {
+	const metadata: EntityMetadata = {
+		title: "Продажи",
+		columns: [],
+		parameters: [
+			{
+				id: "p_company",
+				label: "Компания",
+				type: "string",
+				originalType: "Edm.String",
+				mandatory: true
+			}
+		],
+		result: "Results"
+	};
+
+	expect(() => buildEntityParameters(metadata, {})).toThrow("Отсутствует обязательный параметр: p_company");
+});
+```
+
+### Тест filters как структуры и строки
+
+Полезно проверять оба уровня:
+
+```ts
+const expression = createFilterEqual<Row, string>("STATUS", ["A", "B"]);
+
+expect(expression).toEqual({
+	conditions: [
+		{ key: "STATUS", value: "A", operation: "eq" },
+		{ key: "STATUS", value: "B", operation: "eq" }
+	]
+});
+
+expect(buildODataFilter(expression)).toBe("(STATUS eq 'A' or STATUS eq 'B')");
+```
+
+Structure test показывает ошибку compiler-а, string test — ошибку serializer-а.
+
+### Тест compiled definitions
+
+Для каждого custom filter проверяйте минимум:
+
+- empty value;
+- одно значение;
+- несколько значений;
+- falsy value `0`, `false`, `""`, если допустимо;
+- невалидный сохранённый snapshot;
+- physical column ids;
+- итоговую строку `$filter`.
+
+### Тест store
+
+Singleton state сбрасывайте между tests:
+
+```ts
+beforeEach(() => {
+	useODataCollectionStore.setState({
+		defaultMaxVisibleItems: 200,
+		defaultMinSearchCodeLength: 3,
+		defaultMinSearchTextLength: 1,
+		defaultSearchDebounceDelay: 100
+	});
+});
+```
+
+Иначе один test может влиять на следующий.
+
+### Metadata fixtures
+
+Храните небольшие XML fixtures для отдельных особенностей:
+
+- parameterized entity;
+- Function Import;
+- code/text link;
+- ABAP boolean-like field;
+- unsupported type/error case.
+
+Один огромный production EDMX делает test сложным для понимания и обновления.
+
+## Миграция с `/odata`
+
+После объединения измените все импорты code/text helpers, date formatter и collection store.
+
+До:
+
+```ts
+import { buildSeparatedArrays, findCollectionPairs, ODataDateFormat, useODataCollectionStore } from "@ryuzaki13/react-foundation-lib/odata";
+```
+
+После:
+
+```ts
+import {
+	buildSeparatedArrays,
+	findCollectionPairs,
+	ODataDateFormat,
+	useODataCollectionStore
+} from "@ryuzaki13/react-foundation-lib/odata-service";
+```
+
+### Что именно удалено
+
+Subpath export:
+
+```text
+@ryuzaki13/react-foundation-lib/odata
+```
+
+больше не является публичным контрактом. Compatibility re-export не оставлен.
+
+### Порядок миграции нескольких пакетов
+
+Если `react-foundation-api`, `react-foundation-ui` и host-приложение используют прежний subpath:
+
+1. опубликуйте новую breaking-версию `react-foundation-lib`;
+2. обновите imports и dependency range в package-потребителе;
+3. проверьте typecheck/build этого потребителя;
+4. опубликуйте обновлённый зависимый package;
+5. только затем обновите host-приложение.
+
+Нельзя отдельно переключить source consumer на новые exports, пока установленная версия library ещё не содержит перенесённые symbols.
+
+### Что не нужно менять
+
+Imports, которые уже использовали `/odata-service`, остаются прежними:
+
+```ts
+import { buildODataFilter } from "@ryuzaki13/react-foundation-lib/odata-service";
+```
+
+Не путайте с transport entrypoint:
+
+```ts
+// Это другой пакет; его имя не меняется из-за объединения lib-модулей.
+import {} from /* transport API */ "@ryuzaki13/react-foundation-api/odata";
+```
+
+## Полная карта API
+
+Раздел перечисляет все публичные symbols единого entrypoint. Если symbol отсутствует в этой карте, не импортируйте его через глубокий путь.
+
+### Base types и labels
+
+| Symbol                  | Вид      | Назначение                             |
+| ----------------------- | -------- | -------------------------------------- |
+| `BaseMetaType`          | type     | UI type: string/number/boolean/date.   |
+| `BASE_META_TYPES`       | const    | Readonly список base types.            |
+| `BASE_META_TYPE_LABELS` | const    | Русские labels base types.             |
+| `isBaseMetaType`        | function | Runtime type guard base type.          |
+| `resolveBaseTypeLabel`  | function | Label для base type.                   |
+| `ODataMetaType`         | type     | Union всех поддерживаемых OData types. |
+| `ODataBooleanType`      | type     | Boolean group.                         |
+| `ODataNumericType`      | type     | Numeric group.                         |
+| `ODataIntegerType`      | type     | Integer subset.                        |
+| `ODataDateType`         | type     | Date/time group.                       |
+| `ODataStringType`       | type     | String/guid/binary group.              |
+| `BaseMethod`            | type     | GET/POST/PUT/DELETE.                   |
+| `ODataOperationMethod`  | type     | create/update/delete/read/query/fi.    |
+| `isODataBooleanType`    | function | Guard boolean type name.               |
+| `isODataNumericType`    | function | Guard numeric type name.               |
+| `isODataIntegerType`    | function | Guard integer type name.               |
+| `isODataDateType`       | function | Guard date type name.                  |
+
+### Metadata contracts и parser
+
+| Symbol                        | Вид      | Назначение                                      |
+| ----------------------------- | -------- | ----------------------------------------------- |
+| `EntityPropertyBase`          | type     | Id + label.                                     |
+| `EntityPropertyBaseWithType`  | type     | Base property + OData type.                     |
+| `EntityParameterProperty`     | type     | Parameter metadata.                             |
+| `ColumnRole`                  | type     | measure/dimension.                              |
+| `EntityColumnProperty`        | type     | Column metadata и code/text semantics.          |
+| `EntityMetadata`              | type     | Entity columns, parameters и result navigation. |
+| `ServiceEntities`             | type     | Entity map.                                     |
+| `FunctionImportMetadata`      | type     | Function Import metadata.                       |
+| `ServiceFunctionImports`      | type     | Function Import map.                            |
+| `ODataTargetMetadata`         | type     | Entity или Function Import.                     |
+| `ServiceMetadata`             | type     | Полный результат parser.                        |
+| `parseServiceMetadata`        | function | EDMX XML → ServiceMetadata.                     |
+| `FORCED_CODE_TEXT_IDS`        | const    | Forced code/text base ids.                      |
+| `resolveMetadataColumnLabel`  | function | Непустой label с fallback на id.                |
+| `isForcedCodeTextId`          | function | Проверка точного forced id.                     |
+| `isForcedCodeTextFamilyId`    | function | Проверка forced base/text family.               |
+| `collectFilterableColumns`    | function | Filterable column objects.                      |
+| `collectFilterableColumnsIds` | function | Set filterable column ids.                      |
+
+### Values, schemas и formatter registry
+
+| Symbol                      | Вид      | Назначение                               |
+| --------------------------- | -------- | ---------------------------------------- |
+| `odataTypeSchemas`          | const    | Zod schemas OData primitive types.       |
+| `isStringSafe`              | function | Strict string guard.                     |
+| `isNumberSafe`              | function | Number guard.                            |
+| `isBooleanSafe`             | function | Boolean guard.                           |
+| `isDateSafe`                | function | Valid Date guard.                        |
+| `odataFormatValue`          | function | JavaScript value → OData literal.        |
+| `odataParseValue`           | function | Raw value → значение по OData type.      |
+| `odataParseValueByMetadata` | function | Parsing с `abapBooleanLike`.             |
+| `defaultODataTypeValue`     | function | Default по OData type.                   |
+| `defaultControlTypeValue`   | function | Default по base UI type.                 |
+| `getBaseTypeFromODataType`  | function | OData type → base type.                  |
+| `ODataDateFormat`           | const    | datetime/datetimeOffset/time literals.   |
+| `ODataFormatterFn`          | type     | Formatter function contract.             |
+| `ODataFormatterDescription` | type     | Formatter registry item.                 |
+| `createFormatter`           | function | Generic Zod-validated formatter factory. |
+| `createBooleanFormatter`    | function | Boolean arguments factory.               |
+| `createStringFormatter`     | function | String arguments factory.                |
+| `createNumberFormatter`     | function | Number arguments factory.                |
+| `createDateFormatter`       | function | Date arguments factory.                  |
+| `getFormattersFor`          | function | Registry items по OData type.            |
+| `getFormattersForBaseType`  | function | Registry items по base type.             |
+| `getFormatter`              | function | Один formatter по OData type/id.         |
+| `getFormatterForBaseType`   | function | Один formatter по base type/id.          |
+
+### Parameters и path
+
+| Symbol                          | Вид       | Назначение                             |
+| ------------------------------- | --------- | -------------------------------------- |
+| `ODataParameterValue`           | type      | Scalar или scalar array для formatter. |
+| `ODataValue`                    | type      | `{ value, formatter? }`.               |
+| `InputValue`                    | type      | Wrapped generic input.                 |
+| `UnwrappedODataParameters`      | type      | Flat OData parameters.                 |
+| `UnwrappedInputParameters`      | type      | Flat input parameters.                 |
+| `WrappedODataParameters`        | type      | Wrapped OData parameters.              |
+| `WrappedInputParameters`        | type      | Wrapped input parameters.              |
+| `WrapODataParameters`           | type      | Generic flat → wrapped mapping.        |
+| `UnwrapODataParameters`         | type      | Generic wrapped → flat mapping.        |
+| `wrapODataParams`               | function  | Flat object → `{ value }` object.      |
+| `unwrapODataParams`             | function  | Wrapped → sorted flat snapshot.        |
+| `ODataServiceConfig`            | interface | Service + target path segments.        |
+| `buildParameterEntries`         | function  | Metadata-ordered formatted entries.    |
+| `buildEntityParameters`         | function  | Entity parameter tuple.                |
+| `buildFunctionImportParameters` | function  | Function Import URLSearchParams.       |
+| `buildEntityOperationPath`      | function  | Path по operation intent.              |
+| `buildFunctionImportPath`       | function  | Function Import path + query.          |
+| `buildEntityPath`               | function  | Parameterized entity path.             |
+
+### Простые OData filters
+
+| Symbol                      | Вид          | Назначение                          |
+| --------------------------- | ------------ | ----------------------------------- |
+| `FilterOperation`           | const и type | Operations и их union type.         |
+| `FILTER_OPERATIONS`         | const        | Readonly operations list.           |
+| `isFilterOperation`         | function     | Runtime operation guard.            |
+| `resolveOperationLabel`     | function     | Русский operation label.            |
+| `FilterCondition`           | interface    | Одно field condition.               |
+| `BaseFilterExpression`      | interface    | Общий `and?`.                       |
+| `FilterConditionExpression` | interface    | Leaf conditions.                    |
+| `FilterNestedExpression`    | interface    | Nested filters.                     |
+| `FilterExpression`          | type         | Union leaf/nested node.             |
+| `buildODataFilter`          | function     | Expression → `$filter` value.       |
+| `buildODataFilterRecursive` | function     | Вариант с дополнительными скобками. |
+| `createFilter`              | function     | Общая operation factory.            |
+| `createFilterBetween`       | function     | Range `ge`/`le`.                    |
+| `createFilterEqual`         | function     | Equality scalar/array.              |
+| `createFilterEqualFalsy`    | function     | Equality с удалением falsy values.  |
+| `createFilterContains`      | function     | `substringof` scalar/array.         |
+| `mergeFilterExpressions`    | function     | Два expressions через AND.          |
+
+### Compiled filter definitions
+
+| Symbol                                        | Вид      | Назначение                            |
+| --------------------------------------------- | -------- | ------------------------------------- |
+| `ODataFilterValue`                            | type     | Одно controlled filter value.         |
+| `ODataFilterValues`                           | type     | Values по filter id.                  |
+| `ODataFilterCondition`                        | type     | Static/input condition.               |
+| `ODataFilterConditionGroup`                   | type     | Condition group.                      |
+| `ODataFilterOption`                           | type     | List option + filter.                 |
+| `ODataFilterBinding`                          | type     | List/boolean/value binding.           |
+| `FilterDefinitionKind`                        | type     | Supported definition kinds.           |
+| `FilterRegisteredValueMode`                   | type     | single/multiple.                      |
+| `FilterSegmentComponentId`                    | type     | Segment component ids.                |
+| `FilterTreeComponentId`                       | type     | Tree component ids.                   |
+| `FilterLocalComponentId`                      | type     | Local component ids.                  |
+| `FilterAdvancedComponentId`                   | type     | Advanced component id.                |
+| `FilterComponentId`                           | type     | Union известных component ids.        |
+| `ODataCompiledFilterDefinition`               | type     | Discriminated definition union.       |
+| `isFilterLocalComponentId`                    | function | Local component guard.                |
+| `resolveODataFilterDefinitionColumnIds`       | function | Potential physical columns.           |
+| `resolveODataFilterDefinitionActiveColumnIds` | function | Active physical columns.              |
+| `normalizeDictionaryCodeKey`                  | function | Trim/remove redundant dictionary key. |
+| `sanitizeFilterConditionGroup`                | function | Нормализация condition group.         |
+| `sanitizeFilterBinding`                       | function | Нормализация binding.                 |
+| `sanitizeFilterDefinitions`                   | function | Нормализация definitions snapshot.    |
+| `sanitizeFilterValue`                         | function | Нормализация одного value.            |
+| `sanitizeFilterValues`                        | function | Нормализация values map.              |
+| `mergeFilterValuePatch`                       | function | Immutable normalized patch.           |
+| `collapseChainedODataSegmentFilterValues`     | function | Самый глубокий segment chain.         |
+| `compileFiltersToExpression`                  | function | Definitions + values → expression.    |
+| `flattenFilterValuesToODataDependencies`      | function | Segment/tree dependencies.            |
+| `ODataChainItem`                              | type     | Элемент dependency chain.             |
+| `ODataChainsMap`                              | type     | Карта dependency chains.              |
+
+### Sorts
+
+| Symbol                  | Вид       | Назначение                           |
+| ----------------------- | --------- | ------------------------------------ |
+| `Sort`                  | interface | Key + optional descending flag.      |
+| `getSortIndex`          | function  | Index key в sorting.                 |
+| `buildODataOrder`       | function  | Sorting → order string.              |
+| `toggleSort`            | function  | Цикл none/asc/desc.                  |
+| `resolveEffectiveSorts` | function  | User sorting или grouping fallback.  |
+| `buildODataOrderBy`     | function  | Effective `$orderby` либо undefined. |
+| `getSortIndicator`      | function  | UI indicator state/order/lock.       |
+
+### SQL-like filters
+
+| Symbol                    | Вид      | Назначение                   |
+| ------------------------- | -------- | ---------------------------- |
+| `SqlFilterScalarValue`    | type     | string/number/boolean.       |
+| `SqlFilterOperation`      | type     | eq/in.                       |
+| `SqlFilterEqualCondition` | type     | Equality node.               |
+| `SqlFilterInCondition`    | type     | IN node.                     |
+| `SqlFilterCondition`      | type     | Condition union.             |
+| `SqlFilterConjunction`    | type     | and/or.                      |
+| `SqlFilterGroup`          | type     | Nested group.                |
+| `SqlFilterExpression`     | type     | Condition/group union.       |
+| `isSqlFilterScalarValue`  | function | Scalar guard.                |
+| `assertSqlFilterFieldId`  | function | Safe field identifier check. |
+| `createSqlFilterEqual`    | function | Equality factory.            |
+| `createSqlFilterIn`       | function | IN factory.                  |
+| `createSqlFilterGroup`    | function | Group factory.               |
+| `buildSqlFilter`          | function | Legacy WHERE string.         |
+
+### Collections, store и utilities
+
+| Symbol                      | Вид        | Назначение                            |
+| --------------------------- | ---------- | ------------------------------------- |
+| `CollectionItem`            | type       | String record справочника.            |
+| `CollectionPair`            | interface  | codeKey/textKey.                      |
+| `DependencyFilter`          | interface  | Key + collection values.              |
+| `findCollectionPairs`       | function   | Поиск code/text pairs.                |
+| `buildSeparatedArrays`      | function   | Разделение/dedupe/sort справочника.   |
+| `useODataCollectionStore`   | const/hook | Zustand state и setters defaults.     |
+| `odataCollectionConfig`     | const      | React selector hooks.                 |
+| `normalizeRangeValue`       | function   | Input → двухэлементный range.         |
+| `normalizeBaseValue`        | function   | Input → scalar/null.                  |
+| `isBaseValue`               | function   | Мягкий base value guard.              |
+| `UnwrappedODataQueryResult` | type       | TanStack result с распакованным data. |
+| `unwrapODataQueryResult`    | function   | Shallow unwrap query envelope.        |
+
+## Частые вопросы
+
+### Какой import использовать для OData?
+
+Для metadata, values, path, filters, sorts, code/text helpers и collection config:
+
+```ts
+"@ryuzaki13/react-foundation-lib/odata-service";
+```
+
+Для HTTP/SAP Gateway/TanStack Query transport:
+
+```ts
+"@ryuzaki13/react-foundation-api/odata";
+```
+
+### Почему нельзя импортировать прежний `/odata`?
+
+Модули объединены. Два entrypoint создавали искусственное разделение одного технического OData-контракта и заставляли consumer угадывать расположение helper-а.
+
+### Нужно ли парсить metadata перед каждым request?
+
+Нет. Parser чисто преобразует XML, но может выполнять заметную работу. Получайте и кешируйте metadata на уровне API/query infrastructure, затем переиспользуйте `ServiceMetadata`.
+
+### Можно ли передать обычный object params?
+
+Builder ожидает wrapped values. Используйте `wrapODataParams(flat)` или создайте `{ value, formatter? }` вручную.
+
+### Почему массив параметра требует formatter?
+
+OData parameter metadata описывает scalar. Library не может угадать backend-specific способ сериализации массива: CSV, range, JSON, repeated query parameter или другое соглашение.
+
+### Почему число `12.5` не форматируется в фильтре автоматически?
+
+Без `condition.type` number выводится как `int`. Укажите точный metadata type, например `decimal`.
+
+### Почему `createFilterBetween([0, null])` пустой?
+
+Текущая фабрика partial range использует truthy-проверку. Для нулевой границы создайте explicit `createFilter(..., "ge")`.
+
+### Почему пустая строка иногда сохраняется?
+
+В compiled filters пустая строка является допустимым scalar и option key. Это нужно для SAP-состояний, где empty char имеет смысл. `null`/`undefined` означают отсутствие, а `""` может быть реальным условием.
+
+### Можно ли использовать SQL-like builder для `$filter`?
+
+Нет. Это разные syntaxes и разные transport boundaries.
+
+### Почему code/text pair не нашлась?
+
+Проверьте:
+
+- suffix text field;
+- точное совпадение регистра base key;
+- наличие обоих keys в первом row;
+- custom `textSuffixes`;
+- не использовано ли поле другой pair.
+
+### Где форматировать server value для отображения?
+
+В `@ryuzaki13/react-foundation-lib/formatters` или table formatter pipeline. OData literal formatter предназначен для request, а не для UI.
+
+### Где выполнять request?
+
+В `@ryuzaki13/react-foundation-api/odata` или через согласованный transport host-приложения. Этот модуль только подготавливает данные.
+
+## Связанные модули
+
+- `@ryuzaki13/react-foundation-api/odata` — OData transport, queries и mutations.
+- `@ryuzaki13/react-foundation-lib/formatters` — отображение дат, чисел, строк и pipeline.
+- `@ryuzaki13/react-foundation-lib/table` — TanStack Table metadata adapter.
+- `@ryuzaki13/react-foundation-lib/range-output` — подстановка открытых границ диапазона перед внешней передачей.
+- `@ryuzaki13/react-foundation-lib/xml` — общие XML parsing/building helpers.

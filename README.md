@@ -82,8 +82,8 @@ npm run pack:dry-run
 | Runtime-форматирование ячеек таблицы                                        | [`formatters/pipeline`](./src/formatters/pipeline/index.ts), тесты в [`formatters/pipeline`](./src/formatters/pipeline)                                                                                                             |
 | Группировка, дедупликация, порядок и нормализация массивов                  | [`array`](./src/array/index.ts), подробный README: [`array/README.mdx`](./src/array/README.mdx)                                                                                                                                     |
 | OData metadata, values, path, filters, sorts, code/text collections и store | [`odata-service`](./src/odata-service/index.ts), подробный README: [`odata-service/README.mdx`](./src/odata-service/README.mdx), тесты в [`odata-service`](./src/odata-service)                                                     |
-| TanStack Table helpers                                                      | [`table`](./src/table/index.ts), тесты в [`table`](./src/table)                                                                                                                                                                     |
-| Tree table преобразования                                                   | [`tree-table`](./src/tree-table/index.ts), тесты в [`tree-table`](./src/tree-table)                                                                                                                                                 |
+| TanStack Table helpers                                                      | [`table`](./src/table/index.ts), единый подробный справочник: [`table/README.mdx`](./src/table/README.mdx), тесты в [`table`](./src/table)                                                                                          |
+| Tree table преобразования                                                   | [`tree-table`](./src/tree-table/index.ts), документация в общем справочнике [`table/README.mdx`](./src/table/README.mdx), тесты в [`tree-table`](./src/tree-table)                                                                  |
 | Excel export                                                                | [`excel`](./src/excel/index.ts), тесты: [`excel.test.ts`](./src/excel/excel.test.ts), [`tableExport.test.ts`](./src/excel/tableExport.test.ts)                                                                                      |
 | FileReader, изображения, base64 Blob                                        | [`file`](./src/file/index.ts), [`binary`](./src/binary/index.ts)                                                                                                                                                                    |
 | DOM overlay, portal, focus, download                                        | [`dom`](./src/dom/index.ts), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx)                                                                                                                                                         |
@@ -408,7 +408,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `table`
 
-Файлы: [`table/index.ts`](./src/table/index.ts), тесты в [`table`](./src/table).
+Файлы: [`table/index.ts`](./src/table/index.ts), единый подробный справочник для `table` и `tree-table`: [`table/README.mdx`](./src/table/README.mdx), тесты в [`table`](./src/table).
 
 | API                                                                                                          | Поведение                                                                      |
 | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
@@ -432,7 +432,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `tree-table`
 
-Файлы: [`tree-table/index.ts`](./src/tree-table/index.ts).
+Файлы: [`tree-table/index.ts`](./src/tree-table/index.ts), документация включена в единый справочник [`table/README.mdx`](./src/table/README.mdx).
 
 | API                                 | Поведение                                                                                                           |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |

@@ -1,0 +1,3106 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/Table and Tree Table" />
+
+# Table и Tree Table
+
+Эта страница описывает два связанных публичных модуля:
+
+- `@ryuzaki13/react-foundation-lib/table` — типы и helpers для TanStack Table v9, колонок, layout, выбора строк и ячеек, а также OData metadata;
+- `@ryuzaki13/react-foundation-lib/tree-table` — построение древовидных строк и преобразование плоских аналитических данных в иерархию.
+
+Документ рассчитан на разработчика без доступа к исходному коду пакета и с минимальным знанием JavaScript, TypeScript, React и TanStack Table. В нём объясняются не только названия функций, но и смысл каждого состояния, правила идентификаторов, результат вызова, ограничения и типичные ошибки.
+
+> Документ один, потому что плоская и древовидная таблицы используют общие понятия строк, колонок, идентификаторов и selection. Публичных import path при этом два: API `tree-table` не реэкспортируется из `table`, а API `table` не реэкспортируется из `tree-table`.
+
+## Содержание
+
+- [Назначение и границы](#назначение-и-границы)
+- [Установка и импорт](#установка-и-импорт)
+- [Что нужно знать перед началом](#что-нужно-знать-перед-началом)
+- [Как выбрать нужную часть API](#как-выбрать-нужную-часть-api)
+- [Быстрый старт: плоская таблица](#быстрый-старт-плоская-таблица)
+- [Быстрый старт: дерево с `parentId`](#быстрый-старт-дерево-с-parentid)
+- [Быстрый старт: дерево из аналитических колонок](#быстрый-старт-дерево-из-аналитических-колонок)
+- [Колонки и их metadata](#колонки-и-их-metadata)
+- [Foundation features TanStack Table](#foundation-features-tanstack-table)
+- [Порядок и layout колонок](#порядок-и-layout-колонок)
+- [Drag-and-drop перестановка колонок](#drag-and-drop-перестановка-колонок)
+- [Ширины колонок](#ширины-колонок)
+- [Видимость колонок](#видимость-колонок)
+- [Выбор строк](#выбор-строк)
+- [Hook `useTableRowSelection`](#hook-usetablerowselection)
+- [Выбор ячеек](#выбор-ячеек)
+- [Интерактивные элементы и CSS-длины](#интерактивные-элементы-и-css-длины)
+- [Колонки из OData metadata](#колонки-из-odata-metadata)
+- [Построение дерева из `id` и `parentId`](#построение-дерева-из-id-и-parentid)
+- [Транспонирование аналитических строк](#транспонирование-аналитических-строк)
+- [Полный pipeline для аналитического дерева](#полный-pipeline-для-аналитического-дерева)
+- [Controlled state и сохранение настроек](#controlled-state-и-сохранение-настроек)
+- [Server-side данные и пагинация](#server-side-данные-и-пагинация)
+- [React, browser и SSR](#react-browser-и-ssr)
+- [Производительность](#производительность)
+- [Тестирование consumer-кода](#тестирование-consumer-кода)
+- [Полная карта API `table`](#полная-карта-api-table)
+- [Полная карта API `tree-table`](#полная-карта-api-tree-table)
+- [Типичные ошибки](#типичные-ошибки)
+- [Частые вопросы](#частые-вопросы)
+
+## Назначение и границы
+
+### Что делает `table`
+
+Модуль предоставляет общий технический контракт таблиц:
+
+```text
+данные + стабильные rowId
+              │
+              ▼
+      TanStack Table state
+       /       │        \
+  columns   selection   sizing/order
+       \       │        /
+              ▼
+       UI-компонент host
+```
+
+Основные возможности:
+
+- единый набор TanStack Table v9 features;
+- типизированное описание колонок;
+- metadata колонки: ширина, выравнивание, display-only merge и форматирование;
+- восстановление и изменение порядка колонок;
+- нормализация ширин колонок;
+- выбор строк в режимах `none`, `single` и `multi`;
+- выбор ячеек по координатам `rowId + columnId`;
+- React hook для общей модели выбора строк;
+- генерация колонок и стартовой видимости по OData metadata;
+- browser helper, который отличает клик по кнопке от клика по строке.
+
+### Что делает `tree-table`
+
+Модуль решает две разные задачи:
+
+1. `buildTreeTableRows` связывает уже существующие строки по `id` и `parentId`.
+2. `transposeFlatRowsToTreeTableRows` создаёт уровни дерева из значений колонок, например `DIVISION` и `DEPARTMENT`.
+
+Обе функции являются преобразователями данных. Они не рисуют HTML и не хранят React state.
+
+### Чего эти модули не делают
+
+`table` и `tree-table` не являются готовыми визуальными компонентами:
+
+- не создают `<table>`;
+- не применяют CSS;
+- не показывают loading, empty и error state;
+- не выполняют HTTP- или OData-запросы;
+- не строят `$filter`, `$orderby` и URL;
+- не выполняют server-side sorting, filtering, grouping или paging;
+- не агрегируют суммы для синтетических узлов дерева;
+- не сохраняют настройки в `localStorage` автоматически;
+- не определяют бизнес-правила выбора строк;
+- не делают authorization или validation backend-данных.
+
+Используйте правильного владельца:
+
+| Задача                                        | Владелец                                               |
+| --------------------------------------------- | ------------------------------------------------------ |
+| Типы, state helpers, column metadata          | `@ryuzaki13/react-foundation-lib/table`                |
+| Построение структуры дерева                   | `@ryuzaki13/react-foundation-lib/tree-table`           |
+| Готовые визуальные Table/TreeTable primitives | `@ryuzaki13/react-foundation-ui/table` и `/tree-table` |
+| OData metadata, literals, filters и paths     | `@ryuzaki13/react-foundation-lib/odata-service`        |
+| HTTP, SAP SSO, X-CSRF, Query operations       | `@ryuzaki13/react-foundation-api/odata`                |
+| Бизнес-колонки, permissions и row actions     | entity/feature/widget host-приложения                  |
+
+### Важная граница server-side таблицы
+
+Если строки приходят с backend, источник истины для sorting, filtering, grouping, totals и pagination обычно находится на сервере. Helpers этого модуля не дают оснований включать локальную сортировку поверх одной загруженной страницы.
+
+Правильная схема для большой таблицы:
+
+```text
+пользователь меняет sort/filter/page
+                 │
+                 ▼
+ host строит query params и стабильный query key
+                 │
+                 ▼
+ @ryuzaki13/react-foundation-api/odata
+                 │
+                 ▼
+ backend возвращает новый snapshot строк
+                 │
+                 ▼
+ table helpers очищают только локальный UI state
+```
+
+## Установка и импорт
+
+Установите пакет:
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+Для `table` host должен разрешить совместимые peer dependencies React и TanStack Table:
+
+```bash
+npm install react @tanstack/react-table
+```
+
+Публичные импорты:
+
+```ts
+import { buildTableColumnLayout, pruneTableRowSelection, toggleTableRowSelection } from "@ryuzaki13/react-foundation-lib/table";
+
+import { buildTreeTableRows, transposeFlatRowsToTreeTableRows } from "@ryuzaki13/react-foundation-lib/tree-table";
+```
+
+Типы предпочтительно импортировать через `import type`:
+
+```ts
+import type { TableColumnDef, TableColumnSizingState, TableSelectionMode } from "@ryuzaki13/react-foundation-lib/table";
+
+import type { TreeTableBuildResult, TreeTableFlatHierarchy, TreeTableTransposedRow } from "@ryuzaki13/react-foundation-lib/tree-table";
+```
+
+Неверные импорты:
+
+```ts
+// Корневой entrypoint пакета не опубликован.
+import { buildTreeTableRows } from "@ryuzaki13/react-foundation-lib";
+
+// Внутреннее расположение файлов не является публичным контрактом.
+import { toggleTableRowSelection } from "@ryuzaki13/react-foundation-lib/dist/table/selection";
+
+// tree-table — отдельный опубликованный subpath.
+import { buildTreeTableRows } from "@ryuzaki13/react-foundation-lib/table";
+```
+
+Пакет распространяется как ESM. Используйте `import`, а не CommonJS `require`.
+
+### Совместимость TanStack Table
+
+Публичные типы `TableColumnDef`, `FoundationTableInstance` и `foundationTableFeatures` рассчитаны на TanStack Table v9. Host должен использовать совместимую major-версию `@tanstack/react-table`.
+
+Не копируйте пример v8 механически: в v9 единый набор features передаётся через свойство `features`, а основной React hook называется `useTable`.
+
+## Что нужно знать перед началом
+
+### Строка
+
+Строка — обычный JavaScript-объект:
+
+```ts
+type Employee = {
+	id: string;
+	name: string;
+	departmentId: string | null;
+	salary: number;
+};
+```
+
+Один объект представляет одну запись таблицы.
+
+### Идентификатор строки
+
+`rowId` — стабильная строка, однозначно указывающая на запись:
+
+```ts
+const getRowId = (row: Employee) => row.id;
+```
+
+Хорошие идентификаторы:
+
+```text
+employee:000123
+order:4500000123:item:000010
+folder:/reports/2026
+```
+
+Плохой идентификатор для изменяемого списка:
+
+```ts
+const getRowId = (_row: Employee, index: number) => String(index);
+```
+
+Индекс меняется после sorting, filtering, вставки или удаления строки. Из-за этого selection может визуально перейти на другую запись.
+
+### Колонка
+
+Колонка описывает, какое поле читать и как его представлять:
+
+```ts
+import type { TableColumnDef } from "@ryuzaki13/react-foundation-lib/table";
+
+const columns: TableColumnDef<Employee>[] = [
+	{
+		id: "name",
+		accessorKey: "name",
+		header: "Сотрудник"
+	},
+	{
+		id: "salary",
+		accessorKey: "salary",
+		header: "Оклад",
+		meta: { align: "right" }
+	}
+];
+```
+
+`id` нужен state-механизмам. `accessorKey` говорит TanStack Table, какое поле объекта читать.
+
+### Идентификатор колонки
+
+`columnId` связывает несколько независимых состояний:
+
+```text
+columnId "salary"
+  ├─ порядок колонок
+  ├─ ширина
+  ├─ видимость
+  ├─ pinning
+  ├─ выбор ячейки
+  └─ formatting metadata
+```
+
+После сохранения пользовательских настроек нельзя без миграции менять `columnId`: старый layout перестанет находить колонку.
+
+### State
+
+State — данные о текущем состоянии UI. Например:
+
+```ts
+const rowSelection = {
+	"employee:1": true,
+	"employee:2": true
+};
+```
+
+Здесь ключ — `rowId`, а `true` означает активный выбор.
+
+### Иммутабельность
+
+Helpers возвращают новый массив или объект. Не изменяйте React state напрямую:
+
+```ts
+// Неверно: изменяет существующий state.
+rowSelection[rowId] = true;
+
+// Верно: helper возвращает следующее состояние.
+const nextSelection = toggleTableRowSelection(rowSelection, rowId, "multi");
+```
+
+### `readonly`
+
+Тип `readonly string[]` означает, что функция обещает только читать массив. Обычный `string[]` можно передать туда без преобразования.
+
+### Generic-параметр
+
+В записи `TableColumnDef<Employee>` имя `Employee` сообщает TypeScript форму одной строки. Это позволяет найти опечатку:
+
+```ts
+const columns: TableColumnDef<Employee>[] = [
+	{
+		// TypeScript обнаружит, что поля "fullName" нет в Employee.
+		accessorKey: "fullName",
+		header: "Имя"
+	}
+];
+```
+
+### `Map`
+
+`Map<string, Employee>` — быстрый индекс строк по идентификатору:
+
+```ts
+const rowById = new Map(rows.map((row) => [row.id, row]));
+
+const employee = rowById.get("employee:1");
+```
+
+`useTableRowSelection` использует такой индекс, чтобы превратить выбранные `rowId` обратно в исходные объекты.
+
+## Как выбрать нужную часть API
+
+| Нужно                                    | API                                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------- |
+| Описать типизированные колонки           | `TableColumnDef`                                                       |
+| Создать TanStack Table v9 вручную        | `foundationTableFeatures` и `FoundationTable*` types                   |
+| Восстановить сохранённый порядок         | `resolveTableColumnOrder`                                              |
+| Переставить top-level заголовок          | `reorderTableHeaderColumns`                                            |
+| Нормализовать px-ширины                  | `normalizeTableColumnSizing`                                           |
+| Выбрать одну или несколько строк         | `toggleTableRowSelection`                                              |
+| Подключить selection к React             | `useTableRowSelection`                                                 |
+| Выбрать ячейки                           | `toggleTableCellSelection`                                             |
+| Не перехватывать клик по кнопке в строке | `isTableInteractiveElement`                                            |
+| Создать колонки из OData metadata        | `createTableColumnsFromODataMetadata`                                  |
+| Связать строки по `id/parentId`          | `buildTreeTableRows`                                                   |
+| Получить дерево из колонок уровней       | сначала `transposeFlatRowsToTreeTableRows`, затем `buildTreeTableRows` |
+
+### Два вида исходных данных для дерева
+
+Первый вид уже содержит связь родитель–ребёнок:
+
+```ts
+[
+	{ id: "company", parentId: null, title: "Компания" },
+	{ id: "sales", parentId: "company", title: "Продажи" }
+];
+```
+
+Для него нужен только `buildTreeTableRows`.
+
+Второй вид содержит факты и повторяющиеся названия уровней:
+
+```ts
+[
+	{ division: "Россия", department: "Продажи", amount: 100 },
+	{ division: "Россия", department: "Продажи", amount: 200 },
+	{ division: "Россия", department: "Логистика", amount: 50 }
+];
+```
+
+Здесь нет `id` и `parentId`. Сначала используйте `transposeFlatRowsToTreeTableRows`, чтобы создать синтетические group-узлы, потом `buildTreeTableRows`, чтобы вложить их друг в друга.
+
+## Быстрый старт: плоская таблица
+
+### 1. Опишите строку
+
+```ts
+type Order = {
+	id: string;
+	customer: string;
+	amount: number;
+};
+```
+
+### 2. Опишите колонки
+
+```ts
+import type { TableColumnDef } from "@ryuzaki13/react-foundation-lib/table";
+
+const orderColumns = [
+	{
+		id: "customer",
+		accessorKey: "customer",
+		header: "Клиент",
+		meta: {
+			width: 24,
+			align: "left"
+		}
+	},
+	{
+		id: "amount",
+		accessorKey: "amount",
+		header: "Сумма",
+		meta: {
+			width: 12,
+			align: "right"
+		}
+	}
+] satisfies TableColumnDef<Order>[];
+```
+
+Число `24` в `meta.width` означает `24em`, а не `24px`. Runtime px-ширины resize хранятся отдельно в `TableColumnSizingState`.
+
+### 3. Вычислите selection
+
+```ts
+import { toggleTableRowSelection } from "@ryuzaki13/react-foundation-lib/table";
+import type { RowSelectionState } from "@tanstack/react-table";
+
+let selection: RowSelectionState = {};
+
+selection = toggleTableRowSelection(selection, "order:1", "multi");
+selection = toggleTableRowSelection(selection, "order:2", "multi");
+
+console.log(selection);
+// {
+//   "order:1": true,
+//   "order:2": true
+// }
+```
+
+### 4. Передайте данные UI-владельцу
+
+Этот lib-модуль не рендерит таблицу. Host может:
+
+- передать `rows` и `orderColumns` компоненту из `@ryuzaki13/react-foundation-ui/table`;
+- создать собственную таблицу через `useTable` и `foundationTableFeatures`;
+- использовать только pure helpers в другой UI-реализации.
+
+## Быстрый старт: дерево с `parentId`
+
+```ts
+import { buildTreeTableRows } from "@ryuzaki13/react-foundation-lib/tree-table";
+
+type Department = {
+	id: string;
+	parentId: string | null;
+	title: string;
+};
+
+const departments: Department[] = [
+	{ id: "sales", parentId: "company", title: "Продажи" },
+	{ id: "company", parentId: null, title: "Компания" },
+	{ id: "retail", parentId: "sales", title: "Розница" }
+];
+
+const result = buildTreeTableRows(departments, {
+	getRowId: (row) => row.id,
+	getParentRowId: (row) => row.parentId
+});
+
+console.log(result.rows);
+// [
+//   {
+//     id: "company",
+//     parentId: null,
+//     title: "Компания",
+//     children: [
+//       {
+//         id: "sales",
+//         parentId: "company",
+//         title: "Продажи",
+//         children: [
+//           { id: "retail", parentId: "sales", title: "Розница" }
+//         ]
+//       }
+//     ]
+//   }
+// ]
+```
+
+Порядок исходных строк не обязан быть «родитель перед ребёнком». Функция сначала строит индексы, а потом дерево.
+
+## Быстрый старт: дерево из аналитических колонок
+
+```ts
+import {
+	buildTreeTableRows,
+	transposeFlatRowsToTreeTableRows,
+	TREE_TABLE_TRANSPOSED_PARENT_ROW_ID_FIELD,
+	TREE_TABLE_TRANSPOSED_ROW_ID_FIELD
+} from "@ryuzaki13/react-foundation-lib/tree-table";
+
+type FactRow = {
+	DIVISION: string;
+	DEPARTMENT: string;
+	AMOUNT: number;
+};
+
+const facts: FactRow[] = [
+	{ DIVISION: "Россия", DEPARTMENT: "Продажи", AMOUNT: 100 },
+	{ DIVISION: "Россия", DEPARTMENT: "Продажи", AMOUNT: 200 },
+	{ DIVISION: "Россия", DEPARTMENT: "Логистика", AMOUNT: 50 }
+];
+
+const flatHierarchy = transposeFlatRowsToTreeTableRows(facts, {
+	hierarchyLevels: [{ columnId: "DIVISION" }, { columnId: "DEPARTMENT" }]
+});
+
+const tree = buildTreeTableRows(flatHierarchy, {
+	getRowId: (row) => row[TREE_TABLE_TRANSPOSED_ROW_ID_FIELD],
+	getParentRowId: (row) => row[TREE_TABLE_TRANSPOSED_PARENT_ROW_ID_FIELD]
+});
+```
+
+`flatHierarchy` содержит и синтетические group-узлы, и исходные факты-листья. `tree.rows` содержит те же записи уже с вложенным `children`.
+
+## Колонки и их metadata
+
+### `TableColumnDef<TData, TValue>`
+
+Основной тип описания колонки:
+
+```ts
+type TableColumnDef<TData, TValue = unknown> = /* TanStack ColumnDef */ {
+	meta?: TableColumnMeta;
+};
+```
+
+- `TData` — тип всей строки;
+- `TValue` — тип значения конкретной колонки;
+- остальные свойства приходят из TanStack Table v9;
+- `meta` добавляет foundation-настройки.
+
+Пример с `accessorFn`:
+
+```ts
+type Person = {
+	firstName: string;
+	lastName: string;
+};
+
+const fullNameColumn: TableColumnDef<Person, string> = {
+	id: "fullName",
+	accessorFn: (row) => `${row.lastName} ${row.firstName}`,
+	header: "ФИО"
+};
+```
+
+Для `accessorFn` задавайте явный `id`. Иначе OData adapter не сможет устойчиво сопоставить колонку с metadata.
+
+### `TableColumnMeta`
+
+```ts
+interface TableColumnMeta {
+	width?: number | "auto" | `${number}%`;
+	align?: "left" | "center" | "right";
+	mergeDuplicates?: boolean;
+	formatting?: TableColumnFormattingMeta;
+}
+```
+
+#### `width`
+
+| Значение | Смысл                                   |
+| -------- | --------------------------------------- |
+| `12`     | `12em` в декларативной metadata колонки |
+| `"auto"` | автоматическая CSS-ширина               |
+| `"25%"`  | процентная CSS-ширина                   |
+
+Это не то же самое, что `TableColumnSizingState`: sizing state хранит число пикселей, полученное от resize runtime.
+
+#### `align`
+
+Допустимые значения:
+
+- `left` — обычно текст и dimensions;
+- `center` — компактный статус или управляющий элемент;
+- `right` — обычно числа и measures.
+
+Metadata сама не рисует CSS. Визуальный Table primitive должен прочитать значение и применить его.
+
+#### `mergeDuplicates`
+
+`true` включает display-only объединение подряд идущих одинаковых raw-значений в UI, который поддерживает этот контракт.
+
+Важно:
+
+- данные строк не объединяются;
+- строки не удаляются;
+- сравнивается raw-результат accessor или `cell.getValue()`;
+- одинаковый отформатированный текст не гарантирует merge;
+- несоседние одинаковые значения не образуют одну группу;
+- tree UI может ограничивать merge границами глубины или ветки.
+
+#### `formatting`
+
+`formatting` передаёт декларативный runtime-контекст модулю форматтеров. Поле экспериментальное: не стройте вокруг его внутренней формы собственный стабильный storage contract без версионирования.
+
+Пример:
+
+```ts
+const amountColumn: TableColumnDef<{ amount: number }> = {
+	id: "amount",
+	accessorKey: "amount",
+	header: "Сумма",
+	meta: {
+		align: "right",
+		formatting: {
+			role: "measure",
+			type: "decimal",
+			emptyWhenZero: true,
+			overflowTooltip: true
+		}
+	}
+};
+```
+
+Полный смысл pipeline, formulas, `emptyWhenZero` и value state описан в справочнике `@ryuzaki13/react-foundation-lib/formatters`.
+
+### Helpers чтения metadata
+
+#### `getTableColumnMeta`
+
+```ts
+const meta = getTableColumnMeta(column);
+```
+
+Возвращает `column.meta` или `undefined`. Helper полезен общему UI-коду: consumer не привязывается к внутреннему пересечению TanStack-типа.
+
+#### `getTableColumnFormattingMeta`
+
+```ts
+const formatting = getTableColumnFormattingMeta(column);
+```
+
+Возвращает `column.meta?.formatting` или `undefined`.
+
+Функции ничего не клонируют. Возвращаемый объект — та же ссылка, которая находится в column definition. Не мутируйте её.
+
+## Foundation features TanStack Table
+
+### Зачем нужен единый набор
+
+TanStack Table v9 кодирует enabled features в generic-типах. Если UI создаёт table с одним набором features, а тип колонки объявлен с другим, TypeScript может показать несовместимые типы.
+
+`foundationTableFeatures` задаёт единый набор для lib- и UI-пакетов.
+
+В набор входят:
+
+- column ordering;
+- column pinning;
+- column sizing;
+- column resizing;
+- column visibility;
+- row selection;
+- row expanding;
+- expanded row model.
+
+### Минимальная ручная интеграция
+
+```tsx
+import { useMemo } from "react";
+
+import { foundationTableFeatures, type TableColumnDef } from "@ryuzaki13/react-foundation-lib/table";
+import { useTable } from "@tanstack/react-table";
+
+type Row = {
+	id: string;
+	name: string;
+};
+
+function Example({ data }: { data: readonly Row[] }) {
+	const columns = useMemo<TableColumnDef<Row>[]>(
+		() => [
+			{
+				id: "name",
+				accessorKey: "name",
+				header: "Название"
+			}
+		],
+		[]
+	);
+
+	const table = useTable({
+		features: foundationTableFeatures,
+		data: data as Row[],
+		columns,
+		getRowId: (row) => row.id
+	});
+
+	return <div>Строк: {table.getRowModel().rows.length}</div>;
+}
+```
+
+Пример показывает создание instance, а не полноценный доступный UI. Для рендера нужны `<table>`, headers, cells, keyboard behavior, loading/error states и стили.
+
+### Публичные типы instance
+
+Используйте foundation-типы там, где helper или компонент принимает объекты TanStack Table:
+
+```ts
+import type {
+	FoundationTableCell,
+	FoundationTableColumn,
+	FoundationTableHeader,
+	FoundationTableInstance,
+	FoundationTableRow,
+	FoundationTableState
+} from "@ryuzaki13/react-foundation-lib/table";
+```
+
+| Тип                                    | Что представляет                      |
+| -------------------------------------- | ------------------------------------- |
+| `FoundationTableInstance<TData>`       | весь table instance                   |
+| `FoundationTableRow<TData>`            | вычисленную строку TanStack           |
+| `FoundationTableColumn<TData, TValue>` | runtime-колонку                       |
+| `FoundationTableCell<TData, TValue>`   | runtime-ячейку                        |
+| `FoundationTableHeader<TData, TValue>` | runtime-заголовок                     |
+| `FoundationTableState`                 | полное состояние enabled features     |
+| `FoundationTableFeatures`              | тип объекта `foundationTableFeatures` |
+
+Не создавайте эти объекты вручную. Их создаёт TanStack Table.
+
+## Порядок и layout колонок
+
+### `normalizeTableColumnOrder`
+
+Очищает массив идентификаторов:
+
+```ts
+import { normalizeTableColumnOrder } from "@ryuzaki13/react-foundation-lib/table";
+
+normalizeTableColumnOrder(["name", "", "amount", "name"]);
+// ["name", "amount"]
+```
+
+Правила:
+
+- `undefined` превращается в `[]`;
+- строки, у которых `trim()` пуст, удаляются;
+- повторения удаляются;
+- сохраняется первое вхождение;
+- непустая строка возвращается как есть и не обрезается.
+
+Последний пункт важен:
+
+```ts
+normalizeTableColumnOrder([" name "]);
+// [" name "], а не ["name"]
+```
+
+Helper проверяет пустоту, но не исправляет идентификаторы. Используйте канонические `columnId` ещё при создании колонок.
+
+### `resolveTableColumnOrder`
+
+Сопоставляет сохранённый порядок с актуальными колонками:
+
+```ts
+import { resolveTableColumnOrder } from "@ryuzaki13/react-foundation-lib/table";
+
+resolveTableColumnOrder({
+	ids: ["name", "status", "amount", "createdAt"],
+	order: ["amount", "name", "removed", "amount"]
+});
+// ["amount", "name", "status", "createdAt"]
+```
+
+Алгоритм:
+
+1. Берёт только значения из `order`, существующие в `ids`.
+2. Удаляет их повторения.
+3. Сохраняет их относительный порядок.
+4. Добавляет отсутствующие актуальные `ids` в конец в порядке `ids`.
+
+Это основной helper восстановления сохранённого layout после добавления или удаления колонок в новой версии приложения.
+
+### Отличие `normalize` от `resolve`
+
+```text
+normalizeTableColumnOrder
+  знает только сам массив order
+  не знает существующие колонки
+
+resolveTableColumnOrder
+  знает актуальные ids
+  удаляет неизвестные и добавляет новые
+```
+
+Для persisted configuration обычно нужен `resolveTableColumnOrder`.
+
+### `buildTableColumnLayout`
+
+Соединяет уже вычисленный порядок с шириной каждой колонки:
+
+```ts
+import { buildTableColumnLayout } from "@ryuzaki13/react-foundation-lib/table";
+
+const widths = {
+	name: 240,
+	status: 120,
+	amount: 160
+};
+
+const layout = buildTableColumnLayout({
+	ids: ["amount", "name", "status"],
+	getWidth: (id) => widths[id]
+});
+
+// [
+//   { id: "amount", width: 160 },
+//   { id: "name", width: 240 },
+//   { id: "status", width: 120 }
+// ]
+```
+
+Ширина вычисляется по `id`, а не по визуальному индексу. Поэтому после reorder ширина остаётся у правильной колонки.
+
+`TWidth` generic и может быть не только числом:
+
+```ts
+const layout = buildTableColumnLayout({
+	ids: ["name", "amount"] as const,
+	getWidth: (id) => (id === "name" ? "2fr" : "10rem")
+});
+```
+
+Функция вызывает `getWidth` один раз для каждого `id` и не проверяет результат.
+
+## Drag-and-drop перестановка колонок
+
+### Термины
+
+- `activeId` — колонка, которую пользователь тащит;
+- `overId` — колонка, над которой находится dragged item;
+- `headerIds` — только draggable top-level headers;
+- `lockedIds` — полностью заблокированные колонки;
+- `pinnedIds` — закреплённые колонки;
+- `order` — текущий полный порядок.
+
+### `reorderTableHeaderColumns`
+
+```ts
+import { reorderTableHeaderColumns } from "@ryuzaki13/react-foundation-lib/table";
+
+const nextOrder = reorderTableHeaderColumns({
+	order: ["select", "name", "status", "amount"],
+	headerIds: ["select", "name", "status", "amount"],
+	lockedIds: ["select"],
+	pinnedIds: ["select"],
+	activeId: "amount",
+	overId: "name"
+});
+
+// ["select", "amount", "name", "status"]
+```
+
+Функция возвращает новый массив и не мутирует `order`.
+
+Перестановка блокируется, если:
+
+- `activeId` или `overId` пуст;
+- идентификаторы одинаковы;
+- хотя бы одного id нет в `headerIds`;
+- `activeId` или `overId` входит в `lockedIds`;
+- `activeId` или `overId` входит в `pinnedIds`.
+
+Текущее правило pinning строгое: pinned-колонки не переставляются даже внутри pinned-зоны, и обычную колонку нельзя drop-нуть на pinned-колонку.
+
+### Grouped headers
+
+Для grouped columns в `headerIds` передавайте идентификаторы верхнего уровня:
+
+```text
+CONTACTS              AMOUNT
+├─ PHONE
+└─ EMAIL
+```
+
+Если `headerIds` равен `['CONTACTS', 'AMOUNT']`, группа `CONTACTS` двигается целиком. `PHONE` и `EMAIL` нельзя переставить этим helper отдельно.
+
+### Отсутствующий id в `order`
+
+Если `activeId` или `overId` разрешён через `headerIds`, но отсутствует в `order`, helper сначала добавит его в конец и затем выполнит перемещение.
+
+Обычно перед DnD лучше сначала получить полный порядок через `resolveTableColumnOrder`.
+
+### `resolveReorderedTableHeaderColumns`
+
+Возвращает:
+
+- новый `string[]`, если порядок изменился;
+- `null`, если реального изменения нет.
+
+```ts
+const change = resolveReorderedTableHeaderColumns({
+	order: ["name", "amount"],
+	headerIds: ["name", "amount"],
+	activeId: "name",
+	overId: "name"
+});
+
+console.log(change); // null
+```
+
+Этот вариант удобен для event handler:
+
+```ts
+const nextOrder = resolveReorderedTableHeaderColumns(args);
+
+if (nextOrder) {
+	onColumnOrderChange(nextOrder);
+}
+```
+
+## Ширины колонок
+
+### Два разных представления ширины
+
+Не смешивайте:
+
+| Представление            | Пример                  | Единица             |
+| ------------------------ | ----------------------- | ------------------- |
+| `TableColumnMeta.width`  | `12`, `"auto"`, `"25%"` | число означает `em` |
+| `TableColumnSizingState` | `{ amount: 160 }`       | число означает px   |
+
+Helpers этого раздела работают со вторым представлением — px sizing state.
+
+### `DEFAULT_TABLE_COLUMN_MIN_WIDTH`
+
+```ts
+DEFAULT_TABLE_COLUMN_MIN_WIDTH === 60;
+```
+
+Значение используется по умолчанию как минимальная ширина в пикселях.
+
+### `normalizeTableColumnWidth`
+
+```ts
+normalizeTableColumnWidth(125.8); // 125
+normalizeTableColumnWidth(12); // 60
+normalizeTableColumnWidth(Number.NaN, 80); // 80
+```
+
+Алгоритм:
+
+1. Проверяет `minWidth`.
+2. Если minimum не finite или не больше нуля, использует `60`.
+3. Округляет вниз через `Math.floor`.
+4. Невалидную ширину заменяет minimum.
+5. Возвращает максимум из minimum и ширины.
+
+Примеры minimum:
+
+```ts
+normalizeTableColumnWidth(140.9, 100.9); // 140, minimum станет 100
+normalizeTableColumnWidth(10, -1); // 60
+normalizeTableColumnWidth(10, Number.POSITIVE_INFINITY); // 60
+```
+
+### `normalizeTableColumnSizing`
+
+```ts
+normalizeTableColumnSizing({
+	name: 240.7,
+	amount: 10,
+	broken: Number.NaN,
+	"": 90
+});
+
+// {
+//   name: 240,
+//   amount: 60
+// }
+```
+
+Функция:
+
+- принимает `undefined` и возвращает `{}`;
+- удаляет пустой `columnId`;
+- удаляет не-finite width;
+- нормализует каждую оставшуюся ширину;
+- возвращает новый объект.
+
+Непустой `columnId` не обрезается. Ключ `" name "` останется `" name "`.
+
+### `patchTableColumnWidth`
+
+Добавляет или заменяет одну ширину, попутно нормализуя весь state:
+
+```ts
+const next = patchTableColumnWidth({ name: 200, broken: Number.NaN }, "amount", 150.8);
+
+// { name: 200, amount: 150 }
+```
+
+Если `columnId.trim()` пуст, новая запись не добавляется, но существующий state всё равно нормализуется.
+
+### `removeTableColumnWidth`
+
+```ts
+removeTableColumnWidth({ name: 200, amount: 150 }, "name");
+// { amount: 150 }
+```
+
+Функция только копирует все ключи, кроме точного `columnId`. Она не нормализует оставшиеся значения.
+
+## Видимость колонок
+
+### `TableColumnVisibilityState`
+
+Это публичное имя состояния TanStack Table v9:
+
+```ts
+type TableColumnVisibilityState = Record<string, boolean>;
+```
+
+Ключ — стабильный `columnId`, значение — видимость:
+
+```ts
+const visibility: TableColumnVisibilityState = {
+	name: true,
+	technicalCode: false,
+	amount: true
+};
+```
+
+`false` скрывает колонку, но не удаляет её definition и данные строки. Поэтому колонку можно снова показать без повторного создания `columns`.
+
+Не фильтруйте массив column definitions вручную, если UI поддерживает controlled visibility state: удалённая definition перестаёт участвовать и в настройках, и в поиске по `columnId`.
+
+Модуль не содержит общего toggle-helper для visibility. Передавайте state TanStack Table или visual primitive. Стартовую карту по OData metadata создаёт `createTableColumnVisibilityFromODataMetadata`.
+
+## Выбор строк
+
+### `TableSelectionMode`
+
+```ts
+type TableSelectionMode = "none" | "single" | "multi";
+```
+
+| Режим    | Поведение                                  |
+| -------- | ------------------------------------------ |
+| `none`   | выбор запрещён, state очищается            |
+| `single` | может быть выбрана ровно одна строка       |
+| `multi`  | строки независимо включаются и выключаются |
+
+### `RowSelectionState`
+
+Тип принадлежит TanStack Table:
+
+```ts
+import type { RowSelectionState } from "@tanstack/react-table";
+
+const selection: RowSelectionState = {
+	"row:1": true,
+	"row:2": true
+};
+```
+
+В TanStack Table v9 typed state хранит только активные ключи со значением `true`. Для снятого выбора ключ нужно удалить, а не записывать `false`.
+
+Pure helpers дополнительно проверяют truthiness и поэтому защитно игнорируют false-ключ, если он всё же пришёл из legacy JSON или нетипизированного JavaScript. Но новый TypeScript-код не должен создавать такой shape.
+
+### `normalizeTableSelectionMode`
+
+Нормализует недоверенное значение на config-boundary:
+
+```ts
+normalizeTableSelectionMode("multi"); // "multi"
+normalizeTableSelectionMode("unknown"); // "none"
+normalizeTableSelectionMode(null, "single"); // "single"
+```
+
+Fallback по умолчанию — `none`.
+
+Используйте helper при чтении JSON, storage или URL config. Внутренний typed state уже должен содержать корректный union.
+
+### `areTableRowSelectionsEqual`
+
+Сравнивает наборы активных `rowId` без учёта порядка ключей:
+
+```ts
+areTableRowSelectionsEqual({ a: true, b: true }, { b: true, a: true }); // true
+```
+
+Функция не сравнивает ссылки объектов. Если нетипизированный runtime object содержит false-ключи, они не участвуют в сравнении.
+
+### `pruneTableRowSelection`
+
+Оставляет только выбор, допустимый для текущего набора данных и режима:
+
+```ts
+const next = pruneTableRowSelection({ a: true, b: true, removed: true }, ["a", "b"], "single");
+
+// { b: true }
+```
+
+Правила:
+
+- `none` всегда возвращает `{}`;
+- отсутствующие в `availableRowIds` id удаляются;
+- false-ключи из нетипизированного/legacy input удаляются;
+- `multi` сохраняет все доступные активные id;
+- `single` сохраняет последний активный id после фильтрации.
+
+В `single` «последний» определяется порядком активных ключей `Object.keys(selection)`, а не порядком `availableRowIds`. Не используйте object key order как историю пользовательских кликов. Нормальный источник single state — `toggleTableRowSelection`, который сам оставляет один ключ.
+
+### `toggleTableRowSelection`
+
+```ts
+toggleTableRowSelection({}, "a", "none");
+// {}
+
+toggleTableRowSelection({ a: true }, "b", "single");
+// { b: true }
+
+toggleTableRowSelection({ a: true }, "a", "single");
+// та же логическая выборка { a: true }
+
+toggleTableRowSelection({ a: true }, "b", "multi");
+// { a: true, b: true }
+
+toggleTableRowSelection({ a: true, b: true }, "b", "multi");
+// { a: true }
+```
+
+Ключевое различие:
+
+- в `single` повторная активация выбранной строки **не снимает** выбор;
+- в `multi` повторная активация работает как toggle.
+
+Helper не проверяет, существует ли `rowId`. Если это важно, сначала проверьте membership или используйте `pruneTableRowSelection` на границе данных.
+
+### Selection и пагинация
+
+`availableRowIds` должен отражать область, внутри которой selection считается допустимым.
+
+Если передать только id текущей страницы, selection с других страниц будет удалён. Это правильно для «выбор только среди загруженных строк», но неправильно для cross-page selection.
+
+Для cross-page сценария нужен отдельный domain contract:
+
+- полный набор известных id;
+- selection-модель «все кроме исключений»;
+- server-side selection token;
+- или бизнес-store владельца feature.
+
+Не пытайтесь представить миллион выбранных server rows обычным объектом TanStack Table.
+
+## Hook `useTableRowSelection`
+
+### Назначение
+
+Hook связывает pure selection helpers с React state:
+
+```text
+availableRowIds + rowById + mode
+                │
+                ▼
+       useTableRowSelection
+       /        │          \
+rowSelection  setter  activateRowSelection
+                │
+                ▼
+       onRowSelectionChange(rows)
+```
+
+### Параметры
+
+```ts
+useTableRowSelection<TData>({
+	availableRowIds,
+	rowById,
+	selectionMode,
+	selectedRowIds,
+	onRowSelectionChange
+});
+```
+
+| Параметр               | Тип                                 | Назначение                               |
+| ---------------------- | ----------------------------------- | ---------------------------------------- |
+| `availableRowIds`      | `readonly string[]`                 | id строк, которые сейчас допустимы       |
+| `rowById`              | `Map<string, TData>`                | индекс исходных объектов                 |
+| `selectionMode`        | `TableSelectionMode`                | cardinality выбора                       |
+| `selectedRowIds`       | `readonly string[]` или `undefined` | внешний controlled snapshot              |
+| `onRowSelectionChange` | `(rows: TData[]) => void`           | callback с исходными выбранными строками |
+
+Тип объекта параметров намеренно не экспортируется отдельным именем. Используйте сигнатуру функции, а не private deep import.
+
+### Результат
+
+```ts
+const { rowSelection, setRowSelection, activateRowSelection } = useTableRowSelection({
+	availableRowIds,
+	rowById,
+	selectionMode
+});
+```
+
+| Поле                                     | Назначение                                   |
+| ---------------------------------------- | -------------------------------------------- |
+| `rowSelection`                           | текущее TanStack `RowSelectionState`         |
+| `setRowSelection`                        | React setter для низкоуровневой интеграции   |
+| `activateRowSelection(rowId, canSelect)` | безопасная пользовательская активация строки |
+
+### Полный пример
+
+```tsx
+import { useMemo } from "react";
+
+import {
+	foundationTableFeatures,
+	useTableRowSelection,
+	type TableColumnDef,
+	type TableSelectionMode
+} from "@ryuzaki13/react-foundation-lib/table";
+import { useTable } from "@tanstack/react-table";
+
+type Employee = {
+	id: string;
+	name: string;
+	disabled: boolean;
+};
+
+type Props = {
+	rows: readonly Employee[];
+	columns: TableColumnDef<Employee>[];
+	selectionMode: TableSelectionMode;
+	onSelectionChange: (rows: Employee[]) => void;
+};
+
+function EmployeeTableModel({ rows, columns, selectionMode, onSelectionChange }: Props) {
+	const rowById = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
+	const availableRowIds = useMemo(() => Array.from(rowById.keys()), [rowById]);
+
+	const { rowSelection, activateRowSelection } = useTableRowSelection({
+		availableRowIds,
+		rowById,
+		selectionMode,
+		onRowSelectionChange: onSelectionChange
+	});
+
+	const table = useTable({
+		features: foundationTableFeatures,
+		data: rows as Employee[],
+		columns,
+		state: { rowSelection },
+		getRowId: (row) => row.id,
+		enableMultiRowSelection: selectionMode === "multi",
+		enableRowSelection: (row) => selectionMode !== "none" && !row.original.disabled
+	});
+
+	return {
+		table,
+		activateRow: (rowId: string) => {
+			const row = rowById.get(rowId);
+			activateRowSelection(rowId, Boolean(row && !row.disabled));
+		}
+	};
+}
+```
+
+В реальном компоненте custom hook должен вызываться на верхнем уровне React component или другого custom hook. Не вызывайте его в условии, цикле или обработчике события.
+
+### `canSelect`
+
+`activateRowSelection(rowId, false)` ничего не меняет. Это позволяет держать business permission вне общего helper:
+
+```ts
+const canSelect = employee.status !== "archived";
+
+activateRowSelection(employee.id, canSelect);
+```
+
+### Controlled selection
+
+Если `selectedRowIds` передан, hook синхронизирует внутренний визуальный state с внешним snapshot и применяет:
+
+- `availableRowIds`;
+- текущий `selectionMode`;
+- удаление неизвестных id;
+- single/multi cardinality.
+
+```tsx
+const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+const selection = useTableRowSelection({
+	availableRowIds,
+	rowById,
+	selectionMode: "multi",
+	selectedRowIds: selectedIds,
+	onRowSelectionChange: (rows) => {
+		setSelectedIds(rows.map((row) => row.id));
+	}
+});
+```
+
+Внешний owner должен передавать новый snapshot после принятого пользовательского изменения. Не мутируйте `selectedIds` на месте.
+
+### Почему нужен стабильный `rowById`
+
+Hook преобразует selection id в исходные строки для callback. Если id есть в state, но нет в `rowById`, такая запись не попадёт в callback.
+
+Создавайте map через `useMemo`:
+
+```ts
+const rowById = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
+```
+
+Не создавайте новую `Map` и новый `availableRowIds` без необходимости при каждом render большого компонента.
+
+### Низкоуровневый setter
+
+`setRowSelection` нужен для интеграции с API TanStack Table. Если установить произвольный state, hook позже очистит его при изменении `availableRowIds`, `selectedRowIds` или mode.
+
+Для обычной активации строки предпочитайте `activateRowSelection`: он соблюдает `selectionMode` и `canSelect`.
+
+## Выбор ячеек
+
+### Координаты
+
+```ts
+type TableCellCoordinates = Readonly<{
+	rowId: string;
+	columnId: string;
+}>;
+```
+
+Ячейка определяется не DOM-элементом и не индексами, а двумя стабильными id:
+
+```ts
+const cell = {
+	rowId: "order:4500000123",
+	columnId: "amount"
+};
+```
+
+Это позволяет сохранять selection после reorder колонок.
+
+### `TableCellSelectionState`
+
+```ts
+type TableCellSelectionState = readonly TableCellCoordinates[];
+```
+
+Массив сериализуем и не зависит от TanStack runtime objects.
+
+### `TableCellSelectionMode`
+
+Использует те же значения `none | single | multi`, но отдельное имя показывает, что настройка относится к ячейкам, а не строкам.
+
+### `areTableCellSelectionsEqual`
+
+Сравнивает наборы координат без учёта порядка:
+
+```ts
+const a = { rowId: "1", columnId: "name" };
+const b = { rowId: "2", columnId: "amount" };
+
+areTableCellSelectionsEqual([a, b], [b, a]); // true
+```
+
+Повторы не влияют на множество:
+
+```ts
+areTableCellSelectionsEqual([a, a], [a]); // true
+```
+
+Внутренний ключ кодирует `rowId` и `columnId` через `encodeURIComponent`, поэтому значения с `::`, `/`, пробелами и другими символами не создают простую delimiter-коллизию.
+
+### `pruneTableCellSelection`
+
+```ts
+const next = pruneTableCellSelection(
+	[
+		{ rowId: "row-2", columnId: "B" },
+		{ rowId: "row-1", columnId: "B" },
+		{ rowId: "row-1", columnId: "A" },
+		{ rowId: "row-1", columnId: "A" }
+	],
+	["row-1", "row-2"],
+	["A", "B"],
+	"multi"
+);
+
+// [
+//   { rowId: "row-1", columnId: "A" },
+//   { rowId: "row-1", columnId: "B" },
+//   { rowId: "row-2", columnId: "B" }
+// ]
+```
+
+Функция:
+
+1. Удаляет координаты неизвестной строки или колонки.
+2. Удаляет повторы.
+3. Сортирует по порядку `availableRowIds`.
+4. Внутри строки сортирует по `availableColumnIds`.
+5. Для `single` оставляет последнюю координату из этого детерминированного порядка.
+6. Для `none` возвращает `[]`.
+
+Input не мутируется.
+
+В отличие от row selection, здесь single-координата определяется актуальным визуальным порядком строк и колонок.
+
+### `toggleTableCellSelection`
+
+```ts
+const first = { rowId: "row-1", columnId: "A" };
+const second = { rowId: "row-1", columnId: "B" };
+
+toggleTableCellSelection([first], first, "single");
+// []
+
+toggleTableCellSelection([first], second, "single");
+// [second]
+
+toggleTableCellSelection([first], second, "multi");
+// [first, second]
+```
+
+Важное отличие от выбора строк: повторная активация выбранной ячейки в `single` **снимает** выбор.
+
+`toggleTableCellSelection` не проверяет доступные строки и колонки. Для очистки stale coordinates используйте `pruneTableCellSelection`.
+
+### Activation mode
+
+```ts
+type TableCellSelectionActivationMode = "direct" | "primary-modifier";
+```
+
+| Режим              | Когда выбирать ячейку                             |
+| ------------------ | ------------------------------------------------- |
+| `direct`           | при обычной активации                             |
+| `primary-modifier` | только с Ctrl в Windows/Linux или Command в macOS |
+
+### `normalizeTableCellSelectionActivationMode`
+
+```ts
+normalizeTableCellSelectionActivationMode("primary-modifier");
+// "primary-modifier"
+
+normalizeTableCellSelectionActivationMode("meta");
+// "direct"
+
+normalizeTableCellSelectionActivationMode(null, "primary-modifier");
+// "primary-modifier"
+```
+
+### `shouldActivateTableCellSelection`
+
+Функция принимает минимальный event-like объект:
+
+```ts
+type TableSelectionModifierEvent = Readonly<{
+	ctrlKey: boolean;
+	metaKey: boolean;
+	shiftKey: boolean;
+	altKey: boolean;
+}>;
+```
+
+Поэтому можно передать React MouseEvent или KeyboardEvent: у них есть эти поля.
+
+```tsx
+function handleCellClick(event: React.MouseEvent, cell: TableCellCoordinates) {
+	if (!shouldActivateTableCellSelection(event, "primary-modifier")) {
+		return;
+	}
+
+	setSelection((current) => toggleTableCellSelection(current, cell, "multi"));
+}
+```
+
+Для `primary-modifier`:
+
+- Ctrl или Command принимается;
+- Ctrl+Shift не принимается;
+- Command+Alt не принимается;
+- Shift/Alt без primary modifier не принимается.
+
+Так helper не перехватывает комбинации, обычно занятые browser/OS selection flow.
+
+## Интерактивные элементы и CSS-длины
+
+### Проблема клика по строке
+
+В строке может быть кнопка:
+
+```html
+<tr data-row-id="1">
+	<td>Заказ</td>
+	<td><button type="button">Удалить</button></td>
+</tr>
+```
+
+Клик по кнопке всплывает до `<tr>`. Если обработчик строки не проверит target, одновременно с удалением изменится selection.
+
+### `isTableInteractiveElement`
+
+```tsx
+function handleRowClick(event: React.MouseEvent<HTMLTableRowElement>) {
+	if (isTableInteractiveElement(event.target)) {
+		return;
+	}
+
+	activateRow();
+}
+```
+
+Helper ищет target или ближайшего ancestor среди:
+
+- `button`, `a`, `input`, `select`, `textarea`, `label`, `summary`;
+- audio/video с controls;
+- editable element;
+- focusable element с `tabindex`, кроме `td`, `th`, `tr`;
+- draggable element;
+- распространённых ARIA roles: button, link, checkbox, radio, switch, menu, option, tab, treeitem, slider, textbox, combobox и других.
+
+SVG icon внутри `<button>` тоже распознаётся, потому что используется `closest`.
+
+### Custom interactive selector
+
+```tsx
+if (isTableInteractiveElement(event.target, "[data-row-action='true']")) {
+	return;
+}
+```
+
+`extraSelector` добавляется к стандартному списку. Передавайте валидный CSS selector: невалидная строка может привести к DOM exception внутри `Element.closest`.
+
+### SSR и тесты
+
+Если глобального `Element` нет или target не является `Element`, функция возвращает `false`.
+
+В unit-тесте с обычным Node environment DOM отсутствует. Для проверки реальных elements нужен `jsdom` или browser test.
+
+### `resolveTableLength`
+
+```ts
+resolveTableLength(12); // "12em"
+resolveTableLength("50%"); // "50%"
+resolveTableLength("auto"); // "auto"
+```
+
+Число превращается в `em`, строка возвращается без изменений.
+
+Функция не валидирует CSS:
+
+```ts
+resolveTableLength(Number.NaN); // "NaNem"
+resolveTableLength("not-a-css-length"); // та же строка
+```
+
+Передавайте finite number или проверенное CSS-значение.
+
+## Колонки из OData metadata
+
+### Граница ответственности
+
+Adapter принимает уже полученные `EntityColumnProperty[]`. Он не читает XML и не вызывает backend.
+
+Metadata flow:
+
+```text
+OData XML metadata
+       │
+       ▼
+odata-service parser
+       │
+       ▼
+EntityColumnProperty[]
+       │
+       ▼
+table OData adapter
+       │
+       ▼
+TableColumnDef[] + visibility state
+```
+
+`EntityColumnProperty` импортируется из `odata-service`, а не из `table`:
+
+```ts
+import type { EntityColumnProperty } from "@ryuzaki13/react-foundation-lib/odata-service";
+```
+
+### `resolveTableColumnFormattingContextFromODataColumn`
+
+Возвращает `role` и normalized `type` для formatting pipeline:
+
+```ts
+const context = resolveTableColumnFormattingContextFromODataColumn(column);
+
+// например:
+// { role: "measure", type: "decimal" }
+```
+
+Числовые типы всегда принудительно считаются `measure`:
+
+- `decimal`;
+- `float`;
+- `double`;
+- `int`;
+- `byte`.
+
+Для остальных типов сохраняется `column.role`.
+
+Это влияет на базовое выравнивание и выбор formatter strategy.
+
+### `createTableColumnsFromODataMetadata`
+
+Создаёт одну leaf-колонку для каждого metadata property:
+
+```ts
+import { createTableColumnsFromODataMetadata } from "@ryuzaki13/react-foundation-lib/table";
+import type { EntityColumnProperty } from "@ryuzaki13/react-foundation-lib/odata-service";
+
+type ResultRow = {
+	AMOUNT: number;
+	NAME: string;
+};
+
+const metadataColumns = [
+	{
+		id: "AMOUNT",
+		type: "decimal",
+		originalType: "Edm.Decimal",
+		label: "Сумма",
+		semanticType: "none",
+		sortable: true,
+		filterable: true,
+		role: "measure"
+	},
+	{
+		id: "NAME",
+		type: "string",
+		originalType: "Edm.String",
+		label: "Наименование",
+		semanticType: "none",
+		sortable: true,
+		filterable: true,
+		role: "dimension"
+	}
+] satisfies EntityColumnProperty[];
+
+const columns = createTableColumnsFromODataMetadata<ResultRow>(metadataColumns);
+```
+
+Полученный shape:
+
+```ts
+[
+	{
+		id: "AMOUNT",
+		accessorKey: "AMOUNT",
+		header: "Сумма",
+		meta: {
+			align: "right",
+			formatting: {
+				id: "AMOUNT",
+				role: "measure",
+				type: "decimal"
+			}
+		}
+	},
+	{
+		id: "NAME",
+		accessorKey: "NAME",
+		header: "Наименование",
+		meta: {
+			align: "left",
+			formatting: {
+				id: "NAME",
+				role: "dimension",
+				type: "string"
+			}
+		}
+	}
+];
+```
+
+Header выбирается так:
+
+1. результат `options.resolveHeader(column)`;
+2. `column.label`;
+3. `column.id`.
+
+### Custom header и formatting
+
+```ts
+const columns = createTableColumnsFromODataMetadata<ResultRow>(metadataColumns, {
+	resolveHeader: (column) => (column.id === "AMOUNT" ? "Итого" : (column.label ?? column.id)),
+	resolveFormatting: (column) =>
+		column.id === "AMOUNT"
+			? {
+					emptyWhenZero: true,
+					overflowTooltip: true
+				}
+			: undefined
+});
+```
+
+`id`, `role` и `type` всегда берутся из metadata после merge custom options. Их нельзя подменить через `resolveFormatting`.
+
+Generated columns не содержат custom `cell`, business permissions, row action или server sort handler. Добавляйте это на уровне host.
+
+### Базовое выравнивание
+
+- `measure` получает `align: "right"`;
+- остальные role получают `align: "left"`.
+
+Это стартовое значение. Host может создать свои columns вручную или изменить возвращённые immutable copies.
+
+### `createTableColumnVisibilityFromODataMetadata`
+
+Строит стартовую карту:
+
+```ts
+const visibility = createTableColumnVisibilityFromODataMetadata(metadataColumns);
+
+// {
+//   CUSTOMER: false,
+//   CUSTOMER_Text: true,
+//   AMOUNT: true
+// }
+```
+
+Default правило:
+
+- большинство колонок видимы;
+- поле с `semanticType: "code"` скрывается, если `linkedColumnId` указывает на существующую metadata-колонку с `semanticType: "text"`;
+- code без реальной text-пары остаётся видимым.
+
+Колонки не удаляются из `TableColumnDef[]`. Visibility — отдельный state, поэтому пользовательский UI может снова показать code field.
+
+### Custom visibility
+
+```ts
+const visibility = createTableColumnVisibilityFromODataMetadata(metadataColumns, {
+	resolveVisible: (column) => column.id !== "TECHNICAL_FIELD"
+});
+```
+
+Если callback вернул boolean, default code/text правило больше не применяется для этой колонки.
+
+### `resolveStableColumnId`
+
+Порядок поиска:
+
+1. непустой строковый `column.id`;
+2. непустой строковый `accessorKey`;
+3. `undefined`.
+
+```ts
+resolveStableColumnId({
+	id: "amount",
+	accessorKey: "AMOUNT",
+	header: "Сумма"
+});
+// "amount"
+```
+
+Явный `id` имеет приоритет.
+
+Для `accessorFn` без `id` результат `undefined`.
+
+Функция проверяет `trim()` только на пустоту, но возвращает оригинальную строку без trimming.
+
+### `enrichTableColumnsWithODataFormatting`
+
+Используйте, когда columns уже созданы вручную, но им не хватает OData role/type:
+
+```ts
+const manualColumns: TableColumnDef<ResultRow>[] = [
+	{
+		id: "AMOUNT",
+		accessorKey: "AMOUNT",
+		header: "Сумма",
+		meta: {
+			align: "center",
+			formatting: {
+				emptyWhenZero: true
+			}
+		}
+	}
+];
+
+const enriched = enrichTableColumnsWithODataFormatting(manualColumns, metadataColumns);
+```
+
+Результат для leaf:
+
+```ts
+const enrichedMeta = {
+	align: "center",
+	formatting: {
+		emptyWhenZero: true,
+		id: "AMOUNT",
+		role: "measure",
+		type: "decimal"
+	}
+};
+```
+
+Существующие `align` и formatting options сохраняются.
+
+Если и `role`, и `type` уже truthy, adapter не перезаписывает formatting:
+
+```ts
+const existingFormatting = {
+	formatting: {
+		role: "dimension",
+		type: "string"
+	}
+};
+```
+
+Если отсутствует хотя бы одно из двух полей, adapter дозаполняет metadata-контекст и задаёт оба `role/type` из metadata.
+
+### Grouped columns
+
+Adapter рекурсивно обходит только leaf columns:
+
+```ts
+const columns: TableColumnDef<ResultRow>[] = [
+	{
+		id: "financial",
+		header: "Финансы",
+		columns: [
+			{
+				id: "AMOUNT",
+				accessorKey: "AMOUNT",
+				header: "Сумма"
+			}
+		]
+	}
+];
+```
+
+Group `financial` не сопоставляется с OData property. Leaf `AMOUNT` сопоставляется.
+
+### Custom metadata lookup
+
+```ts
+const enriched = enrichTableColumnsWithODataFormatting(columns, metadataColumns, {
+	resolveMetadataColumn: ({ columnId, metadataColumnsById }) => {
+		const sourceId = columnId === "displayAmount" ? "AMOUNT" : columnId;
+
+		return metadataColumnsById.get(sourceId);
+	}
+});
+```
+
+Это полезно для view-column, id которой отличается от backend property.
+
+Callback должен быть pure и не мутировать переданную `Map` или column definitions.
+
+## Построение дерева из `id` и `parentId`
+
+### `TreeTableFlatHierarchy<TData>`
+
+Контракт говорит, как извлечь связь из любой формы строки:
+
+```ts
+interface TreeTableFlatHierarchy<TData> {
+	getRowId: (row: TData) => string;
+	getParentRowId: (row: TData) => string | null | undefined;
+}
+```
+
+Можно использовать любые имена backend-полей:
+
+```ts
+const hierarchy: TreeTableFlatHierarchy<SapRow> = {
+	getRowId: (row) => row.NODE_KEY,
+	getParentRowId: (row) => row.PARENT_KEY || null
+};
+```
+
+`null` и `undefined` означают root.
+
+### `buildTreeTableRows`
+
+```ts
+const result = buildTreeTableRows(items, hierarchy);
+```
+
+Функция:
+
+1. Один раз проходит по исходным строкам и строит индексы.
+2. Определяет обычные roots, orphans и self-references.
+3. Рекурсивно создаёт shallow copies узлов.
+4. Добавляет непустой `children`.
+5. Не теряет компоненту, если весь набор замкнут в цикл.
+6. Возвращает дерево и diagnostics.
+
+Исходный `items` не мутируется.
+
+### Результат `TreeTableBuildResult`
+
+```ts
+interface TreeTableBuildResult<TData> {
+	rows: TreeTableRowNode<TData>[];
+	rowById: Map<string, TData>;
+	allRowIds: string[];
+	rootRowIds: string[];
+	orphanRowIds: string[];
+	duplicateRowIds: string[];
+	cyclicRowIds: string[];
+}
+```
+
+| Поле              | Содержимое                                        |
+| ----------------- | ------------------------------------------------- |
+| `rows`            | корневые shallow-copy узлы с вложенным `children` |
+| `rowById`         | первые исходные объекты по id                     |
+| `allRowIds`       | все принятые уникальные id в исходном порядке     |
+| `rootRowIds`      | id итоговых roots в порядке построения            |
+| `orphanRowIds`    | строки с отсутствующим parent                     |
+| `duplicateRowIds` | повторившиеся id                                  |
+| `cyclicRowIds`    | точки, в которых алгоритм обнаружил цикл          |
+
+### `TreeTableRowNode<TData>`
+
+```ts
+type TreeTableRowNode<TData> = TData & {
+	children?: TreeTableRowNode<TData>[];
+};
+```
+
+Узел сохраняет все поля исходной строки и при наличии детей получает `children`.
+
+### Shallow copy
+
+Копируется только верхний уровень:
+
+```ts
+const original = {
+	id: "root",
+	parentId: null,
+	settings: { color: "red" }
+};
+
+const node = buildTreeTableRows([original], hierarchy).rows[0];
+
+node !== original; // true
+node.settings === original.settings; // true
+```
+
+Не мутируйте nested objects через tree node, если они принадлежат query cache или props.
+
+### Зарезервированное поле `children`
+
+Функция использует поле `children`. Если исходный `TData` уже содержит business-поле с этим именем, возможен конфликт:
+
+- при найденных детях оно будет заменено построенным массивом;
+- при отсутствии найденных детей исходное поле останется в shallow copy.
+
+Предпочитайте input type без собственного `children` или предварительно переименуйте business-поле на boundary.
+
+### Обычные roots
+
+```ts
+const roots = [
+	{ id: "root-1", parentId: null },
+	{ id: "root-2", parentId: undefined }
+];
+```
+
+Обе строки считаются корневыми.
+
+### Orphan
+
+```ts
+const orphan = { id: "orphan", parentId: "missing" };
+```
+
+Строка не удаляется. Она поднимается в root:
+
+```ts
+result.rootRowIds.includes("orphan"); // true
+result.orphanRowIds.includes("orphan"); // true
+```
+
+Это позволяет UI показать повреждённые данные, а diagnostics — сообщить о проблеме.
+
+### Self-reference
+
+```ts
+const selfReferencedRow = { id: "a", parentId: "a" };
+```
+
+Строка становится root и попадает в `cyclicRowIds`.
+
+### Цикл из нескольких строк
+
+```ts
+[
+	{ id: "a", parentId: "b" },
+	{ id: "b", parentId: "a" }
+];
+```
+
+Явного root нет. Функция начинает с первого непосещённого id, строит доступную цепочку и обрывает обратную ссылку:
+
+```ts
+[
+	{
+		id: "a",
+		parentId: "b",
+		children: [{ id: "b", parentId: "a" }]
+	}
+];
+```
+
+`cyclicRowIds` — diagnostics точек обнаружения, а не гарантированный полный список всех участников strongly connected component. В примере он может содержать только `"a"`. Если бизнесу нужен полный анализ графа, выполняйте отдельную validation до построения UI-дерева.
+
+### Duplicate id
+
+```ts
+[
+	{ id: "root", title: "Первый" },
+	{ id: "root", title: "Повтор" }
+];
+```
+
+Используется первое вхождение. Следующие игнорируются. `duplicateRowIds` содержит уникальный проблемный id, а не число повторов.
+
+### Порядок
+
+- `allRowIds` сохраняет порядок первых уникальных входных строк;
+- children одного parent идут в порядке входных строк;
+- root candidates идут в порядке входных строк;
+- циклическая компонента без root начинается с первого непосещённого id.
+
+Функция не сортирует по title, id или business order.
+
+### Validation id
+
+`buildTreeTableRows` не обрезает и не запрещает пустой id:
+
+```ts
+getRowId: () => "";
+```
+
+Технически такой ключ попадёт в `Map`. Это почти всегда ошибка данных. Валидируйте uniqueness и non-empty string на external boundary.
+
+### Интеграция с TanStack Table
+
+```ts
+const treeData = buildTreeTableRows(rows, hierarchy);
+
+const table = useTable({
+	features: foundationTableFeatures,
+	data: treeData.rows,
+	columns,
+	getRowId: (row) => hierarchy.getRowId(row),
+	getSubRows: (row) => row.children
+});
+```
+
+Для selection можно передать:
+
+```ts
+useTableRowSelection({
+	availableRowIds: treeData.allRowIds,
+	rowById: treeData.rowById,
+	selectionMode: "multi",
+	onRowSelectionChange
+});
+```
+
+Callback получит исходные `TData` из `rowById`, а не shallow-copy узлы с `children`.
+
+## Транспонирование аналитических строк
+
+### Когда нужна функция
+
+Исходные факты часто выглядят так:
+
+```ts
+[
+	{ REGION: "Урал", CITY: "Екатеринбург", AMOUNT: 10 },
+	{ REGION: "Урал", CITY: "Екатеринбург", AMOUNT: 20 },
+	{ REGION: "Урал", CITY: "Пермь", AMOUNT: 30 }
+];
+```
+
+Backend не прислал group rows. `transposeFlatRowsToTreeTableRows` создаст:
+
+```text
+Урал                    synthetic level 0
+├─ Екатеринбург         synthetic level 1
+│  ├─ fact AMOUNT 10    leaf
+│  └─ fact AMOUNT 20    leaf
+└─ Пермь                synthetic level 1
+   └─ fact AMOUNT 30    leaf
+```
+
+### `TreeTableTransposeFlatRowsOptions`
+
+```ts
+type TreeTableTransposeFlatRowsOptions = {
+	hierarchyLevels: readonly {
+		columnId: string;
+		expandByDefault?: boolean;
+	}[];
+};
+```
+
+Порядок `hierarchyLevels` задаёт уровни сверху вниз.
+
+```ts
+{
+	hierarchyLevels: [{ columnId: "REGION" }, { columnId: "CITY" }];
+}
+```
+
+### Нормализация levels
+
+Перед преобразованием:
+
+- `columnId` обрезается через `trim()`;
+- пустые id удаляются;
+- повторяющиеся id удаляются;
+- сохраняется первое вхождение.
+
+```ts
+{
+	hierarchyLevels: [{ columnId: " REGION " }, { columnId: "" }, { columnId: "REGION" }, { columnId: "CITY" }];
+}
+```
+
+Превращается в levels `REGION`, `CITY`.
+
+Если после нормализации levels нет, функция возвращает `[]`, даже если `rows` непустой.
+
+### `expandByDefault`
+
+Поле является частью общего публичного описания level, но сама функция `transposeFlatRowsToTreeTableRows` в текущей реализации его не использует и не записывает в строки.
+
+Раскрытие — состояние UI. Передавайте `expandByDefault` своему downstream runtime или вычисляйте initial expanded ids отдельно. Не ожидайте, что вызов transpose автоматически раскроет узлы.
+
+### Служебные поля
+
+Каждая выходная строка содержит:
+
+| Constant                                    | Фактическое имя поля     | Значение                                |
+| ------------------------------------------- | ------------------------ | --------------------------------------- |
+| `TREE_TABLE_TRANSPOSED_ROW_ID_FIELD`        | `__treeTableRowId`       | сгенерированный уникальный id           |
+| `TREE_TABLE_TRANSPOSED_PARENT_ROW_ID_FIELD` | `__treeTableParentRowId` | id parent или `null`                    |
+| `TREE_TABLE_TRANSPOSED_LABEL_FIELD`         | `__treeTableLabel`       | label текущего узла                     |
+| `TREE_TABLE_TRANSPOSED_LEVEL_FIELD`         | `__treeTableLevel`       | индекс уровня/глубина leaf              |
+| `TREE_TABLE_TRANSPOSED_SYNTHETIC_FIELD`     | `__treeTableSynthetic`   | `true` для group, `false` для fact leaf |
+
+Не пишите строковые имена вручную. Используйте constants:
+
+```ts
+const rowId = row[TREE_TABLE_TRANSPOSED_ROW_ID_FIELD];
+```
+
+Так refactor имени поля будет проверяться TypeScript.
+
+### Зарезервированные имена
+
+Input row не должен использовать business-поля:
+
+```text
+__treeTableRowId
+__treeTableParentRowId
+__treeTableLabel
+__treeTableLevel
+__treeTableSynthetic
+```
+
+Для leaf функция сначала spread-ит исходный объект, затем записывает служебные поля. Совпавшие business-значения будут перезаписаны.
+
+### Synthetic row
+
+Пример group-узла:
+
+```ts
+const syntheticRow = {
+	__treeTableRowId: '[["REGION","Урал"]]',
+	__treeTableParentRowId: null,
+	__treeTableLabel: "Урал",
+	__treeTableLevel: 0,
+	__treeTableSynthetic: true,
+	REGION: "Урал"
+};
+```
+
+Synthetic row содержит:
+
+- служебные поля;
+- только значение колонки текущего уровня;
+- не содержит `AMOUNT` и остальные business-поля факта;
+- не содержит агрегированную сумму.
+
+UI должен проверять `__treeTableSynthetic` прежде чем считать business field обязательным.
+
+### Leaf row
+
+Пример листа:
+
+```ts
+const leafRow = {
+	REGION: "Урал",
+	CITY: "Екатеринбург",
+	AMOUNT: 10,
+	__treeTableRowId: "...#row:0",
+	__treeTableParentRowId: "...",
+	__treeTableLabel: "Екатеринбург",
+	__treeTableLevel: 2,
+	__treeTableSynthetic: false
+};
+```
+
+Leaf сохраняет все enumerable-поля исходной строки. Служебные поля добавляются поверх них.
+
+### Как создаются group id
+
+ID строится из полного пути пар `columnId + string label` и сериализуется в JSON:
+
+```ts
+[
+	["REGION", "Урал"],
+	["CITY", "Екатеринбург"]
+];
+```
+
+Это даёт важные свойства:
+
+- одинаковый city под разными region создаёт разные nodes;
+- одинаковый label в разных level columns не смешивается;
+- повторяющийся путь переиспользует один synthetic node;
+- id детерминирован для одинакового нормализованного пути.
+
+Не парсите формат id ради business-логики. Считайте его opaque string.
+
+### Как создаются leaf id
+
+К group path добавляется индекс исходной строки:
+
+```text
+<serialized-path>#row:0
+<serialized-path>#row:1
+```
+
+Следствие: leaf id стабилен только пока порядок input rows стабилен. После server sorting или insertion индекс может измениться.
+
+Если selection листьев должен переживать reorder, текущий helper не принимает custom leaf id. Host должен:
+
+- хранить устойчивый business id в исходной строке для восстановления selection;
+- либо использовать другой заранее подготовленный hierarchy contract;
+- либо отдельно мапить business selection, не считая generated leaf id доменным идентификатором.
+
+### Преобразование значений level
+
+Правила label:
+
+| Исходное значение | Результат                                        |
+| ----------------- | ------------------------------------------------ |
+| `null`            | level пропускается                               |
+| `undefined`       | level пропускается                               |
+| `""`              | level пропускается                               |
+| `0`               | label `"0"`                                      |
+| `false`           | label `"false"`                                  |
+| `123`             | label `"123"`                                    |
+| `"  "`            | непустой whitespace label, level не пропускается |
+
+Значение не trim-ится. Если whitespace считается пустым по бизнес-контракту, нормализуйте backend data до вызова.
+
+Число `1` и строка `"1"` становятся одинаковым label и одним group path. Synthetic row сохранит исходное значение первого встретившегося факта в поле level column.
+
+### Пустой промежуточный level
+
+```ts
+const rowWithEmptyLevel = {
+	REGION: "Урал",
+	CITY: "",
+	STORE: "Магазин 1"
+};
+```
+
+При levels `REGION`, `CITY`, `STORE` пустой `CITY` пропускается. `STORE` становится прямым ребёнком `REGION`.
+
+При этом `__treeTableLevel` synthetic STORE будет равен исходному индексу level `2`, а не визуальной глубине `1`. Leaf получит `3`.
+
+Не используйте служебный level как гарантированную DOM depth при пропущенных значениях. Фактическую глубину после `buildTreeTableRows` вычисляет tree runtime.
+
+### Строка без единого level
+
+Если у факта все hierarchy values равны `null`, `undefined` или `""`, функция полностью пропускает строку: не создаёт ни group, ни leaf.
+
+Если такое поведение неприемлемо, заранее подставьте явный label вроде `"Без группы"`.
+
+### Порядок output
+
+Функция обходит input rows по порядку. Для каждой строки она:
+
+1. Добавляет ещё не созданные synthetic nodes её пути.
+2. Добавляет leaf.
+
+Поэтому flat output отражает порядок первого появления групп и листьев. После `buildTreeTableRows` children каждой группы сохраняют этот порядок.
+
+### Никакой агрегации
+
+Функция не вычисляет:
+
+- суммы;
+- counts;
+- min/max;
+- subtotal;
+- состояние mixed selection;
+- наследование permissions.
+
+Если group row должен показывать total, получите aggregate с backend или вычислите его отдельной domain/presentation функцией с явно заданной политикой.
+
+## Полный pipeline для аналитического дерева
+
+### 1. Импорты
+
+```ts
+import {
+	buildTreeTableRows,
+	transposeFlatRowsToTreeTableRows,
+	TREE_TABLE_TRANSPOSED_LABEL_FIELD,
+	TREE_TABLE_TRANSPOSED_PARENT_ROW_ID_FIELD,
+	TREE_TABLE_TRANSPOSED_ROW_ID_FIELD,
+	TREE_TABLE_TRANSPOSED_SYNTHETIC_FIELD,
+	type TreeTableTransposedRow
+} from "@ryuzaki13/react-foundation-lib/tree-table";
+```
+
+### 2. Исходный тип
+
+```ts
+type SalesFact = {
+	REGION: string;
+	CITY: string;
+	AMOUNT: number;
+};
+```
+
+### 3. Flat hierarchy
+
+```ts
+const transposed = transposeFlatRowsToTreeTableRows(facts, {
+	hierarchyLevels: [{ columnId: "REGION" }, { columnId: "CITY" }]
+});
+```
+
+TypeScript выводит:
+
+```ts
+TreeTableTransposedRow < SalesFact > [];
+```
+
+Фактически synthetic row не имеет всех business fields `SalesFact`, хотя intersection type предоставляет их compile-time. Поэтому runtime-код обязан проверять флаг:
+
+```ts
+function readAmount(row: TreeTableTransposedRow<SalesFact>): number | undefined {
+	if (row[TREE_TABLE_TRANSPOSED_SYNTHETIC_FIELD]) {
+		return undefined;
+	}
+
+	return row.AMOUNT;
+}
+```
+
+### 4. Nested hierarchy
+
+```ts
+const tree = buildTreeTableRows(transposed, {
+	getRowId: (row) => row[TREE_TABLE_TRANSPOSED_ROW_ID_FIELD],
+	getParentRowId: (row) => row[TREE_TABLE_TRANSPOSED_PARENT_ROW_ID_FIELD]
+});
+```
+
+### 5. Tree label column
+
+```ts
+import type { TableColumnDef } from "@ryuzaki13/react-foundation-lib/table";
+
+type RuntimeRow = TreeTableTransposedRow<SalesFact>;
+
+const columns: TableColumnDef<RuntimeRow>[] = [
+	{
+		id: "treeLabel",
+		accessorFn: (row) => row[TREE_TABLE_TRANSPOSED_LABEL_FIELD],
+		header: "Структура"
+	},
+	{
+		id: "amount",
+		accessorFn: (row) => (row[TREE_TABLE_TRANSPOSED_SYNTHETIC_FIELD] ? undefined : row.AMOUNT),
+		header: "Сумма",
+		meta: { align: "right" }
+	}
+];
+```
+
+### 6. TanStack instance
+
+```ts
+const table = useTable({
+	features: foundationTableFeatures,
+	data: tree.rows,
+	columns,
+	getRowId: (row) => row[TREE_TABLE_TRANSPOSED_ROW_ID_FIELD],
+	getSubRows: (row) => row.children
+});
+```
+
+### Диагностика после pipeline
+
+Transposition создаёт собственные уникальные ids, поэтому обычный результат не должен содержать duplicates, orphans или cycles.
+
+Проверка полезна для раннего обнаружения неожиданного контракта:
+
+```ts
+if (tree.duplicateRowIds.length > 0 || tree.orphanRowIds.length > 0 || tree.cyclicRowIds.length > 0) {
+	console.warn("Некорректная иерархия таблицы", {
+		duplicates: tree.duplicateRowIds,
+		orphans: tree.orphanRowIds,
+		cycles: tree.cyclicRowIds
+	});
+}
+```
+
+Не логируйте целые backend rows, если они содержат персональные или чувствительные данные.
+
+## Controlled state и сохранение настроек
+
+### Controlled и uncontrolled простыми словами
+
+Uncontrolled state хранится внутри UI-компонента:
+
+```tsx
+<Table defaultColumnOrder={["name", "amount"]} />
+```
+
+Controlled state принадлежит host:
+
+```tsx
+<Table columnOrder={columnOrder} onColumnOrderChange={setColumnOrder} />
+```
+
+Lib helpers подходят обоим вариантам, но сами ничего не сохраняют.
+
+### Восстановление сохранённого order
+
+```ts
+const actualColumnIds = columns.map(resolveStableColumnId).filter((id): id is string => id !== undefined);
+
+const columnOrder = resolveTableColumnOrder({
+	ids: actualColumnIds,
+	order: persistedConfig.columnOrder
+});
+```
+
+Это внешняя restore-boundary: stale id удаляются, новые columns добавляются.
+
+### Восстановление sizing
+
+```ts
+const columnSizing = normalizeTableColumnSizing(persistedConfig.columnSizing, 80);
+```
+
+После этого полезно удалить ключи несуществующих колонок на стороне config owner, потому что `normalizeTableColumnSizing` проверяет форму width, но не знает актуальный список колонок.
+
+### Сохраняйте state по id
+
+Хороший persisted shape:
+
+```ts
+type TablePreferences = {
+	version: 1;
+	columnOrder: string[];
+	columnSizing: Record<string, number>;
+	columnVisibility: Record<string, boolean>;
+};
+```
+
+Не сохраняйте:
+
+- TanStack table instance;
+- `Map` без явной сериализации;
+- functions из column definitions;
+- React elements;
+- DOM nodes;
+- backend secrets;
+- индекс строки как устойчивый id.
+
+### Версионируйте config
+
+Если меняются column ids или семантика width, повышайте версию и выполняйте migration на restore-boundary.
+
+```ts
+type StoredTablePreferences = { version: 1; order: string[] } | { version: 2; columnOrder: string[] };
+```
+
+Не смешивайте normalization пользовательского draft с migration persisted payload. Draft resize/reorder должен сохранять введённое состояние буквально до явной save-boundary.
+
+## Server-side данные и пагинация
+
+### Table state не является backend query
+
+`columnOrder`, `columnSizing`, `rowSelection` и expansion — локальный UI state.
+
+Sorting/filter/paging конкретной OData entity принадлежит entity/API owner. Не передавайте `TableColumnOrderState` как `$orderby`: визуальный порядок колонок и порядок строк — разные понятия.
+
+### Новая страница данных
+
+После получения нового snapshot:
+
+```ts
+const availableRowIds = rows.map((row) => row.id);
+
+const nextSelection = pruneTableRowSelection(selection, availableRowIds, selectionMode);
+```
+
+Это очищает selection удалённых или больше не загруженных строк.
+
+### Infinite loading
+
+Если несколько страниц объединены в один массив, `availableRowIds` должен включать все загруженные уникальные строки.
+
+Не выполняйте network request из cell renderer. Request должен запускаться query/loader/virtualizer boundary.
+
+### Backend grouping и transposition
+
+`transposeFlatRowsToTreeTableRows` создаёт client-side presentation groups. Она не заменяет server grouping для большого набора:
+
+- helper видит только загруженные rows;
+- total по одной странице не является total всего dataset;
+- одинаковая группа на разных страницах может появляться частями;
+- generated leaf id зависит от индекса объединённого массива.
+
+Для аналитической таблицы предпочитайте backend totals и устойчивый server contract.
+
+## React, browser и SSR
+
+### Pure helpers
+
+Большинство функций можно вызывать в browser, Node.js и unit tests:
+
+- layout/order/sizing;
+- row/cell selection;
+- OData column adapter;
+- `buildTreeTableRows`;
+- `transposeFlatRowsToTreeTableRows`;
+- `resolveTableLength`.
+
+Они не выполняют I/O и не используют global state.
+
+### React hook
+
+`useTableRowSelection` требует React 19-compatible runtime и вызывается только:
+
+- на верхнем уровне function component;
+- или на верхнем уровне custom hook.
+
+Нельзя:
+
+```ts
+if (enabled) {
+	useTableRowSelection({
+		availableRowIds,
+		rowById,
+		selectionMode: "multi"
+	});
+}
+```
+
+Нужно:
+
+```ts
+const selection = useTableRowSelection({
+	availableRowIds,
+	rowById,
+	selectionMode: enabled ? "multi" : "none"
+});
+```
+
+### Browser helper
+
+`isTableInteractiveElement` использует `Element` и `closest` только если DOM доступен. При SSR/Node без DOM возвращается `false`.
+
+Не используйте это поведение как security check. Это только UI-event helper.
+
+### Hydration и стабильные id
+
+Если host использует SSR, `getRowId`, column ids и initial state должны быть детерминированы на server и client. Не используйте `Math.random()` или `Date.now()` при render.
+
+Сам пакет не запускает SSR и не создаёт hydration boundary.
+
+### Side effects
+
+У модулей нет обязательной глобальной инициализации, singleton или cleanup.
+
+Side effects появляются только у host:
+
+- React state/effects;
+- storage persistence;
+- event listeners;
+- DnD runtime;
+- backend query.
+
+## Производительность
+
+### Стабильные columns
+
+Не создавайте большой массив columns заново без необходимости:
+
+```tsx
+const columns = useMemo<TableColumnDef<Row>[]>(() => buildColumns(metadata), [metadata]);
+```
+
+При этом не добавляйте `useMemo` механически к маленькой константе вне component.
+
+### `buildTreeTableRows`
+
+Ожидаемая сложность построения индексов и дерева близка к `O(n)` для `n` строк, потому что используются `Map` и `Set`.
+
+Каждый принятый узел получает shallow copy. Для очень глубокого дерева используется рекурсия, поэтому патологическая цепочка в десятки тысяч уровней может переполнить call stack. Валидируйте разумную глубину внешних данных.
+
+В React вычисляйте дерево по identity входных данных:
+
+```tsx
+const tree = useMemo(() => buildTreeTableRows(rows, hierarchy), [rows, hierarchy]);
+```
+
+Объект `hierarchy` тоже должен быть стабильным. Вынесите его за component или мемоизируйте.
+
+### `transposeFlatRowsToTreeTableRows`
+
+Сложность примерно `O(rows × levels)`.
+
+Максимальный output без учёта дедупликации groups может приближаться к:
+
+```text
+rows × (hierarchyLevels + 1)
+```
+
+На практике общие synthetic paths переиспользуются.
+
+Не транспонируйте один и тот же большой snapshot в каждом cell render.
+
+### Selection
+
+- row prune создаёт `Set` доступных ids;
+- cell prune создаёт maps порядка и сортирует выбранные координаты;
+- equality helpers строят списки/sets.
+
+Для обычного пользовательского selection этого достаточно. Для выбора сотен тысяч строк нужна другая server/domain модель.
+
+### OData columns
+
+`createTableColumnVisibilityFromODataMetadata` и enrichment создают `Map` metadata по id. Вызывайте их при изменении metadata/columns, а не для каждой ячейки.
+
+## Тестирование consumer-кода
+
+### Pure selection test
+
+```ts
+import { describe, expect, it } from "vitest";
+
+import { pruneTableRowSelection, toggleTableRowSelection } from "@ryuzaki13/react-foundation-lib/table";
+
+describe("order selection", () => {
+	it("оставляет одну строку в single mode", () => {
+		const selected = toggleTableRowSelection({ old: true }, "new", "single");
+
+		expect(selected).toEqual({ new: true });
+	});
+
+	it("удаляет отсутствующую строку", () => {
+		expect(pruneTableRowSelection({ deleted: true }, ["actual"], "multi")).toEqual({});
+	});
+});
+```
+
+### Tree diagnostics test
+
+```ts
+it("показывает orphan как root", () => {
+	const result = buildTreeTableRows(
+		[
+			{
+				id: "orphan",
+				parentId: "missing",
+				title: "Сирота"
+			}
+		],
+		{
+			getRowId: (row) => row.id,
+			getParentRowId: (row) => row.parentId
+		}
+	);
+
+	expect(result.rootRowIds).toEqual(["orphan"]);
+	expect(result.orphanRowIds).toEqual(["orphan"]);
+});
+```
+
+### Transposition test
+
+Проверяйте не полный generated JSON id, а отношения через constants:
+
+```ts
+const rows = transposeFlatRowsToTreeTableRows([{ REGION: "Урал", CITY: "Пермь", AMOUNT: 10 }], {
+	hierarchyLevels: [{ columnId: "REGION" }, { columnId: "CITY" }]
+});
+
+const region = rows[0];
+const city = rows[1];
+const fact = rows[2];
+
+expect(city[TREE_TABLE_TRANSPOSED_PARENT_ROW_ID_FIELD]).toBe(region[TREE_TABLE_TRANSPOSED_ROW_ID_FIELD]);
+
+expect(fact[TREE_TABLE_TRANSPOSED_SYNTHETIC_FIELD]).toBe(false);
+```
+
+### DOM helper test
+
+Нужен jsdom:
+
+```ts
+// @vitest-environment jsdom
+
+it("не активирует строку по клику на кнопку", () => {
+	const button = document.createElement("button");
+
+	expect(isTableInteractiveElement(button)).toBe(true);
+});
+```
+
+### React hook test
+
+Проверяйте пользовательское поведение, а не implementation details:
+
+- изменение `selectionMode` очищает/сужает selection;
+- исчезнувший `availableRowId` удаляется;
+- `canSelect: false` блокирует активацию;
+- callback получает исходные rows;
+- controlled `selectedRowIds` синхронизирует визуальный state.
+
+Используйте React testing library и `act`, если test напрямую вызывает state update.
+
+### Что ещё проверять в host
+
+- row/column ids остаются стабильными после sort;
+- DnD не двигает locked/pinned headers;
+- button в ячейке не меняет row selection;
+- keyboard activation доступна;
+- tree orphan/cycle diagnostics наблюдаемы;
+- synthetic rows не читаются как обычные business facts;
+- server paging не выдаётся за полный dataset.
+
+## Полная карта API `table`
+
+Все имена из этого раздела импортируются из:
+
+```ts
+"@ryuzaki13/react-foundation-lib/table";
+```
+
+### Layout
+
+| API                                             | Вид      | Назначение                               |
+| ----------------------------------------------- | -------- | ---------------------------------------- |
+| `TableColumnLayoutItem<TColumnId, TWidth>`      | type     | элемент `{ id, width }`                  |
+| `ResolveTableColumnOrderArgs<TColumnId>`        | type     | аргументы восстановления порядка         |
+| `BuildTableColumnLayoutArgs<TColumnId, TWidth>` | type     | ids и `getWidth`                         |
+| `resolveTableColumnOrder`                       | function | сохранённый order + новые актуальные ids |
+| `buildTableColumnLayout`                        | function | строит layout по ids и width resolver    |
+
+### Column order
+
+| API                                  | Вид      | Назначение                          |
+| ------------------------------------ | -------- | ----------------------------------- |
+| `ReorderTableHeaderColumnsArgs`      | type     | DnD input contract                  |
+| `TableColumnOrderState`              | type     | mutable-массив `string[]` для state |
+| `normalizeTableColumnOrder`          | function | удаляет пустые и повторяющиеся id   |
+| `reorderTableHeaderColumns`          | function | вычисляет следующий top-level order |
+| `resolveReorderedTableHeaderColumns` | function | возвращает change или `null`        |
+
+### Column sizing
+
+| API                              | Вид      | Назначение                             |
+| -------------------------------- | -------- | -------------------------------------- |
+| `TableColumnSizingState`         | type     | `Record<columnId, widthPx>`            |
+| `DEFAULT_TABLE_COLUMN_MIN_WIDTH` | constant | default minimum `60` px                |
+| `normalizeTableColumnWidth`      | function | finite integer width не меньше minimum |
+| `normalizeTableColumnSizing`     | function | очищает весь sizing state              |
+| `patchTableColumnWidth`          | function | immutable add/update одной ширины      |
+| `removeTableColumnWidth`         | function | immutable delete одной ширины          |
+
+### Row selection
+
+| API                           | Вид        | Назначение                             |
+| ----------------------------- | ---------- | -------------------------------------- | ------ | ------ |
+| `TableSelectionMode`          | type       | `none                                  | single | multi` |
+| `areTableRowSelectionsEqual`  | function   | сравнивает активные row ids            |
+| `normalizeTableSelectionMode` | function   | normalizes unknown config value        |
+| `pruneTableRowSelection`      | function   | удаляет недоступный/лишний selection   |
+| `toggleTableRowSelection`     | function   | вычисляет state после активации        |
+| `useTableRowSelection`        | React hook | state, controlled sync и rows callback |
+
+`RowSelectionState` принадлежит `@tanstack/react-table` и не реэкспортируется этим модулем.
+
+### Cell selection
+
+| API                                         | Вид      | Назначение                           |
+| ------------------------------------------- | -------- | ------------------------------------ | ----------------- |
+| `TableCellSelectionMode`                    | type     | cardinality выбора ячеек             |
+| `TableCellSelectionActivationMode`          | type     | `direct                              | primary-modifier` |
+| `TableCellCoordinates`                      | type     | `rowId + columnId`                   |
+| `TableCellSelectionState`                   | type     | readonly-массив координат            |
+| `TableSelectionModifierEvent`               | type     | минимальный modifier event contract  |
+| `areTableCellSelectionsEqual`               | function | set-equality координат               |
+| `pruneTableCellSelection`                   | function | фильтрует, дедуплицирует и сортирует |
+| `toggleTableCellSelection`                  | function | включает/выключает координату        |
+| `normalizeTableCellSelectionActivationMode` | function | нормализует activation config        |
+| `shouldActivateTableCellSelection`          | function | проверяет direct/Ctrl/Command flow   |
+
+### Column contracts
+
+| API                              | Вид       | Назначение                                        |
+| -------------------------------- | --------- | ------------------------------------------------- | ------ | ------ |
+| `TableColumnAlign`               | type      | `left                                             | center | right` |
+| `TableColumnFormattingMeta`      | type      | runtime formatting config с optional id/role/type |
+| `TableColumnFormattingMetaInput` | type      | custom formatting без auto id/role/type           |
+| `TableColumnMeta`                | interface | width, align, mergeDuplicates, formatting         |
+| `TableColumnDef<TData, TValue>`  | type      | foundation TanStack column definition             |
+| `TableColumnVisibilityState`     | type      | TanStack v9 visibility state                      |
+
+### TanStack foundation types
+
+| API                                    | Вид      | Назначение                     |
+| -------------------------------------- | -------- | ------------------------------ |
+| `foundationTableFeatures`              | constant | единый runtime features object |
+| `FoundationTableFeatures`              | type     | тип features object            |
+| `FoundationTableInstance<TData>`       | type     | Table instance                 |
+| `FoundationTableRow<TData>`            | type     | runtime row                    |
+| `FoundationTableColumn<TData, TValue>` | type     | runtime column                 |
+| `FoundationTableCell<TData, TValue>`   | type     | runtime cell                   |
+| `FoundationTableHeader<TData, TValue>` | type     | runtime header                 |
+| `FoundationTableState`                 | type     | полное состояние features      |
+
+### OData adapter
+
+| API                                                   | Вид       | Назначение                       |
+| ----------------------------------------------------- | --------- | -------------------------------- |
+| `CreateTableColumnsFromODataMetadataOptions`          | interface | header/formatting resolvers      |
+| `EnrichTableColumnsWithODataFormattingOptions`        | interface | custom metadata lookup           |
+| `CreateTableColumnVisibilityFromODataMetadataOptions` | interface | custom visibility resolver       |
+| `resolveTableColumnFormattingContextFromODataColumn`  | function  | OData property → role/type       |
+| `resolveStableColumnId`                               | function  | explicit id или accessorKey      |
+| `createTableColumnVisibilityFromODataMetadata`        | function  | стартовый visibility state       |
+| `createTableColumnsFromODataMetadata`                 | function  | metadata → generated columns     |
+| `enrichTableColumnsWithODataFormatting`               | function  | metadata → existing leaf columns |
+
+### Small runtime helpers
+
+| API                            | Вид      | Назначение                           |
+| ------------------------------ | -------- | ------------------------------------ |
+| `getTableColumnMeta`           | function | читает `column.meta`                 |
+| `getTableColumnFormattingMeta` | function | читает `column.meta.formatting`      |
+| `resolveTableLength`           | function | число → `em`, строка без изменений   |
+| `isTableInteractiveElement`    | function | распознаёт nested interactive target |
+
+## Полная карта API `tree-table`
+
+Все имена из этого раздела импортируются из:
+
+```ts
+"@ryuzaki13/react-foundation-lib/tree-table";
+```
+
+### Построение дерева
+
+| API                             | Вид       | Назначение                           |
+| ------------------------------- | --------- | ------------------------------------ |
+| `TreeTableFlatHierarchy<TData>` | interface | getters row id и parent id           |
+| `TreeTableRowNode<TData>`       | type      | строка с optional recursive children |
+| `TreeTableBuildResult<TData>`   | interface | tree, indexes и diagnostics          |
+| `buildTreeTableRows`            | function  | flat id/parent rows → nested forest  |
+
+### Транспонирование
+
+| API                                 | Вид      | Назначение                        |
+| ----------------------------------- | -------- | --------------------------------- |
+| `TreeTableTransposedRowMeta`        | type     | пять служебных полей              |
+| `TreeTableTransposedRow<TData>`     | type     | business row + service metadata   |
+| `TreeTableTransposeFlatRowsLevel`   | type     | один hierarchy column level       |
+| `TreeTableTransposeFlatRowsOptions` | type     | массив levels                     |
+| `transposeFlatRowsToTreeTableRows`  | function | facts → synthetic groups + leaves |
+
+### Constants служебных полей
+
+| API                                         | Значение                   |
+| ------------------------------------------- | -------------------------- |
+| `TREE_TABLE_TRANSPOSED_ROW_ID_FIELD`        | `"__treeTableRowId"`       |
+| `TREE_TABLE_TRANSPOSED_PARENT_ROW_ID_FIELD` | `"__treeTableParentRowId"` |
+| `TREE_TABLE_TRANSPOSED_LABEL_FIELD`         | `"__treeTableLabel"`       |
+| `TREE_TABLE_TRANSPOSED_LEVEL_FIELD`         | `"__treeTableLevel"`       |
+| `TREE_TABLE_TRANSPOSED_SYNTHETIC_FIELD`     | `"__treeTableSynthetic"`   |
+
+## Типичные ошибки
+
+### Импортировать всё из package root
+
+```ts
+// Неверно.
+import { TableColumnDef } from "@ryuzaki13/react-foundation-lib";
+```
+
+Используйте точный subpath и `import type` для типа.
+
+### Ожидать React component от `table`
+
+```tsx
+// Такого компонента в lib entrypoint нет.
+<Table data={rows} />
+```
+
+Визуальный primitive принадлежит UI-пакету или host.
+
+### Использовать индекс как row id
+
+После sort selection укажет на другую запись. Используйте business key.
+
+### Мутировать state
+
+```ts
+selection[rowId] = true;
+```
+
+Используйте helper или React setter с новым объектом.
+
+### Путать width в metadata и sizing state
+
+```ts
+const column = {
+	meta: {
+		width: 120
+	}
+};
+```
+
+Здесь `120em`, а не `120px`. Resize px храните в `TableColumnSizingState`.
+
+### Считать `normalizeTableColumnOrder` полным restore
+
+Она не знает актуальные columns и не удаляет stale id. Для restore используйте `resolveTableColumnOrder`.
+
+### Пытаться переставить pinned header
+
+Текущий helper блокирует любое перемещение, если active или over id pinned.
+
+### Ожидать одинаковый toggle у row и cell single mode
+
+- single row повторным кликом не снимается;
+- single cell повторной активацией снимается.
+
+Это разные публичные семантики.
+
+### Передать child id в `headerIds`
+
+Helper предназначен для top-level headers. Group child не должен быть самостоятельной DnD целью.
+
+### Забыть `rowById`
+
+Без актуальной записи hook не сможет вернуть исходный row в callback.
+
+### Читать synthetic row как fact
+
+```ts
+const amount = row.AMOUNT;
+```
+
+Сначала проверьте `TREE_TABLE_TRANSPOSED_SYNTHETIC_FIELD`.
+
+### Ожидать totals от transpose
+
+Synthetic group rows не агрегируют measures.
+
+### Полагаться на generated leaf id после reorder
+
+Он содержит индекс input row и может измениться.
+
+### Игнорировать diagnostics дерева
+
+Orphans, duplicates и cycles не выбрасывают exception. Данные остаются видимыми, а проблема сообщается массивами result.
+
+### Использовать `children` как business field
+
+Поле зарезервировано nested tree shape и может быть заменено.
+
+### Считать `expandByDefault` side effect
+
+Transpose его не применяет. Expansion принадлежит UI state.
+
+### Транспонировать уже готовое id/parent дерево
+
+Если backend уже прислал отношения, сразу вызывайте `buildTreeTableRows`. Transpose добавит ненужные synthetic nodes.
+
+### Выполнять client sorting одной server page
+
+Пользователь увидит порядок только внутри загруженного фрагмента. Отправляйте sort backend owner.
+
+## Частые вопросы
+
+### Почему один README описывает два импорта?
+
+Потому что concepts и интеграция общие, но package boundaries разные. Это уменьшает дублирование объяснений и не создаёт новый barrel.
+
+### Можно ли импортировать `buildTreeTableRows` из `/table`?
+
+Нет. Используйте `/tree-table`.
+
+### Можно ли импортировать `TableColumnDef` из `/tree-table`?
+
+Нет. Используйте `/table`.
+
+### Нужно ли использовать TanStack Table?
+
+Для `foundationTableFeatures` и `FoundationTable*` типов — да. Pure order/sizing/selection/tree helpers можно использовать с другим UI, если их state contract подходит.
+
+### Нужно ли использовать React для `tree-table`?
+
+Нет. Обе tree functions pure. React нужен только downstream UI и hook из `/table`.
+
+### Почему `buildTreeTableRows` возвращает forest, а не один root?
+
+В реальных данных может быть несколько roots, orphan или циклическая компонента. `rows` поэтому всегда массив.
+
+### Почему orphan не удаляется?
+
+Потеря строки скрыла бы проблему и данные. Helper поднимает её в root и отдельно сообщает id.
+
+### Почему duplicate использует первое вхождение?
+
+Это детерминированное правило, сохраняющее исходный порядок. Но duplicate всё равно означает нарушение data contract.
+
+### Можно ли изменить имя поля `children`?
+
+Нет, параметра для этого нет. Если нужен другой shape, преобразуйте result на host boundary или используйте собственный builder.
+
+### Можно ли передать `ReadonlyMap` в `useTableRowSelection`?
+
+Сигнатура ожидает `Map<string, TData>`. Создайте обычный `Map` и не мутируйте его после передачи в текущем render.
+
+### Почему `pruneTableRowSelection` удалил выбор другой страницы?
+
+Потому что id не было в `availableRowIds`. Определите корректную область availability для своего сценария.
+
+### Почему `resolveStableColumnId` вернул `undefined`?
+
+У колонки нет непустого строкового `id` и строкового `accessorKey`. Для `accessorFn` добавьте explicit id.
+
+### OData adapter выполняет formatting значения?
+
+Нет. Он только добавляет formatting metadata. Значение форматирует downstream runtime из модуля `formatters`/UI.
+
+### OData adapter выполняет sorting и filtering?
+
+Нет. Он создаёт column definitions и visibility. Server operations принадлежат API/feature owner.
+
+### Почему numeric OData property становится measure?
+
+Adapter принудительно классифицирует поддерживаемые числовые types как measures, чтобы получить ожидаемые formatting и right alignment.
+
+### Можно ли сохранить `TableColumnDef[]` в JSON?
+
+Обычно нет: columns могут содержать functions и React renderers. Сохраняйте только serializable state по column id.
+
+### Можно ли использовать пробелы в row/column id?
+
+Технически да, но helpers не выполняют общий trimming. Канонические id без случайных пробелов безопаснее для persistence и equality.
+
+### Почему whitespace level создаёт group?
+
+Пустым считается только `null`, `undefined` и точная пустая строка. Нормализуйте business data до transpose, если пробелы должны считаться пустотой.
+
+### `TREE_TABLE_TRANSPOSED_LEVEL_FIELD` равен глубине?
+
+Только когда все предыдущие levels непустые. При пропущенном промежуточном level он сохраняет исходный индекс level. Для визуального depth используйте tree runtime.
+
+### Можно ли выбирать synthetic groups?
+
+Технически да: у них есть row id. Разрешать это или нет — business/UI policy. Проверяйте synthetic flag в `getRowCanSelect`.
+
+### Можно ли использовать diagnostics как полную graph validation?
+
+Нет. Они предназначены для устойчивого UI-построения. Для строгой проверки всех участников cycles, duplicate occurrences и схемы данных нужен отдельный validator.
+
+### Есть ли глобальная инициализация или cleanup?
+
+Нет. Pure helpers stateless. React hook живёт в lifecycle component.
+
+## Связанные модули
+
+- `@ryuzaki13/react-foundation-lib/array` — массивы, нормализация и reorder primitives;
+- `@ryuzaki13/react-foundation-lib/formatters` — форматирование значений и table pipeline;
+- `@ryuzaki13/react-foundation-lib/formulas` — client formulas для table rows;
+- `@ryuzaki13/react-foundation-lib/odata-service` — OData metadata и query-option builders;
+- `@ryuzaki13/react-foundation-lib/virtualizer` — дозагрузка infinite data по virtual range;
+- `@ryuzaki13/react-foundation-api/odata` — transport и TanStack Query operations;
+- `@ryuzaki13/react-foundation-ui/table` — визуальная плоская таблица;
+- `@ryuzaki13/react-foundation-ui/tree-table` — визуальная древовидная таблица.

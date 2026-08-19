@@ -100,4 +100,6 @@ import { formatDateAsDate } from "@ryuzaki13/react-foundation-lib";
 
 Каждая последующая страница построена вокруг **published subpath**, а не каталога исходников. В ней указаны точный import, публичные contracts, обязательная инициализация, результат, lifecycle/cleanup и ограничения. Для pure helpers достаточно вызвать функцию; registry, browser и global-store API требуют отдельного раздела «Инициализация и side effects».
 
+Связанные entrypoint `table` и `tree-table` описаны на одной странице [Table и Tree Table](./table/README.mdx): документ общий, но публичные import path остаются раздельными.
+
 Если API не описан как публичный на соответствующей странице, не импортируйте его глубоким путём из `src` или `dist`: это не часть стабильного consumer contract.

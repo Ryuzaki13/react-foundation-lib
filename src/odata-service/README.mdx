@@ -142,7 +142,7 @@ import { buildODataFilter } from "@ryuzaki13/react-foundation-lib";
 import { buildODataFilter } from "@ryuzaki13/react-foundation-lib/dist/odata-service/filters";
 
 // Неверно: прежний subpath удалён после объединения модулей.
-import { findCollectionPairs } from "@ryuzaki13/react-foundation-lib/odata";
+import { findCollectionPairs } from "@ryuzaki13/react-foundation-lib/odata-service";
 ```
 
 ### `import type` для TypeScript-типов
@@ -2586,7 +2586,7 @@ beforeEach(() => {
 До:
 
 ```ts
-import { buildSeparatedArrays, findCollectionPairs, ODataDateFormat, useODataCollectionStore } from "@ryuzaki13/react-foundation-lib/odata";
+import { buildSeparatedArrays, findCollectionPairs, ODataDateFormat, useODataCollectionStore } from "@ryuzaki13/react-foundation-lib/odata-service";
 ```
 
 После:

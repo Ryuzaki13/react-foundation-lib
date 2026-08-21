@@ -1,0 +1,172 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Contracts/Common Types" />
+
+# Общие технические типы `@ryuzaki13/react-foundation-lib/types`
+
+Модуль содержит небольшие общие TypeScript-контракты для value state, ABAP boolean, базовых значений, диапазонов и строк таблицы. Единственная runtime-функция — `isBaseType`.
+
+## Содержание
+
+- [Установка и импорт](#установка-и-импорт)
+- [`State`](#state)
+- [`AbapBoolean`](#abapboolean)
+- [`Primitive` и `BaseType`](#primitive-и-basetype)
+- [`isBaseType`](#isbasetype)
+- [`ArrayType`, `ObjectType`, `InputType`](#arraytype-objecttype-inputtype)
+- [`RangeType`](#rangetype)
+- [`RowRecord`](#rowrecord)
+- [Ошибки проектирования](#ошибки-проектирования)
+
+## Установка и импорт
+
+```ts
+import { isBaseType } from "@ryuzaki13/react-foundation-lib/types";
+
+import type {
+	AbapBoolean,
+	ArrayType,
+	BaseType,
+	InputType,
+	ObjectType,
+	Primitive,
+	RangeType,
+	RowRecord,
+	State
+} from "@ryuzaki13/react-foundation-lib/types";
+```
+
+Типы исчезают после компиляции TypeScript. Не пытайтесь использовать `State` или `RowRecord` как runtime validator.
+
+## `State`
+
+```ts
+type State = "" | "none" | "information" | "success" | "warning" | "error";
+```
+
+Это общий display/value state, а не HTTP status и не состояние async request.
+
+```ts
+const state: State = "warning";
+```
+
+Пустая строка и `"none"` являются разными допустимыми значениями. Не сжимайте их автоматически в `undefined`, если contract этого не требует.
+
+## `AbapBoolean`
+
+```ts
+type AbapBoolean = "X" | " ";
+```
+
+ABAP-style boolean использует `"X"` для истины и строку из одного пробела для лжи. Это не JavaScript boolean:
+
+```ts
+Boolean(" "); // true, потому что непустая строка.
+```
+
+Для преобразования используйте boolean formatters, а не `Boolean(value)`.
+
+## `Primitive` и `BaseType`
+
+```ts
+type Primitive = string | number | boolean | null | undefined;
+type BaseType = Date | Primitive;
+```
+
+`BaseType` добавляет `Date` к primitive values. Тип `number` статически включает `NaN`/`Infinity`, но runtime guard их отклоняет.
+
+## `isBaseType`
+
+```ts
+isBaseType("text"); // true.
+isBaseType(10); // true.
+isBaseType(false); // true.
+isBaseType(null); // true.
+isBaseType(undefined); // true.
+isBaseType(new Date()); // true.
+
+isBaseType(Number.NaN); // false.
+isBaseType(Infinity); // false.
+isBaseType(new Date("bad")); // false.
+isBaseType([]); // false.
+isBaseType({}); // false.
+```
+
+Сигнатура является type guard:
+
+```ts
+function acceptUnknown(value: unknown) {
+	if (!isBaseType(value)) return;
+
+	// Здесь value имеет тип BaseType.
+}
+```
+
+Guard проверяет только форму базового значения, а не бизнес-ограничения строки/числа/даты.
+
+## `ArrayType`, `ObjectType`, `InputType`
+
+```ts
+type ArrayType = BaseType[];
+type ObjectType = Readonly<Record<string, BaseType>> | object;
+type InputType = BaseType | ArrayType | ObjectType;
+```
+
+`ArrayType` — изменяемый массив базовых значений.
+
+`ObjectType` намеренно широкий: union с `object` допускает практически любой non-primitive object. Он не означает JSON-compatible record и не является runtime-проверкой.
+
+`InputType` объединяет базовые значения, массивы и objects для generic formatter/input contracts. Не используйте его вместо точного domain DTO.
+
+## `RangeType`
+
+```ts
+type RangeType = readonly [BaseType | null, BaseType | null];
+```
+
+Tuple всегда имеет две позиции:
+
+```ts
+const range: RangeType = [new Date(2026, 0, 1), null];
+```
+
+- индекс `0` — начало;
+- индекс `1` — конец;
+- `null` обычно означает открытую/незаполненную границу;
+- `readonly` запрещает присваивание через TypeScript, но не вызывает `Object.freeze`.
+
+Поскольку `BaseType` уже включает `null` и `undefined`, тип исторически широкий. Конкретный UI/domain contract должен задавать более точный `readonly [T | null, T | null]`.
+
+## `RowRecord`
+
+```ts
+type RowRecord = Record<string, unknown>;
+```
+
+Это строка таблицы с неизвестными полями. Перед использованием значения его нужно сузить:
+
+```ts
+function readName(row: RowRecord): string | undefined {
+	return typeof row.name === "string" ? row.name : undefined;
+}
+```
+
+Если структура известна, объявляйте точный тип:
+
+```ts
+type EmployeeRow = {
+	id: string;
+	name: string;
+	salary: number;
+};
+```
+
+## Ошибки проектирования
+
+- Использовать `InputType` как замену schema внешнего JSON.
+- Считать `ObjectType` plain object.
+- Приводить `AbapBoolean` через `Boolean()`.
+- Считать `readonly` runtime-заморозкой.
+- Использовать `RowRecord` там, где известны поля сущности.
+- Считать `isBaseType` проверкой диапазона, длины или разрешённых business values.
+- Нормализовать `""`, `false`, `[]` и `null` только из-за широкого общего типа.

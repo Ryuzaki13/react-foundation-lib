@@ -1,0 +1,257 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/Bounded Copy Stack" />
+
+# Ограниченный стек копий через `@ryuzaki13/react-foundation-lib/bounded-copy-stack`
+
+Модуль хранит небольшой список последних скопированных сущностей. Новый элемент помещается в начало, повтор по `fingerprint` обновляет существующую запись, а старые записи удаляются при превышении лимита.
+
+Документ рассчитан на разработчика без доступа к исходникам пакета. Ниже объясняются структура элемента, различие `id` и `fingerprint`, порядок записей, ссылки на payload и все граничные случаи.
+
+## Содержание
+
+- [Назначение и границы](#назначение-и-границы)
+- [Установка и импорт](#установка-и-импорт)
+- [Основные понятия](#основные-понятия)
+- [Быстрый старт](#быстрый-старт)
+- [`pushBoundedCopyStackItem`](#pushboundedcopystackitem)
+- [`getBoundedCopyStackCandidates`](#getboundedcopystackcandidates)
+- [Ссылки, хранение и сериализация](#ссылки-хранение-и-сериализация)
+- [Полный API](#полный-api)
+- [Типичные ошибки](#типичные-ошибки)
+
+## Назначение и границы
+
+Типичный сценарий — показать пользователю несколько последних вариантов для повторной вставки:
+
+```text
+копирование A ──► [A]
+копирование B ──► [B, A]
+повтор A       ──► [новая A, B]
+копирование C  ──► [C, новая A, B]
+копирование D  ──► [D, C, новая A]  при maxSize = 3
+```
+
+Модуль:
+
+- не использует системный clipboard;
+- не сохраняет список в storage;
+- не создаёт React state или Zustand store;
+- не клонирует `payload` и `meta`;
+- не сравнивает payload глубоко;
+- не нормализует данные;
+- не выполняет вставку выбранного кандидата.
+
+Clipboard helpers находятся в `@ryuzaki13/react-foundation-lib/copy`. Владелец state/storage находится в host-приложении.
+
+## Установка и импорт
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+```ts
+import {
+	DEFAULT_BOUNDED_COPY_STACK_SIZE,
+	getBoundedCopyStackCandidates,
+	pushBoundedCopyStackItem
+} from "@ryuzaki13/react-foundation-lib/bounded-copy-stack";
+
+import type {
+	BoundedCopyStackItem,
+	BoundedCopyStackOptions,
+	BoundedCopyStackPushInput,
+	BoundedCopyStackPushResult
+} from "@ryuzaki13/react-foundation-lib/bounded-copy-stack";
+```
+
+Корневой и глубокий импорты не поддерживаются. Модуль ESM, не зависит от React и browser APIs.
+
+## Основные понятия
+
+### Элемент стека
+
+```ts
+type BoundedCopyStackItem<TPayload, TMeta = undefined> = {
+	id: string;
+	fingerprint: string;
+	payload: TPayload;
+	meta: TMeta;
+	copiedAt: number;
+};
+```
+
+| Поле          | Назначение                                                                 |
+| ------------- | -------------------------------------------------------------------------- |
+| `id`          | Идентификатор конкретной записи/операции копирования                       |
+| `fingerprint` | Идентичность содержимого для удаления повторов                             |
+| `payload`     | Данные, которые host затем сможет вставить                                 |
+| `meta`        | Подпись, тип, источник или другая информация для UI                        |
+| `copiedAt`    | Время копирования в миллисекундах Unix; функция не сортирует по этому полю |
+
+`id` и `fingerprint` решают разные задачи. При повторном копировании содержимого `fingerprint` остаётся прежним, а `id`, `payload`, `meta` и `copiedAt` могут стать новыми.
+
+### Порядок
+
+Индекс `0` всегда содержит элемент последней операции `push`. Функция доверяет входному порядку и не сортирует список по `copiedAt`.
+
+## Быстрый старт
+
+```ts
+type ColumnCopy = {
+	columnId: string;
+	width: number;
+};
+
+type ColumnCopyMeta = {
+	label: string;
+};
+
+let stack: BoundedCopyStackItem<ColumnCopy, ColumnCopyMeta>[] = [];
+
+const result = pushBoundedCopyStackItem(stack, {
+	id: crypto.randomUUID(),
+	fingerprint: "column:amount:width:120",
+	payload: { columnId: "amount", width: 120 },
+	meta: { label: "Сумма — ширина 120" }
+});
+
+stack = result.items;
+console.log(result.updatedExisting); // false.
+console.log(result.addedItem.copiedAt); // Date.now() на момент вызова.
+```
+
+## `pushBoundedCopyStackItem`
+
+```ts
+const result = pushBoundedCopyStackItem(items, input, { maxSize: 3 });
+```
+
+Алгоритм:
+
+1. Создаёт новый элемент из `input`.
+2. Если `copiedAt` отсутствует, подставляет `Date.now()`.
+3. Ищет любой элемент с точно равным `fingerprint`.
+4. Удаляет из старого списка все элементы с таким fingerprint.
+5. Помещает новый элемент в начало.
+6. Обрезает результат до `maxSize`.
+
+Входной массив не изменяется. Возвращается новый массив.
+
+### Повторный fingerprint
+
+```ts
+const oldItems = [
+	{
+		id: "old",
+		fingerprint: "same-content",
+		payload: { value: 1 },
+		meta: undefined,
+		copiedAt: 1
+	}
+];
+
+const result = pushBoundedCopyStackItem(oldItems, {
+	id: "new",
+	fingerprint: "same-content",
+	payload: { value: 2 },
+	meta: undefined,
+	copiedAt: 2
+});
+
+console.log(result.items.length); // 1.
+console.log(result.items[0].id); // "new".
+console.log(result.updatedExisting); // true.
+```
+
+Сравнение fingerprint регистрозависимое и использует `===`. Строки `"A"` и `"a"` различны.
+
+### Нормализация `maxSize`
+
+Default `DEFAULT_BOUNDED_COPY_STACK_SIZE` равен `3`.
+
+| Переданное значение                  | Фактический лимит |
+| ------------------------------------ | ----------------: |
+| `undefined`, `NaN`, `Infinity`       |                 3 |
+| `5.9`                                |                 5 |
+| `1`                                  |                 1 |
+| `0`, отрицательное конечное значение |                 1 |
+
+Полностью отключить хранение через `maxSize: 0` нельзя. Если список не нужен, host должен не вызывать push или хранить пустой state самостоятельно.
+
+### Результат
+
+```ts
+type BoundedCopyStackPushResult<TPayload, TMeta> = {
+	items: BoundedCopyStackItem<TPayload, TMeta>[];
+	addedItem: BoundedCopyStackItem<TPayload, TMeta>;
+	updatedExisting: boolean;
+};
+```
+
+- `items` — итоговый ограниченный список;
+- `addedItem` — созданная запись, даже если из-за будущей логики host её не сохранит;
+- `updatedExisting` — был ли во входном списке такой fingerprint.
+
+## `getBoundedCopyStackCandidates`
+
+Функция фильтрует записи предикатом и сохраняет исходный порядок:
+
+```ts
+const tableCandidates = getBoundedCopyStackCandidates(stack, (item) => item.meta.kind === "table-column");
+```
+
+Она эквивалентна типизированному `items.filter(predicate)`:
+
+- возвращает новый массив;
+- не клонирует элементы;
+- не изменяет исходный массив;
+- не ограничивает количество дополнительно;
+- исключение из predicate пробрасывается вызывающему коду.
+
+## Ссылки, хранение и сериализация
+
+`payload` и `meta` переносятся по ссылке:
+
+```ts
+const payload = { nested: { value: 1 } };
+const result = pushBoundedCopyStackItem([], {
+	id: "1",
+	fingerprint: "one",
+	payload,
+	meta: undefined
+});
+
+console.log(result.addedItem.payload === payload); // true.
+```
+
+Если нужна независимая data-only копия, создайте её через `deepCopyWithoutFunctions` из `/utils` до push. Clone не должен нормализовать данные.
+
+Для `localStorage`/`sessionStorage` host самостоятельно отвечает за:
+
+- JSON-compatible payload/meta;
+- версию persisted schema;
+- runtime-проверку восстановленных данных;
+- удаление устаревших записей;
+- отсутствие секретов и персональных данных.
+
+## Полный API
+
+| Export                            | Назначение                                       |
+| --------------------------------- | ------------------------------------------------ |
+| `DEFAULT_BOUNDED_COPY_STACK_SIZE` | Default-лимит `3`                                |
+| `pushBoundedCopyStackItem`        | Добавляет/обновляет запись и ограничивает список |
+| `getBoundedCopyStackCandidates`   | Фильтрует кандидатов                             |
+| `BoundedCopyStackItem`            | Полная сохранённая запись                        |
+| `BoundedCopyStackPushInput`       | Вход push; `copiedAt` optional                   |
+| `BoundedCopyStackOptions`         | `{ maxSize?: number }`                           |
+| `BoundedCopyStackPushResult`      | Итоговый список и сведения об операции           |
+
+## Типичные ошибки
+
+- Использовать уникальный `id` как fingerprint: дубликаты содержимого никогда не объединятся.
+- Ожидать сортировку по `copiedAt`: порядок определяется вызовами push.
+- Мутировать `payload` после push и ожидать snapshot: ссылка общая.
+- Передавать `maxSize: 0` для отключения: получится лимит `1`.
+- Хранить callback/DOM node в persisted stack: модуль не делает данные сериализуемыми.
+- Вызывать helper вместо clipboard API: стек ничего не копирует в ОС.

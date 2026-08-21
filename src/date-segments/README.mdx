@@ -1,0 +1,319 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Date/Segments" />
+
+# Сегменты даты и времени через `@ryuzaki13/react-foundation-lib/date-segments`
+
+Модуль разбирает строковую маску на редактируемые сегменты и литералы, преобразует `Date` в значения полей и строго собирает `Date` обратно. Он предназначен для segment-based date/time inputs.
+
+Документ объясняет маски, индексы, local time, двухзначный год, неполный ввод и все публичные типы.
+
+## Содержание
+
+- [Назначение и границы](#назначение-и-границы)
+- [Установка и импорт](#установка-и-импорт)
+- [Базовые понятия](#базовые-понятия)
+- [Поддерживаемые tokens](#поддерживаемые-tokens)
+- [`parseDateSegmentMask`](#parsedatesegmentmask)
+- [`isEditableDateSegment`](#iseditabledatesegment)
+- [`dateToIndexedSegmentValues`](#datetoindexedsegmentvalues)
+- [`areAllDateSegmentsEmpty`](#arealldatesegmentsempty)
+- [`indexedSegmentsToDate`](#indexedsegmentstodate)
+- [Полный input pipeline](#полный-input-pipeline)
+- [Local time и календарная семантика](#local-time-и-календарная-семантика)
+- [API и ошибки](#api-и-ошибки)
+
+## Назначение и границы
+
+```text
+"dd.MM.yyyy HH:mm"
+          │ parseDateSegmentMask
+          ▼
+[day, ".", month, ".", year, " ", hours, ":", minutes]
+          │ пользователь вводит значения по индексам
+          ▼
+Map { 0:"03", 2:"03", 4:"2026", 6:"18", 8:"03" }
+          │ indexedSegmentsToDate
+          ▼
+new Date(2026, 2, 3, 18, 3)
+```
+
+Модуль не рендерит input, не управляет focus/caret, не форматирует итоговую дату для UI/backend и не парсит ISO/OData строку. Для общего парсинга/форматирования используйте `/formatters`.
+
+## Установка и импорт
+
+```ts
+import {
+	areAllDateSegmentsEmpty,
+	dateToIndexedSegmentValues,
+	indexedSegmentsToDate,
+	isEditableDateSegment,
+	parseDateSegmentMask
+} from "@ryuzaki13/react-foundation-lib/date-segments";
+
+import type {
+	DateMaskSegment,
+	DateSegmentId,
+	EditableDateSegment,
+	LiteralDateSegment
+} from "@ryuzaki13/react-foundation-lib/date-segments";
+```
+
+Модуль не зависит от React/DOM и использует локальные getters/constructor стандартного `Date`.
+
+## Базовые понятия
+
+Маска состоит из двух видов сегментов.
+
+Editable segment:
+
+```ts
+interface EditableDateSegment {
+	kind: "editable";
+	id: DateSegmentId;
+	token: string;
+	length: number;
+	min: number;
+	max: number;
+	placeholder: string;
+	ariaLabel: string;
+}
+```
+
+Literal segment:
+
+```ts
+interface LiteralDateSegment {
+	kind: "literal";
+	text: string;
+}
+```
+
+Литералы — точки, двоеточия, пробелы, слова и неподдерживаемые символы маски. Они показываются пользователю, но не имеют редактируемого значения.
+
+`DateMaskSegment` — discriminated union. Поле `kind` позволяет безопасно сузить тип.
+
+## Поддерживаемые tokens
+
+| Token  | `id`      | Длина | Диапазон | Placeholder | ARIA label |
+| ------ | --------- | ----: | -------- | ----------- | ---------- |
+| `YYYY` | `year`    |     4 | 1–9999   | `ГГГГ`      | Год        |
+| `yyyy` | `year`    |     4 | 1–9999   | `гггг`      | Год        |
+| `yy`   | `year`    |     2 | 0–99     | `гг`        | Год        |
+| `MM`   | `month`   |     2 | 1–12     | `мм`        | Месяц      |
+| `DD`   | `day`     |     2 | 1–31     | `ДД`        | День       |
+| `dd`   | `day`     |     2 | 1–31     | `дд`        | День       |
+| `hh`   | `hours`   |     2 | 0–23     | `чч`        | Часы       |
+| `HH`   | `hours`   |     2 | 0–23     | `чч`        | Часы       |
+| `mm`   | `minutes` |     2 | 0–59     | `мм`        | Минуты     |
+| `ss`   | `seconds` |     2 | 0–59     | `сс`        | Секунды    |
+
+Обратите внимание:
+
+- `MM` — месяц, `mm` — минуты;
+- `dd`/`DD` — день;
+- `hh` и `HH` оба означают 24-часовой диапазон `0..23`;
+- одиночные `d`, `M`, `H`, `m`, `s` не являются tokens и станут literal text;
+- tokens регистрозависимы.
+
+## `parseDateSegmentMask`
+
+```ts
+const segments = parseDateSegmentMask("dd.MM.yyyy HH:mm");
+```
+
+Результат:
+
+```ts
+[
+	{ kind: "editable", id: "day", token: "dd", length: 2 /* ... */ },
+	{ kind: "literal", text: "." },
+	{ kind: "editable", id: "month", token: "MM", length: 2 /* ... */ },
+	{ kind: "literal", text: "." },
+	{ kind: "editable", id: "year", token: "yyyy", length: 4 /* ... */ },
+	{ kind: "literal", text: " " },
+	{ kind: "editable", id: "hours", token: "HH", length: 2 /* ... */ },
+	{ kind: "literal", text: ":" },
+	{ kind: "editable", id: "minutes", token: "mm", length: 2 /* ... */ }
+];
+```
+
+Соседние literal characters объединяются в один segment:
+
+```ts
+parseDateSegmentMask("Дата: dd");
+// literal "Дата: ", затем editable day.
+```
+
+Пустая маска возвращает пустой массив. Parser не валидирует обязательность года/месяца/дня и допускает повтор одного `id`; корректный набор задаёт host.
+
+## `isEditableDateSegment`
+
+Type guard:
+
+```ts
+const editable = segments.filter(isEditableDateSegment);
+// EditableDateSegment[].
+```
+
+Он проверяет только `segment.kind === "editable"` и рассчитан на значения, полученные из parser или соответствующие публичному типу.
+
+## `dateToIndexedSegmentValues`
+
+Функция создаёт `Map<number, string>`, где key — индекс segment в полном массиве, включая literals.
+
+```ts
+const segments = parseDateSegmentMask("dd.MM.yyyy HH:mm");
+const values = dateToIndexedSegmentValues(new Date(2026, 2, 3, 18, 3), segments);
+
+console.log([...values.entries()]);
+// [[0,"03"], [2,"03"], [4,"2026"], [6,"18"], [8,"03"]]
+```
+
+Индексы `1`, `3`, `5`, `7` отсутствуют, потому что это literals.
+
+Для `null`, `undefined` или invalid `Date` каждая editable позиция получает `""`:
+
+```ts
+dateToIndexedSegmentValues(null, segments);
+dateToIndexedSegmentValues(new Date("bad"), segments);
+```
+
+Двухзначный year берёт последние две цифры полного года. Значения дополняются нулями слева до длины segment.
+
+## `areAllDateSegmentsEmpty`
+
+```ts
+const empty = areAllDateSegmentsEmpty(segments, values);
+```
+
+Возвращает `true`, если у каждого editable segment значение отсутствует или является пустой строкой.
+
+Literal segments игнорируются. Строка из пробелов truthy и считается заполненной. Функция не проверяет длину/числовой формат.
+
+## `indexedSegmentsToDate`
+
+```ts
+const date = indexedSegmentsToDate(segments, values);
+```
+
+Возвращает строгий valid `Date` или `null`.
+
+### Полный ввод
+
+Каждый editable segment должен иметь строку длиной не меньше `segment.length`:
+
+```ts
+values.set(dayIndex, "3"); // Для token dd длины недостаточно.
+indexedSegmentsToDate(segments, values); // null.
+```
+
+Проверка длины не гарантирует numeric input. `"ab"` пройдёт length-check, но `parseInt` не даст valid component и итог будет `null`.
+
+### Календарная строгость
+
+После сборки компоненты сверяются с полученным `Date`:
+
+```ts
+// 31 февраля не превращается автоматически в март.
+indexedSegmentsToDate(segments, february31Values); // null.
+
+// 24:00 не принимается.
+indexedSegmentsToDate(segments, hour24Values); // null.
+```
+
+Проверяются month `1..12`, day `1..31`, hours `0..23`, minutes/seconds `0..59`, а затем реальная календарная дата.
+
+### Отсутствующие части и `defaultDate`
+
+Если маска не содержит некоторый тип segment, компонент берётся из `defaultDate`:
+
+```ts
+const timeSegments = parseDateSegmentMask("HH:mm");
+const values = new Map([
+	[0, "09"],
+	[2, "15"]
+]);
+
+const result = indexedSegmentsToDate(timeSegments, values, {
+	defaultDate: new Date(2026, 2, 3, 18, 3)
+});
+// 3 марта 2026, 09:15 local time.
+```
+
+Default fallback без options — `new Date(1970, 0, 1, 0, 0, 0, 0)` в local timezone.
+
+`defaultDate` не валидируется отдельно. Invalid fallback обычно приведёт к `null` после итоговой проверки.
+
+### Двухзначный год
+
+Для token `yy`:
+
+| Ввод      | Полный год |
+| --------- | ---------: |
+| `00`–`69` |  2000–2069 |
+| `70`–`99` |  1970–1999 |
+
+Порог фиксирован и не зависит от текущего года.
+
+## Полный input pipeline
+
+```tsx
+const segments = parseDateSegmentMask("dd.MM.yyyy");
+const [values, setValues] = useState(() => dateToIndexedSegmentValues(initialDate, segments));
+
+function updateSegment(index: number, value: string) {
+	setValues((current) => {
+		const next = new Map(current);
+		next.set(index, value);
+		return next;
+	});
+}
+
+function commit() {
+	if (areAllDateSegmentsEmpty(segments, values)) {
+		onChange(null);
+		return;
+	}
+
+	const nextDate = indexedSegmentsToDate(segments, values);
+	if (nextDate === null) {
+		showValidationError("Введите корректную дату");
+		return;
+	}
+
+	onChange(nextDate);
+}
+```
+
+UI самостоятельно отвечает за digits-only input, `aria-label`, focus movement, paste, validation message и controlled state.
+
+## Local time и календарная семантика
+
+Функции используют `getFullYear`, `getMonth`, `getDate`, `getHours` и `new Date(year, ...)`. Это local calendar/time, а не UTC.
+
+Не смешивайте segment input с автоматическим timezone conversion. Перед отправкой в OData/backend примените formatter, соответствующий контракту API.
+
+## API и ошибки
+
+| Export                       | Результат                            |
+| ---------------------------- | ------------------------------------ |
+| `parseDateSegmentMask`       | `DateMaskSegment[]`                  |
+| `isEditableDateSegment`      | Type guard                           |
+| `dateToIndexedSegmentValues` | `Map<number, string>`                |
+| `areAllDateSegmentsEmpty`    | `boolean`                            |
+| `indexedSegmentsToDate`      | `Date \| null`                       |
+| `DateSegmentId`              | year/month/day/hours/minutes/seconds |
+| `EditableDateSegment`        | Metadata редактируемого segment      |
+| `LiteralDateSegment`         | `{ kind: "literal"; text: string }`  |
+| `DateMaskSegment`            | Union editable/literal               |
+
+Типичные ошибки:
+
+- Перепутать `MM` и `mm`.
+- Хранить values по порядковому номеру editable fields вместо полного segment index.
+- Передать однозначную строку `"3"` для token длины `2` и ожидать автодополнение при сборке.
+- Ожидать UTC.
+- Считать `min/max` metadata заменой UI input validation.
+- Использовать произвольную маску с повторяющимися year/month segments.
+- Нормализовать пользовательский partial draft до команды commit.

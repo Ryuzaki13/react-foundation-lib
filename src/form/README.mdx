@@ -1,0 +1,101 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Forms/Form Errors" />
+
+# Чтение первой ошибки формы через `@ryuzaki13/react-foundation-lib/form`
+
+Модуль содержит одну функцию `readFirstFormError`. Она получает неоднородный массив ошибок и возвращает первое найденное текстовое сообщение.
+
+## Установка и импорт
+
+```ts
+import { readFirstFormError } from "@ryuzaki13/react-foundation-lib/form";
+```
+
+Модуль ESM, не зависит от React и не привязан к конкретной form library.
+
+## Поддерживаемые формы ошибки
+
+Функция понимает:
+
+1. Строку.
+2. Объект с непустым строковым полем `message`.
+3. Вложенный массив таких значений.
+
+```ts
+readFirstFormError([undefined, { message: "Поле обязательно" }]);
+// "Поле обязательно".
+
+readFirstFormError([[null, "Неверный формат"], "Другая ошибка"]);
+// "Неверный формат".
+```
+
+Обычный `Error` также подходит, потому что имеет строковое поле `message`:
+
+```ts
+readFirstFormError([new Error("Ошибка проверки")]);
+// "Ошибка проверки".
+```
+
+## Алгоритм
+
+```text
+errors отсутствует ──► undefined
+        │
+        ▼
+обход слева направо
+        │
+        ├─ string ─────────► вернуть строку
+        ├─ array ──────────► рекурсивно найти первую строку
+        ├─ { message } ────► вернуть непустой string message
+        └─ другое ─────────► пропустить
+```
+
+```ts
+const message = readFirstFormError(errors);
+
+if (message) {
+	showFieldError(message);
+}
+```
+
+## Точные правила
+
+- `undefined` вместо массива возвращает `undefined`.
+- Пустой массив возвращает `undefined`.
+- Поиск идёт в исходном порядке.
+- Пустая строка не является результатом и поиск продолжается.
+- Строка из пробелов считается непустой и возвращается буквально.
+- Числа, boolean, functions, `null` и объекты без string `message` пропускаются.
+- Массивы обходятся рекурсивно без ограничения глубины.
+- Входные массивы и objects не изменяются.
+
+## Пример в React
+
+```tsx
+type FieldErrorProps = {
+	errors?: readonly unknown[];
+};
+
+export function FieldError({ errors }: FieldErrorProps) {
+	const message = readFirstFormError(errors);
+
+	return message ? <p role="alert">{message}</p> : null;
+}
+```
+
+Для нескольких ошибок, summary списка, локализации и сопоставления ошибки конкретному field нужен отдельный form-layer host-приложения.
+
+## Ограничения и ошибки
+
+- Функция не выполняет trim или перевод сообщений.
+- Она не проверяет schema form-library.
+- Возвращается только первое сообщение; остальные теряются для этого вызова.
+- Циклический массив приведёт к бесконечной рекурсии/ошибке call stack.
+- Не передавайте backend payload напрямую без runtime-проверки и безопасного отображения.
+
+## API
+
+```ts
+function readFirstFormError(errors: readonly unknown[] | undefined): string | undefined;
+```

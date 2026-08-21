@@ -1,0 +1,138 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/React/Virtualizer Pagination" />
+
+# Дозагрузка virtualized списка через `@ryuzaki13/react-foundation-lib/virtualizer`
+
+`useFetchNextPageEffect` вызывает `fetchNextPage`, когда последняя отрендеренная virtual item достигает конца уже загруженного списка.
+
+## Установка и импорт
+
+```bash
+npm install react @tanstack/react-virtual @ryuzaki13/react-foundation-lib
+```
+
+```ts
+import { useFetchNextPageEffect } from "@ryuzaki13/react-foundation-lib/virtualizer";
+```
+
+Host должен использовать совместимые peer dependencies React `>=19.2 <20` и `@tanstack/react-virtual >=3.14 <4`.
+
+## Назначение и границы
+
+```text
+virtualItems (видимый диапазон)
+currentItemsCount (сколько уже загружено)
+hasNextPage
+          │
+последний virtual index >= currentItemsCount - 1
+          │
+          ▼
+fetchNextPage() один раз до завершения Promise
+```
+
+Hook не создаёт virtualizer, не хранит backend data, не строит query key и не решает server pagination. TanStack Query должен оставаться владельцем server snapshot.
+
+## Сигнатура
+
+```ts
+useFetchNextPageEffect({
+	virtualItems,
+	currentItemsCount,
+	fetchNextPage,
+	hasNextPage
+});
+```
+
+| Поле                | Значение                             |
+| ------------------- | ------------------------------------ |
+| `virtualItems`      | Текущий массив `VirtualItem[]`       |
+| `currentItemsCount` | Число реально загруженных data items |
+| `hasNextPage`       | Есть ли следующая server page        |
+| `fetchNextPage`     | Stable функция, возвращающая Promise |
+
+Hook ничего не возвращает.
+
+## Пример с TanStack Query/Virtual
+
+```tsx
+const rows = query.data?.pages.flatMap((page) => page.rows) ?? [];
+const virtualItems = virtualizer.getVirtualItems();
+
+useFetchNextPageEffect({
+	virtualItems,
+	currentItemsCount: rows.length,
+	hasNextPage: query.hasNextPage,
+	fetchNextPage: async () => {
+		await query.fetchNextPage();
+	}
+});
+```
+
+Передавайте количество загруженных строк, а не virtual total с loader row, group headers или estimated backend count.
+
+## Точный trigger
+
+Fetch не запускается, если:
+
+- `virtualItems` пуст;
+- `currentItemsCount` равен `0`;
+- последняя virtual item ещё не достигла `currentItemsCount - 1`;
+- `hasNextPage === false`;
+- предыдущий вызов ещё не завершился.
+
+Trigger происходит строго на последнем загруженном индексе. Preload threshold «за N строк до конца» в API отсутствует.
+
+## Защита от параллельного fetch
+
+Внутренний `useRef(false)` устанавливается до вызова и сбрасывается в `.finally()`:
+
+```text
+idle ── trigger ──► fetchingRef=true
+                       │
+                 Promise pending
+                       │
+             resolve или reject
+                       ▼
+                 fetchingRef=false
+```
+
+Защита действует только внутри одного mounted hook instance. TanStack Query также должен владеть дедупликацией/network state.
+
+Если `fetchNextPage` отклоняет Promise, hook не добавляет `.catch`; rejection может стать unhandled. Передавайте функцию с принятой error policy или wrapper, который корректно обрабатывает ожидаемую ошибку.
+
+## Referential stability
+
+Effect зависит от `virtualItems`, `currentItemsCount`, `hasNextPage`, `fetchNextPage`.
+
+- Используйте значение virtualizer как предусмотрено его API.
+- Не создавайте лишний async callback с новой identity без причины.
+- React Compiler не отменяет необходимость stable external contract.
+- После увеличения `currentItemsCount` новый fetch произойдёт только когда virtual range достигнет нового конца.
+
+## Browser, SSR и lifecycle
+
+Сам hook не читает `window`, но является React effect и не выполняет fetch во время server render. В browser effect запускается после commit.
+
+При unmount Promise не отменяется. Abort/cancel должен быть реализован query/transport owner. `fetchingRef` больше не влияет после удаления hook instance.
+
+## Типичные ошибки
+
+- Передать total backend rows вместо количества загруженного массива.
+- Включить client-side sorting/filtering одной страницы при server-side модели.
+- Добавить фиктивный loader row в `currentItemsCount`.
+- Ожидать preload заранее — trigger находится на самом конце.
+- Передать rejecting Promise без error handling.
+- Выполнять fetch прямо в row render вместо effect.
+- Использовать изменяемый index как domain identity строки.
+
+## API
+
+```ts
+function useFetchNextPageEffect(args: {
+	virtualItems: VirtualItem[];
+	currentItemsCount: number;
+	hasNextPage: boolean;
+	fetchNextPage: () => Promise<unknown>;
+}): void;
+```

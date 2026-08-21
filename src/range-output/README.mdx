@@ -1,0 +1,161 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/Range Output" />
+
+# Подстановка открытых границ через `@ryuzaki13/react-foundation-lib/range-output`
+
+Модуль хранит в UI открытые границы диапазона как `null`, но позволяет подставить конкретные значения при внешнем выводе или сохранении.
+
+## Содержание
+
+- [Назначение](#назначение)
+- [Установка и импорт](#установка-и-импорт)
+- [Контракты](#контракты)
+- [`readRangeOutputValueFallback`](#readrangeoutputvaluefallback)
+- [`resolveRangeOutputValue`](#resolverangeoutputvalue)
+- [Правильная boundary](#правильная-boundary)
+- [API и ошибки](#api-и-ошибки)
+
+## Назначение
+
+```text
+UI range [null, 6]
+fallback { start: 0, end: 12 }
+              │
+              ▼
+external output [0, 6]
+```
+
+Исходное UI-значение не изменяется. `null` заменяется только при построении отдельного output tuple.
+
+## Установка и импорт
+
+```ts
+import { readRangeOutputValueFallback, resolveRangeOutputValue } from "@ryuzaki13/react-foundation-lib/range-output";
+
+import type { RangeOutputFallbackEndpointParser, RangeOutputValueFallback } from "@ryuzaki13/react-foundation-lib/range-output";
+```
+
+Модуль pure, не требует React/browser APIs.
+
+## Контракты
+
+```ts
+type RangeOutputValueFallback<TValue extends BaseType> = {
+	start?: TValue | null;
+	end?: TValue | null;
+};
+
+type RangeOutputFallbackEndpointParser<TValue extends BaseType> = (value: unknown) => TValue | null | undefined;
+```
+
+Смысл результата parser:
+
+| Результат parser | Что происходит                                  |
+| ---------------- | ----------------------------------------------- |
+| конкретное value | сохраняется как fallback                        |
+| `null`           | явная пустая fallback-граница                   |
+| `undefined`      | поле отсутствует/невалидно и не входит в result |
+
+## `readRangeOutputValueFallback`
+
+Функция читает только форму:
+
+```ts
+{
+	outputValueFallback: {
+		start: unknown,
+		end: unknown
+	}
+}
+```
+
+Пример числового parser:
+
+```ts
+function parseFiniteNumber(value: unknown): number | undefined {
+	const parsed = typeof value === "number" ? value : Number(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+const fallback = readRangeOutputValueFallback({ outputValueFallback: { start: "1", end: "bad" } }, parseFiniteNumber);
+
+console.log(fallback); // { start: 1 }.
+```
+
+Функция возвращает `undefined`, если:
+
+- верхний `props` не object-like record;
+- `outputValueFallback` не object-like record;
+- оба parser-result равны `undefined`.
+
+Parser вызывается отдельно для `start` и `end`, в том числе когда raw field отсутствует. Он не должен иметь side effects.
+
+`isRecord` здесь допускает не только plain object, но исключает arrays/null. Runtime schema конкретного значения полностью задаёт parser.
+
+## `resolveRangeOutputValue`
+
+```ts
+resolveRangeOutputValue([null, 6], { start: 0, end: 12 });
+// [0, 6].
+
+resolveRangeOutputValue([3, null], { start: 0, end: 12 });
+// [3, 12].
+```
+
+Правила для каждой позиции:
+
+1. Если UI endpoint не `null`, он возвращается буквально.
+2. Если endpoint равен `null`, используется соответствующий fallback.
+3. Если fallback отсутствует или равен `null`, output остаётся `null`.
+
+```ts
+resolveRangeOutputValue([null, null], { end: 12 });
+// [null, 12].
+
+resolveRangeOutputValue([null, null], undefined);
+// [null, null].
+```
+
+Всегда создаётся новый tuple. Вложенные ссылочные `Date` не клонируются.
+
+## Правильная boundary
+
+Helper специально отделяет UI draft и внешний snapshot:
+
+```ts
+const draftRange: readonly [number | null, number | null] = [null, 6];
+
+function getConfig() {
+	return {
+		range: resolveRangeOutputValue(draftRange, outputFallback)
+	};
+}
+```
+
+Не записывайте output обратно в draft:
+
+```text
+draft [null, 6] ───────────────► UI продолжает показывать открытую границу
+       │
+       └─ save boundary ───────► snapshot [0, 6]
+```
+
+Это output substitution, а не общая нормализация диапазона: порядок start/end, min/max и domain validation не проверяются.
+
+## API и ошибки
+
+| Export                              | Результат                       |
+| ----------------------------------- | ------------------------------- |
+| `RangeOutputValueFallback`          | Optional start/end fallback     |
+| `RangeOutputFallbackEndpointParser` | Parser одного endpoint          |
+| `readRangeOutputValueFallback`      | Parsed fallback или `undefined` |
+| `resolveRangeOutputValue`           | Новый output tuple              |
+
+Типичные ошибки:
+
+- Считать `0`, `false` или `""` отсутствующими: используется nullish logic, эти значения сохраняются.
+- Передавать `undefined` как UI endpoint при generic `TValue`, включающем undefined: заменяется только строго `null`.
+- Мутировать draft результатом output resolver.
+- Ожидать, что helper поменяет местами границы или проверит диапазон.
+- Делать parser через unsafe cast внешнего `unknown`.

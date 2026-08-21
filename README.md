@@ -29,17 +29,19 @@ import type { RowRecord } from "@ryuzaki13/react-foundation-lib/types";
 
 | Entry point                                               | Что может потребоваться в host-проекте                                                                           |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `formatters`, `array`, `validators`                       | Обычно не требуют дополнительных runtime-зависимостей.                                                           |
+| `formatters`, `array`                                     | Обычно не требуют дополнительных runtime-зависимостей.                                                           |
 | `utils`, `hooks`, `binary`, `dom`, `copy`, `media`, `pwa` | `react`: `utils` экспортирует React helpers, `binary` — `useBinaryFile`, остальные entrypoints содержат hooks.   |
 | `query-client`, `error-report`                            | `@tanstack/react-query`, `@tanstack/query-persist-client-core`, `@tanstack/query-broadcast-client-experimental`. |
 | `odata-service`                                           | `zod`, `zustand`, `immer`, `react`; `unwrapODataQueryResult` типизирован вокруг `@tanstack/react-query`.         |
-| `notifications`                                           | `zustand`, для store-helpers также `immer`.                                                                      |
+| `notifications`                                           | `zustand`.                                                                                                       |
 | `table`                                                   | `@tanstack/react-table` и `react` для selection hooks.                                                           |
 | `virtualizer`                                             | `@tanstack/react-virtual` и `react`.                                                                             |
+| `three-scene`                                             | `react`; hook также использует browser media APIs.                                                               |
 | `hooks` search helpers                                    | `@tanstack/react-router`.                                                                                        |
 | `hooks` DnD helpers                                       | `@dnd-kit/core`, `@dnd-kit/sortable`.                                                                            |
-| `hooks` floating/listbox и DOM references                 | `@floating-ui/react`.                                                                                            |
+| `hooks`, `validators` floating/listbox и DOM references   | `@floating-ui/react`.                                                                                            |
 | `excel`                                                   | `write-excel-file`.                                                                                              |
+| `fingerprint`                                             | `@fingerprintjs/fingerprintjs`.                                                                                  |
 
 Такая схема оставляет пакет библиотечным: зависимости не зашиваются в bundle, а host-приложение контролирует версии React, TanStack, Zod и других runtime-библиотек.
 
@@ -66,6 +68,7 @@ npm run pack:dry-run
 - [Peer-зависимости](#peer-зависимости)
 - [Проверка пакета](#проверка-пакета)
 - [Быстрый выбор модуля](#быстрый-выбор-модуля)
+- [Полный каталог документации](#полный-каталог-документации)
 - [Форматирование и значения](#форматирование-и-значения)
 - [OData, таблицы и экспорт](#odata-таблицы-и-экспорт)
 - [Browser, React hooks и UI-поведение](#browser-react-hooks-и-ui-поведение)
@@ -84,15 +87,61 @@ npm run pack:dry-run
 | OData metadata, values, path, filters, sorts, code/text collections и store | [`odata-service`](./src/odata-service/index.ts), подробный README: [`odata-service/README.mdx`](./src/odata-service/README.mdx), тесты в [`odata-service`](./src/odata-service)                                                     |
 | TanStack Table helpers                                                      | [`table`](./src/table/index.ts), единый подробный справочник: [`table/README.mdx`](./src/table/README.mdx), тесты в [`table`](./src/table)                                                                                          |
 | Tree table преобразования                                                   | [`tree-table`](./src/tree-table/index.ts), документация в общем справочнике [`table/README.mdx`](./src/table/README.mdx), тесты в [`tree-table`](./src/tree-table)                                                                  |
-| Excel export                                                                | [`excel`](./src/excel/index.ts), тесты: [`excel.test.ts`](./src/excel/excel.test.ts), [`tableExport.test.ts`](./src/excel/tableExport.test.ts)                                                                                      |
+| Excel export                                                                | [`excel`](./src/excel/index.ts), подробный README: [`excel/README.mdx`](./src/excel/README.mdx), тесты: [`excel.test.ts`](./src/excel/excel.test.ts), [`tableExport.test.ts`](./src/excel/tableExport.test.ts)                      |
 | FileReader, изображения, base64 Blob                                        | [`file`](./src/file/index.ts), [`binary`](./src/binary/index.ts)                                                                                                                                                                    |
 | DOM overlay, portal, focus, download                                        | [`dom`](./src/dom/index.ts), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx)                                                                                                                                                         |
 | Debounce/throttle, DnD sensors, search params, listbox                      | [`hooks`](./src/hooks/index.ts), подробный README: [`hooks/README.mdx`](./src/hooks/README.mdx), [`utils/keyboard.ts`](./src/utils/keyboard.ts)                                                                                     |
 | Breakpoints, media queries и responsive props                               | [`media`](./src/media/index.ts), подробный README: [`media/README.mdx`](./src/media/README.mdx), тест: [`media.test.ts`](./src/media/media.test.ts)                                                                                 |
 | QueryClient, persistence, broadcast                                         | [`query-client`](./src/query-client/index.ts), подробный README: [`query-client/README.mdx`](./src/query-client/README.mdx)                                                                                                         |
-| PWA service worker update и `x-sw-cache` policy                             | [`pwa`](./src/pwa/index.ts), README: [`pwa/README.md`](./src/pwa/README.md)                                                                                                                                                         |
-| Подстановки открытых границ диапазона                                       | [`range-output`](./src/range-output/index.ts), тест: [`rangeOutput.test.ts`](./src/range-output/rangeOutput.test.ts)                                                                                                                |
-| Unknown guards, className, stable stringify, clone                          | [`validators`](./src/validators/index.ts), [`utils`](./src/utils/index.ts), подробный README: [`utils/README.mdx`](./src/utils/README.mdx)                                                                                          |
+| PWA service worker update и `x-sw-cache` policy                             | [`pwa`](./src/pwa/index.ts), подробный README: [`pwa/README.mdx`](./src/pwa/README.mdx)                                                                                                                                             |
+| Подстановки открытых границ диапазона                                       | [`range-output`](./src/range-output/index.ts), подробный README: [`range-output/README.mdx`](./src/range-output/README.mdx), тест: [`rangeOutput.test.ts`](./src/range-output/rangeOutput.test.ts)                                  |
+| Unknown guards, className, stable stringify, clone                          | [`validators`](./src/validators/index.ts), [`utils`](./src/utils/index.ts), подробные README: [`validators`](./src/validators/README.mdx), [`utils`](./src/utils/README.mdx)                                                        |
+
+## Полный каталог документации
+
+Каждый публичный subpath из `package.json#exports` покрыт русскоязычным MDX-руководством. Документы `tree-table` и `pwa/sw-cache-policy` намеренно объединены с ближайшим владельцем, чтобы правила одного сценария не расходились между файлами.
+
+| Публичный import path  | Подробная документация                                                         |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `/array`               | [`array/README.mdx`](./src/array/README.mdx)                                   |
+| `/binary`              | [`binary/README.mdx`](./src/binary/README.mdx)                                 |
+| `/bounded-copy-stack`  | [`bounded-copy-stack/README.mdx`](./src/bounded-copy-stack/README.mdx)         |
+| `/context-menu`        | [`context-menu/README.mdx`](./src/context-menu/README.mdx)                     |
+| `/copy`                | [`copy/README.mdx`](./src/copy/README.mdx)                                     |
+| `/crypto`              | [`crypto/README.mdx`](./src/crypto/README.mdx)                                 |
+| `/currency`            | [`currency/README.mdx`](./src/currency/README.mdx)                             |
+| `/date-segments`       | [`date-segments/README.mdx`](./src/date-segments/README.mdx)                   |
+| `/dom`                 | [`dom/README.mdx`](./src/dom/README.mdx)                                       |
+| `/error`               | [`error/README.mdx`](./src/error/README.mdx)                                   |
+| `/error-report`        | [`error-report/README.mdx`](./src/error-report/README.mdx)                     |
+| `/excel`               | [`excel/README.mdx`](./src/excel/README.mdx)                                   |
+| `/file`                | [`file/README.mdx`](./src/file/README.mdx)                                     |
+| `/fingerprint`         | [`fingerprint/README.mdx`](./src/fingerprint/README.mdx)                       |
+| `/form`                | [`form/README.mdx`](./src/form/README.mdx)                                     |
+| `/formatters`          | [`formatters/README.mdx`](./src/formatters/README.mdx) и его предметные README |
+| `/formulas`            | [`formulas/README.mdx`](./src/formulas/README.mdx)                             |
+| `/hooks`               | [`hooks/README.mdx`](./src/hooks/README.mdx)                                   |
+| `/http`                | [`http/README.mdx`](./src/http/README.mdx)                                     |
+| `/media`               | [`media/README.mdx`](./src/media/README.mdx)                                   |
+| `/notifications`       | [`notifications/README.mdx`](./src/notifications/README.mdx)                   |
+| `/number-scale`        | [`number-scale/README.mdx`](./src/number-scale/README.mdx)                     |
+| `/odata-service`       | [`odata-service/README.mdx`](./src/odata-service/README.mdx)                   |
+| `/presets`             | [`presets/README.mdx`](./src/presets/README.mdx)                               |
+| `/pwa`                 | [`pwa/README.mdx`](./src/pwa/README.mdx)                                       |
+| `/pwa/sw-cache-policy` | Раздел cache policy в [`pwa/README.mdx`](./src/pwa/README.mdx)                 |
+| `/query-client`        | [`query-client/README.mdx`](./src/query-client/README.mdx)                     |
+| `/range-output`        | [`range-output/README.mdx`](./src/range-output/README.mdx)                     |
+| `/seo`                 | [`seo/README.mdx`](./src/seo/README.mdx)                                       |
+| `/session-storage`     | [`session-storage/README.mdx`](./src/session-storage/README.mdx)               |
+| `/string-comparison`   | [`string-comparison/README.mdx`](./src/string-comparison/README.mdx)           |
+| `/table`               | [`table/README.mdx`](./src/table/README.mdx)                                   |
+| `/three-scene`         | [`three-scene/README.mdx`](./src/three-scene/README.mdx)                       |
+| `/tree-table`          | Раздел tree-table в [`table/README.mdx`](./src/table/README.mdx)               |
+| `/types`               | [`types/README.mdx`](./src/types/README.mdx)                                   |
+| `/utils`               | [`utils/README.mdx`](./src/utils/README.mdx)                                   |
+| `/validators`          | [`validators/README.mdx`](./src/validators/README.mdx)                         |
+| `/virtualizer`         | [`virtualizer/README.mdx`](./src/virtualizer/README.mdx)                       |
+| `/xml`                 | [`xml/README.mdx`](./src/xml/README.mdx)                                       |
 
 ## Форматирование и значения
 
@@ -287,7 +336,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `date-segments`
 
-Файл: [`date-segments/index.ts`](./src/date-segments/index.ts), тест: [`mask.test.ts`](./src/date-segments/mask.test.ts).
+Файл: [`date-segments/index.ts`](./src/date-segments/index.ts), подробный README: [`date-segments/README.mdx`](./src/date-segments/README.mdx), тест: [`mask.test.ts`](./src/date-segments/mask.test.ts).
 
 Утилиты для segmented date input.
 
@@ -301,7 +350,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `number-scale`
 
-Файлы: [`number-scale/index.ts`](./src/number-scale/index.ts), тест: [`numberScale.test.ts`](./src/number-scale/numberScale.test.ts).
+Файлы: [`number-scale/index.ts`](./src/number-scale/index.ts), подробный README: [`number-scale/README.mdx`](./src/number-scale/README.mdx), тест: [`numberScale.test.ts`](./src/number-scale/numberScale.test.ts).
 
 Математика числовых слайдеров и шкал.
 
@@ -317,7 +366,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `currency`
 
-Файл: [`currency/currency.ts`](./src/currency/currency.ts), тест: [`currency.test.ts`](./src/currency/currency.test.ts).
+Файл: [`currency/currency.ts`](./src/currency/currency.ts), подробный README: [`currency/README.mdx`](./src/currency/README.mdx), тест: [`currency.test.ts`](./src/currency/currency.test.ts).
 
 | API                                      | Поведение                                                                                                      |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -444,7 +493,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `excel`
 
-Файлы: [`excel/index.ts`](./src/excel/index.ts).
+Файлы: [`excel/index.ts`](./src/excel/index.ts), подробный README: [`excel/README.mdx`](./src/excel/README.mdx).
 
 | API                              | Поведение                                                             |
 | -------------------------------- | --------------------------------------------------------------------- |
@@ -484,7 +533,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `xml`
 
-Файл: [`xml/xml.ts`](./src/xml/xml.ts), тест: [`xml.test.ts`](./src/xml/xml.test.ts).
+Файл: [`xml/xml.ts`](./src/xml/xml.ts), подробный README: [`xml/README.mdx`](./src/xml/README.mdx), тест: [`xml.test.ts`](./src/xml/xml.test.ts).
 
 | API              | Поведение                                             |
 | ---------------- | ----------------------------------------------------- |
@@ -554,7 +603,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `context-menu`
 
-Файлы: [`context-menu/index.ts`](./src/context-menu/index.ts), тесты: [`anchor.test.ts`](./src/context-menu/anchor.test.ts), [`state.test.ts`](./src/context-menu/state.test.ts).
+Файлы: [`context-menu/index.ts`](./src/context-menu/index.ts), подробный README: [`context-menu/README.mdx`](./src/context-menu/README.mdx), тесты: [`anchor.test.ts`](./src/context-menu/anchor.test.ts), [`state.test.ts`](./src/context-menu/state.test.ts).
 
 | API                                                       | Поведение                                                                          |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -565,7 +614,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `notifications`
 
-Файлы: [`notifications/index.ts`](./src/notifications/index.ts), тест: [`store.test.ts`](./src/notifications/store.test.ts).
+Файлы: [`notifications/index.ts`](./src/notifications/index.ts), подробный README: [`notifications/README.mdx`](./src/notifications/README.mdx), тест: [`store.test.ts`](./src/notifications/store.test.ts).
 
 | API                        | Поведение                                                                                         |
 | -------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -577,7 +626,7 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 ### `pwa` и `virtualizer`
 
-Файлы: [`pwa/index.ts`](./src/pwa/index.ts), README: [`pwa/README.md`](./src/pwa/README.md); [`virtualizer/index.ts`](./src/virtualizer/index.ts).
+Файлы: [`pwa/index.ts`](./src/pwa/index.ts), подробный README: [`pwa/README.mdx`](./src/pwa/README.mdx); [`virtualizer/index.ts`](./src/virtualizer/index.ts), подробный README: [`virtualizer/README.mdx`](./src/virtualizer/README.mdx).
 
 `pwa`:
 
@@ -615,7 +664,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `error` и `error-report`
 
-Файлы: [`error/index.ts`](./src/error/index.ts), [`error-report/index.ts`](./src/error-report/index.ts).
+Файлы: [`error/index.ts`](./src/error/index.ts), подробный README: [`error/README.mdx`](./src/error/README.mdx); [`error-report/index.ts`](./src/error-report/index.ts), подробный README: [`error-report/README.mdx`](./src/error-report/README.mdx).
 
 `error`:
 
@@ -679,7 +728,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `validators` и `types`
 
-Файлы: [`validators/index.ts`](./src/validators/index.ts), [`types/index.ts`](./src/types/index.ts), тест: [`validators.test.ts`](./src/validators/validators.test.ts).
+Файлы: [`validators/index.ts`](./src/validators/index.ts), подробный README: [`validators/README.mdx`](./src/validators/README.mdx); [`types/index.ts`](./src/types/index.ts), подробный README: [`types/README.mdx`](./src/types/README.mdx); тест: [`validators.test.ts`](./src/validators/validators.test.ts).
 
 | API                                                                                    | Поведение                                                   |
 | -------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -691,13 +740,13 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `string-comparison`
 
-Файл: [`string-comparison/compareStrings.ts`](./src/string-comparison/compareStrings.ts), тест: [`compareStrings.test.ts`](./src/string-comparison/compareStrings.test.ts).
+Файл: [`string-comparison/compareStrings.ts`](./src/string-comparison/compareStrings.ts), подробный README: [`string-comparison/README.mdx`](./src/string-comparison/README.mdx), тест: [`compareStrings.test.ts`](./src/string-comparison/compareStrings.test.ts).
 
 `compareStrings` использует фиксированный `Intl.Collator("ru-RU", { numeric: true, sensitivity: "base" })` и UTF-16 fallback. Используй для справочников и UI-списков вместо ad hoc `localeCompare`.
 
 ### `crypto` и `session-storage`
 
-Файлы: [`crypto/index.ts`](./src/crypto/index.ts), подробный README: [`crypto/README.mdx`](./src/crypto/README.mdx); [`session-storage/index.ts`](./src/session-storage/index.ts).
+Файлы: [`crypto/index.ts`](./src/crypto/index.ts), подробный README: [`crypto/README.mdx`](./src/crypto/README.mdx); [`session-storage/index.ts`](./src/session-storage/index.ts), подробный README: [`session-storage/README.mdx`](./src/session-storage/README.mdx).
 
 | API                                                            | Поведение                                                                           |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -710,7 +759,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `presets`
 
-Файл: [`presets/presets.ts`](./src/presets/presets.ts), тест: [`presets.test.ts`](./src/presets/presets.test.ts).
+Файл: [`presets/presets.ts`](./src/presets/presets.ts), подробный README: [`presets/README.mdx`](./src/presets/README.mdx), тест: [`presets.test.ts`](./src/presets/presets.test.ts).
 
 | API                         | Поведение                                                                                  |
 | --------------------------- | ------------------------------------------------------------------------------------------ |
@@ -720,7 +769,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `bounded-copy-stack`
 
-Файл: [`bounded-copy-stack/boundedCopyStack.ts`](./src/bounded-copy-stack/boundedCopyStack.ts), тест: [`boundedCopyStack.test.ts`](./src/bounded-copy-stack/boundedCopyStack.test.ts).
+Файл: [`bounded-copy-stack/boundedCopyStack.ts`](./src/bounded-copy-stack/boundedCopyStack.ts), подробный README: [`bounded-copy-stack/README.mdx`](./src/bounded-copy-stack/README.mdx), тест: [`boundedCopyStack.test.ts`](./src/bounded-copy-stack/boundedCopyStack.test.ts).
 
 | API                               | Поведение                                                                                 |
 | --------------------------------- | ----------------------------------------------------------------------------------------- |

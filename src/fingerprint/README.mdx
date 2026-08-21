@@ -1,0 +1,100 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Browser/Client Fingerprint" />
+
+# Client fingerprint через `@ryuzaki13/react-foundation-lib/fingerprint`
+
+`getClientFingerprint` лениво загружает FingerprintJS, получает `visitorId` и кеширует Promise на всё время жизни JavaScript-модуля.
+
+## Установка и импорт
+
+```bash
+npm install @ryuzaki13/react-foundation-lib @fingerprintjs/fingerprintjs
+```
+
+```ts
+import { getClientFingerprint } from "@ryuzaki13/react-foundation-lib/fingerprint";
+```
+
+Host должен разрешить peer dependency `@fingerprintjs/fingerprintjs >=5 <6`.
+
+## Использование
+
+```ts
+const fingerprint = await getClientFingerprint();
+
+if (fingerprint) {
+	attachAnonymousDiagnosticId(fingerprint);
+}
+```
+
+Результат `Promise<string | null>`:
+
+- непустой trimmed `visitorId`, если библиотека успешно отработала;
+- `null` вне browser;
+- `null`, если load/get завершились ошибкой;
+- `null`, если visitorId пустой после trim.
+
+## Кеширование
+
+Первый browser-вызов создаёт одну Promise:
+
+```text
+первый вызов ──► load FingerprintJS ──► fp.get() ──► string/null
+     │
+следующие вызовы ─────────────────────► та же Promise
+```
+
+Преимущества:
+
+- параллельные consumers не запускают повторное вычисление;
+- после успеха возвращается то же значение;
+- после ошибки `null` также кешируется и автоматического retry нет.
+
+Публичного reset/retry API нет. Reload страницы создаёт новый module runtime.
+
+SSR-вызов возвращает `null` сразу и не заполняет browser promise cache. Поэтому последующий client runtime может выполнить настоящее вычисление.
+
+## Правильная React boundary
+
+Не вызывайте async функцию во время render:
+
+```tsx
+useEffect(() => {
+	let active = true;
+
+	void getClientFingerprint().then((value) => {
+		if (active) setFingerprint(value);
+	});
+
+	return () => {
+		active = false;
+	};
+}, []);
+```
+
+Если fingerprint нужен backend request, предпочтительнее интегрировать его в app/API boundary, а не дублировать state по компонентам.
+
+## Privacy и security
+
+Fingerprint:
+
+- не является authentication token;
+- не доказывает личность пользователя;
+- может меняться после обновления browser/device/settings;
+- может совпасть у разных клиентов;
+- не заменяет server session;
+- требует правового/продуктового решения о consent и retention;
+- не должен использоваться для скрытого tracking вопреки пользовательской политике.
+
+Не помещайте fingerprint в публичный URL, DOM или logs без необходимости. При передаче на backend используйте HTTPS и установленную privacy policy.
+
+## Ошибки и тестирование
+
+Функция намеренно поглощает ошибки FingerprintJS и возвращает `null`. Это graceful optional capability; если fingerprint обязателен для business flow, host должен явно обработать `null`.
+
+Module-level cache усложняет повторные тесты. Используйте module reset (`vi.resetModules`) перед сценарием, которому нужен чистый первый вызов.
+
+```ts
+function getClientFingerprint(): Promise<string | null>;
+```

@@ -1,0 +1,155 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/Currency" />
+
+# Валютные подписи через `@ryuzaki13/react-foundation-lib/currency`
+
+Модуль связывает общий OData-параметр `p_curr` с отображаемой подписью показателя. Он определяет один из двух режимов валюты и добавляет соответствующий суффикс к label.
+
+## Содержание
+
+- [Назначение](#назначение)
+- [Установка и импорт](#установка-и-импорт)
+- [`CurrencyMode`](#currencymode)
+- [`resolveCurrencyModeFromODataParameters`](#resolvecurrencymodefromodataparameters)
+- [`resolveCurrencyAwareLabel`](#resolvecurrencyawarelabel)
+- [Готовый pipeline](#готовый-pipeline)
+- [Ограничения и ошибки](#ограничения-и-ошибки)
+- [API-справочник](#api-справочник)
+
+## Назначение
+
+```text
+wrapped OData params
+{ p_curr: { value: true } }
+              │
+              ▼
+      CurrencyMode "rub"
+              │
+              ▼
+"Выручка" + ["за тн", "руб/тн"]
+              │
+              ▼
+       "Выручка руб/тн"
+```
+
+Модуль не форматирует денежное число, не конвертирует валюту и не строит OData query. Для чисел используйте `/formatters`, для OData params — `/odata-service`.
+
+## Установка и импорт
+
+```ts
+import { resolveCurrencyAwareLabel, resolveCurrencyModeFromODataParameters } from "@ryuzaki13/react-foundation-lib/currency";
+
+import type { CurrencyMode } from "@ryuzaki13/react-foundation-lib/currency";
+```
+
+Модуль ESM, не требует React или browser API. Параметры должны иметь публичную wrapped-форму из `/odata-service`.
+
+## `CurrencyMode`
+
+```ts
+type CurrencyMode = "internal" | "rub";
+```
+
+- `internal` — внутренний режим;
+- `rub` — рублёвый режим.
+
+`null` используется resolver-функцией, когда режим определить нельзя.
+
+## `resolveCurrencyModeFromODataParameters`
+
+```ts
+const mode = resolveCurrencyModeFromODataParameters(params);
+```
+
+Функция читает только собственное поле `p_curr.value`:
+
+| Вход                            | Результат    |
+| ------------------------------- | ------------ |
+| параметров нет                  | `null`       |
+| поля `p_curr` нет               | `null`       |
+| `{ p_curr: { value: false } }`  | `"internal"` |
+| `{ p_curr: { value: true } }`   | `"rub"`      |
+| `{ p_curr: { value: "true" } }` | `null`       |
+| `{ p_curr: { value: 1 } }`      | `null`       |
+
+Строка `"true"` намеренно не приводится к boolean. Нормализуйте внешний payload на OData boundary, а не внутри UI label.
+
+Пример с helper `/odata-service`:
+
+```ts
+import { wrapODataParams } from "@ryuzaki13/react-foundation-lib/odata-service";
+
+const params = wrapODataParams({ p_curr: true });
+const mode = resolveCurrencyModeFromODataParameters(params);
+// "rub".
+```
+
+## `resolveCurrencyAwareLabel`
+
+```ts
+const label = resolveCurrencyAwareLabel("Выручка", ["за тн", "руб/тн"], "rub");
+// "Выручка руб/тн".
+```
+
+Пара `currencyLabels` имеет фиксированный смысл:
+
+```ts
+readonly[(internalLabel, rubLabel)];
+```
+
+| Mode       | Индекс суффикса |
+| ---------- | --------------: |
+| `internal` |               0 |
+| `rub`      |               1 |
+
+Точные правила:
+
+- без `currencyLabels` возвращается исходный `label`;
+- при `null`/`undefined` mode возвращается исходный `label`;
+- суффикс обрезается через `trim()`;
+- пустой суффикс не добавляется;
+- обычно между label и суффиксом добавляется один пробел;
+- если обрезанный суффикс начинается с запятой, дополнительный пробел не добавляется.
+
+```ts
+resolveCurrencyAwareLabel("Выручка", [", за тн", ", руб/тн"], "rub");
+// "Выручка, руб/тн".
+
+resolveCurrencyAwareLabel("Выручка", ["", "   "], "rub");
+// "Выручка".
+```
+
+Исходный `label` не обрезается и не нормализуется.
+
+## Готовый pipeline
+
+```ts
+function buildMetricLabel(
+	baseLabel: string,
+	currencyLabels: readonly [string, string] | undefined,
+	params: WrappedODataParameters | undefined
+) {
+	const mode = resolveCurrencyModeFromODataParameters(params);
+	return resolveCurrencyAwareLabel(baseLabel, currencyLabels, mode);
+}
+```
+
+Resolver чистый: одинаковый вход даёт одинаковую строку и не меняет params/labels.
+
+## Ограничения и ошибки
+
+- Поддерживается только параметр с точным id `p_curr`.
+- Поддерживаются только два режима; код валюты `USD`, `EUR` и exchange rate не обрабатываются.
+- Функция не проверяет грамматику и единицы измерения.
+- Запятая должна входить в сам суффикс, если нужна форма `"Выручка, руб"`.
+- Не передавайте плоский `{ p_curr: true }`: ожидается `{ p_curr: { value: true } }`.
+- Не используйте label helper для финансовых вычислений.
+
+## API-справочник
+
+| Export                                   | Результат               |
+| ---------------------------------------- | ----------------------- |
+| `CurrencyMode`                           | `"internal" \| "rub"`   |
+| `resolveCurrencyModeFromODataParameters` | `CurrencyMode \| null`  |
+| `resolveCurrencyAwareLabel`              | Итоговая display-строка |

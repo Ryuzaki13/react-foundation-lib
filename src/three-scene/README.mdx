@@ -1,0 +1,248 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Browser/Three Scene" />
+
+# Three Scene
+
+Модуль `@ryuzaki13/react-foundation-lib/three-scene` проверяет, можно ли безопасно показывать необязательную Three.js/WebGL-сцену, и помогает отключить её до конца браузерной сессии.
+
+Модуль не импортирует Three.js, не создаёт renderer и не управляет canvas. Его задача — принять раннее решение: загружать тяжёлую 3D-сцену или показать облегчённую альтернативу.
+
+## Когда использовать
+
+Подходит для декоративных и дополнительных сцен:
+
+- 3D-фон страницы;
+- визуализация, у которой есть обычная HTML-альтернатива;
+- lazy import Three.js только на поддерживаемых устройствах;
+- отключение повторных неудачных попыток WebGL в пределах вкладки.
+
+Для критически важного бизнес-сценария одной проверки поддержки недостаточно: renderer всё равно может завершиться ошибкой позже, например из-за потери контекста или нехватки памяти.
+
+## Импорт
+
+```ts
+import {
+	disableThreeSceneForSession,
+	isThreeSceneDisabledForSession,
+	isThreeSceneSupported,
+	threeSceneDefaultDisabledStorageKey,
+	useThreeSceneAvailability,
+	type ThreeSceneAvailability
+} from "@ryuzaki13/react-foundation-lib/three-scene";
+```
+
+Для hook нужен React. Остальные функции работают напрямую с браузерными API.
+
+## Быстрый старт с React
+
+```tsx
+import { lazy, Suspense } from "react";
+import { useThreeSceneAvailability } from "@ryuzaki13/react-foundation-lib/three-scene";
+
+const Scene = lazy(() => import("./Scene"));
+
+export function HeroVisual() {
+	const availability = useThreeSceneAvailability({
+		webGLVersion: "webgl2",
+		disableWhenReducedMotion: true
+	});
+
+	if (availability.status !== "available") {
+		return <img src="/hero.webp" alt="" />;
+	}
+
+	return (
+		<Suspense fallback={<img src="/hero.webp" alt="" />}>
+			<Scene />
+		</Suspense>
+	);
+}
+```
+
+На первом клиентском рендере hook тоже возвращает `unavailable/ssr`. Проверка происходит в effect после hydration. Это сохраняет одинаковую начальную HTML-разметку на сервере и клиенте.
+
+## Модель состояния
+
+```ts
+type ThreeSceneAvailabilityStatus = "pending" | "available" | "unavailable";
+
+type ThreeSceneUnavailableReason = "ssr" | "sessionDisabled" | "reducedMotion" | "webglUnsupported";
+
+type ThreeSceneAvailability = {
+	readonly status: ThreeSceneAvailabilityStatus;
+	readonly reason?: ThreeSceneUnavailableReason;
+};
+```
+
+Текущий hook фактически возвращает `available` или `unavailable`; начальное состояние — `unavailable` с причиной `ssr`. Значение `pending` входит в общий тип, но hook сейчас его не устанавливает.
+
+Причины:
+
+| Причина            | Значение                                                                         |
+| ------------------ | -------------------------------------------------------------------------------- |
+| `ssr`              | Проверка ещё не выполнена в браузере либо код работает без DOM                   |
+| `sessionDisabled`  | Сцена отключена в `sessionStorage` текущей вкладки                               |
+| `reducedMotion`    | Пользователь предпочитает уменьшенное движение, а соответствующая опция включена |
+| `webglUnsupported` | Не удалось создать требуемый WebGL-контекст                                      |
+
+## `isThreeSceneSupported(options?)`
+
+Синхронно проверяет создание WebGL-контекста на временном canvas.
+
+```ts
+isThreeSceneSupported(); // проверяет только WebGL 2
+isThreeSceneSupported({ webGLVersion: "webgl2" });
+isThreeSceneSupported({ webGLVersion: "webgl" });
+```
+
+Доступны два режима:
+
+- `webgl2` — принимает только контекст `webgl2`;
+- `webgl` — пробует `webgl2`, затем `webgl` и `experimental-webgl`.
+
+Если контекст создан, функция по возможности вызывает расширение `WEBGL_lose_context`, чтобы освободить временный ресурс. При отсутствии `document`, ошибке браузера или невозможности создать контекст возвращается `false`.
+
+Положительный результат означает только базовую поддержку контекста. Он не гарантирует нужные extensions, производительность GPU, объём памяти или успешную загрузку конкретной сцены.
+
+## Отключение на время сессии
+
+### Ключ по умолчанию
+
+```ts
+threeSceneDefaultDisabledStorageKey;
+// `${__APP_ID__}:three-scene:disabled`
+```
+
+Пакет ожидает, что сборка приложения определит compile-time константу `__APP_ID__`. Она отделяет данные разных приложений на одном origin.
+
+### `disableThreeSceneForSession(storageKey?)`
+
+Записывает строку `"1"` в `sessionStorage`. Функция ничего не делает на сервере и молча игнорирует ошибки хранилища.
+
+```ts
+try {
+	await startScene();
+} catch (error) {
+	disableThreeSceneForSession();
+	showStaticFallback();
+}
+```
+
+`sessionStorage` живёт в пределах вкладки. Новая вкладка или новая сессия получает новую попытку.
+
+### `isThreeSceneDisabledForSession(storageKey?)`
+
+Возвращает `true`, только если по ключу хранится точная строка `"1"`. На сервере возвращает `true`, чтобы сцена не пыталась стартовать без браузера. Если чтение storage бросает исключение, возвращается `false` — недоступность storage сама по себе не отключает WebGL.
+
+### Собственный ключ
+
+```ts
+const storageKey = "dashboard:analytics-scene:disabled";
+
+disableThreeSceneForSession(storageKey);
+isThreeSceneDisabledForSession(storageKey);
+```
+
+Одинаковый ключ нужно передавать и в hook.
+
+## `useThreeSceneAvailability(options?)`
+
+```ts
+type UseThreeSceneAvailabilityOptions = {
+	readonly disabledStorageKey?: string;
+	readonly disableWhenReducedMotion?: boolean;
+	readonly webGLVersion?: "webgl" | "webgl2";
+};
+```
+
+Значения по умолчанию:
+
+- `disabledStorageKey` — `threeSceneDefaultDisabledStorageKey`;
+- `disableWhenReducedMotion` — `false`;
+- `webGLVersion` — `webgl2`.
+
+После монтирования проверки выполняются в строгом порядке:
+
+1. включённая политика reduced motion;
+2. флаг отключения в sessionStorage;
+3. поддержка требуемого WebGL;
+4. состояние `available`.
+
+Если WebGL не поддержан, hook автоматически записывает session-флаг. Следующие проверки в этой вкладке сразу получат `sessionDisabled` и не будут повторно создавать пробный контекст.
+
+Hook повторяет вычисление, если меняются options или результат media query `prefers-reduced-motion`.
+
+## Reduced motion
+
+```tsx
+const availability = useThreeSceneAvailability({
+	disableWhenReducedMotion: true
+});
+```
+
+При `true` сцена отключается для пользователя с настройкой `prefers-reduced-motion: reduce`. Сам session-флаг при этом не записывается: если пользователь изменит системную настройку, hook сможет пересчитать состояние.
+
+Если 3D-сцена не содержит значимого движения или имеет собственный облегчённый режим, приложение может оставить опцию `false` и применить reduced-motion внутри renderer.
+
+## Восстановление после ошибки
+
+Модуль не экспортирует `enableThreeSceneForSession`. Чтобы дать пользователю кнопку «Попробовать снова», приложение может удалить тот же ключ и перезагрузить/перемонтировать проверку:
+
+```ts
+window.sessionStorage.removeItem(threeSceneDefaultDisabledStorageKey);
+window.location.reload();
+```
+
+Удаление storage и reload — решение приложения, потому что повторный запуск тяжёлой сцены должен быть явным пользовательским действием.
+
+## Рекомендуемая граница загрузки
+
+Не импортируйте тяжёлую сцену до проверки:
+
+```tsx
+// Хорошо: код сцены загружается отдельным chunk только при рендере Scene.
+const Scene = lazy(() => import("./Scene"));
+```
+
+Статический `import Scene from "./Scene"` загрузит Three.js даже если компонент затем вернёт fallback.
+
+После `available` всё равно ставьте error boundary вокруг сцены. Runtime-ошибка renderer не меняет availability автоматически.
+
+## SSR и hydration
+
+- `isThreeSceneSupported` на сервере возвращает `false`.
+- `isThreeSceneDisabledForSession` на сервере возвращает `true`.
+- hook начинает с детерминированного `unavailable/ssr`.
+- фактическая проверка выполняется только в `useEffect`.
+
+Поэтому сервер должен рендерить статический fallback. Не считайте начальную причину `ssr` окончательным отказом браузера.
+
+## Частые ошибки
+
+### Считать WebGL-проверку benchmark
+
+Функция проверяет возможность создания контекста, но не измеряет FPS и не оценивает сложность сцены.
+
+### Запускать сцену во время SSR
+
+Canvas, sessionStorage и WebGL — browser-only API. Загружайте и запускайте renderer после `availability.status === "available"`.
+
+### Не определить `__APP_ID__`
+
+Значение участвует в ключе storage на этапе выполнения собранного кода. Сборщик потребителя должен заменить эту compile-time константу.
+
+### Ожидать автоматического отключения при любой runtime-ошибке
+
+Автоматический session-флаг ставится только при неуспешной первоначальной проверке WebGL. Ошибки загрузки ассетов и renderer приложение обрабатывает самостоятельно.
+
+## Краткая карта API
+
+| Экспорт                               | Назначение                                                  |
+| ------------------------------------- | ----------------------------------------------------------- |
+| `isThreeSceneSupported()`             | Проверить возможность создать WebGL-контекст                |
+| `disableThreeSceneForSession()`       | Отключить сцену до конца сессии вкладки                     |
+| `isThreeSceneDisabledForSession()`    | Прочитать session-флаг                                      |
+| `threeSceneDefaultDisabledStorageKey` | Ключ storage с namespace приложения                         |
+| `useThreeSceneAvailability()`         | Объединить WebGL, session и reduced-motion проверки в React |
+| `ThreeSceneAvailability`              | Тип результата availability                                 |

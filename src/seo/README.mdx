@@ -1,0 +1,279 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/HTTP/SEO" />
+
+# SEO
+
+Модуль `@ryuzaki13/react-foundation-lib/seo` собирает единый набор SEO-описаний страницы:
+
+- title и обычные meta tags;
+- Open Graph;
+- Twitter Card;
+- canonical link;
+- JSON-LD по Schema.org.
+
+Он не меняет `document.head` напрямую. Результат передаётся роутеру, SSR-фреймворку или собственному renderer head-тегов.
+
+## Импорт
+
+```ts
+import { createRouteHead, createSeoHead, type SeoContentType, type SeoHeadOptions } from "@ryuzaki13/react-foundation-lib/seo";
+```
+
+Функции синхронные и не требуют DOM, поэтому подходят для server rendering.
+
+## Быстрый старт
+
+```ts
+const head = createSeoHead({
+	pathname: "/articles/odata-guide",
+	baseUrl: "https://example.ru",
+	caption: "Практический гайд по OData",
+	description: "Разбираем фильтры, сортировку и пагинацию OData.",
+	type: "Article",
+	keywords: ["OData", "TypeScript", "SAP"],
+	image: {
+		url: "/images/odata-guide.webp",
+		alt: "Схема OData-запроса",
+		width: 1200,
+		height: 630
+	},
+	publishedAt: "2026-08-01T10:00:00+05:00",
+	modifiedAt: "2026-08-20T12:30:00+05:00"
+});
+```
+
+Результат имеет три массива:
+
+```ts
+{
+	meta: (Record < string, string > []);
+	links: (Record < string, string > []);
+	scripts: Array<{
+		type: "application/ld+json";
+		children: string;
+	}>;
+}
+```
+
+Форма совместима с распространённым route-head подходом, но конкретное подключение зависит от фреймворка.
+
+## `createSeoHead(options)`
+
+### Параметры
+
+```ts
+type SeoContentType = "WebSite" | "WebPage" | "Article" | "NewsArticle";
+
+type SeoHeadOptions = {
+	pathname: string;
+	caption: string;
+	description: string;
+	type: SeoContentType;
+	baseUrl?: string;
+	keywords?: string[];
+	image?: {
+		url: string;
+		alt?: string | null;
+		width?: number | null;
+		height?: number | null;
+	};
+	publishedAt?: string;
+	modifiedAt?: string;
+	noIndex?: boolean;
+};
+```
+
+`caption` и `description` обязательны даже для пустой страницы. Библиотека не подставляет название сайта и не обрезает текст под лимиты поисковых систем.
+
+### Canonical URL
+
+Если `pathname` уже абсолютный URL, он нормализуется через `new URL()`.
+
+```ts
+createSeoHead({
+	pathname: "https://example.ru/catalog",
+	// baseUrl не нужен
+	caption: "Каталог",
+	description: "Каталог товаров",
+	type: "WebPage"
+});
+```
+
+Для относительного пути рекомендуется обязательно передавать абсолютный `baseUrl`:
+
+```ts
+pathname: "/catalog",
+baseUrl: "https://example.ru",
+// canonical: https://example.ru/catalog
+```
+
+Без `baseUrl` относительный путь сохраняется как есть. Это может быть приемлемо для некоторых head-renderer, но canonical URL по стандартной практике должен быть абсолютным.
+
+Неверный `baseUrl` вместе с относительным `pathname` приводит к исключению `new URL`. Проверяйте конфигурацию origin при старте приложения.
+
+### Meta tags
+
+Всегда создаются:
+
+- `{ title: caption }`;
+- description;
+- robots;
+- `og:type`, `og:title`, `og:description`, `og:url`, `og:locale`;
+- `twitter:card`, `twitter:title`, `twitter:description`.
+
+`Article` и `NewsArticle` получают Open Graph type `article`. `WebSite` и `WebPage` получают `website`.
+
+Локаль фиксирована как `ru_RU` для Open Graph и `ru-RU` для JSON-LD.
+
+Если есть изображение, Twitter Card становится `summary_large_image`; без изображения — `summary`.
+
+### Индексация
+
+```ts
+noIndex: true;
+// robots: "noindex, nofollow"
+```
+
+По умолчанию используется `index, follow`. `noIndex` формирует meta-инструкцию, но не заменяет серверные заголовки, robots.txt, авторизацию и запрет выдачи приватных страниц.
+
+### Keywords
+
+Непустой массив соединяется через `", "` и добавляется одновременно в обычный meta keywords и JSON-LD.
+
+```ts
+keywords: ["React", "TypeScript"];
+// "React, TypeScript"
+```
+
+Пустые строки внутри массива не удаляются автоматически.
+
+### Изображение
+
+Относительный `image.url` преобразуется с тем же `baseUrl`. Создаются `og:image` и `twitter:image`; при наличии `alt` дополнительно создаётся `og:image:alt`.
+
+В JSON-LD формируется `ImageObject`. Неуказанные `width`, `height` и `alt` остаются `undefined` либо `null` согласно исходным данным и поведению `JSON.stringify`.
+
+### Даты
+
+`publishedAt` и `modifiedAt` разбираются через стандартный `Date` и записываются в ISO UTC:
+
+```ts
+publishedAt: "2026-08-01T10:00:00+05:00";
+// datePublished: "2026-08-01T05:00:00.000Z"
+```
+
+Пустая или неверная дата молча не добавляется. Для предсказуемости передавайте ISO 8601 со временной зоной.
+
+## JSON-LD
+
+Каждый вызов создаёт один script descriptor:
+
+```ts
+{
+  type: "application/ld+json",
+  children: JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": type,
+    mainEntityOfPage: { "@type": "WebPage", "@id": canonicalUrl },
+    headline: caption,
+    description,
+    url: canonicalUrl,
+    inLanguage: "ru-RU",
+  }),
+}
+```
+
+Библиотека возвращает строку, а не готовый React-элемент. Следуйте API head-renderer. Если вручную вставляете строку в HTML script, учитывайте XSS-границу: SEO-текст должен быть доверенным или безопасно экранированным renderer. Простого `JSON.stringify` недостаточно для произвольного пользовательского текста, содержащего последовательности вроде закрывающего `script`-тега.
+
+## `createRouteHead(type, path, params)`
+
+Упрощённый адаптер для данных route loader/CMS:
+
+```ts
+type SeoHeadParams = {
+	caption: string;
+	description: string;
+	previewImage: string | null;
+	previewImageAlt: string | null;
+	created: string;
+	updated: string;
+};
+```
+
+```ts
+const head = createRouteHead("NewsArticle", "/news/42", loaderData?.seo);
+```
+
+Адаптер:
+
+- передаёт `path` как `pathname`;
+- при `null`/`undefined` params подставляет пустые `caption` и `description`;
+- превращает `previewImage` в `image`;
+- сопоставляет `created` с `publishedAt`, `updated` с `modifiedAt`;
+- не передаёт `baseUrl`, keywords или `noIndex`.
+
+Поэтому URL результата останется относительным, если `path` относительный. Когда нужен абсолютный canonical, используйте полный `createSeoHead` либо передавайте абсолютный `path`.
+
+## Пример с TanStack Router
+
+```tsx
+export const Route = createFileRoute("/articles/$slug")({
+	loader: loadArticle,
+	head: ({ loaderData, params }) =>
+		createSeoHead({
+			pathname: `/articles/${params.slug}`,
+			baseUrl: "https://example.ru",
+			caption: loaderData.title,
+			description: loaderData.description,
+			type: "Article",
+			image: loaderData.image ? { url: loaderData.image, alt: loaderData.title } : undefined
+		})
+});
+```
+
+Проверьте точную форму `head` вашей версии роутера: библиотека возвращает структурные данные, но не связывается с router напрямую.
+
+## Проверка результата
+
+Для каждой важной страницы проверьте:
+
+1. canonical абсолютный и соответствует публичному URL;
+2. title и description не пусты;
+3. Open Graph image доступно без авторизации;
+4. JSON-LD проходит validator Schema.org/поисковой системы;
+5. preview SSR HTML содержит теги до выполнения JavaScript;
+6. приватные страницы имеют правильную политику индексации.
+
+## Частые ошибки
+
+### Передавать относительный путь без `baseUrl`
+
+Функция не знает публичный origin приложения и оставит URL относительным.
+
+### Считать `createRouteHead` полным аналогом `createSeoHead`
+
+Адаптер специально узкий и не принимает base URL, keywords, размеры image и `noIndex`.
+
+### Передавать локальную дату без timezone
+
+Результат стандартного `Date` может зависеть от окружения. Используйте полный ISO 8601.
+
+### Генерировать SEO только после client fetch
+
+Для надёжной индексации head должен появляться в SSR/pre-render HTML, если архитектура приложения это поддерживает.
+
+### Передавать недоверенный текст напрямую в JSON-LD script
+
+Используйте безопасный renderer и контролируйте источник SEO-полей.
+
+## Краткая карта API
+
+| Экспорт                               | Назначение                                     |
+| ------------------------------------- | ---------------------------------------------- |
+| `createSeoHead(options)`              | Собрать полный meta/link/JSON-LD набор         |
+| `createRouteHead(type, path, params)` | Адаптировать типичные route SEO-поля           |
+| `SeoContentType`                      | Допустимый Schema.org content type             |
+| `SeoHeadOptions`                      | Полная конфигурация страницы                   |
+| `SeoHeadParams`                       | Входные данные упрощённого route adapter       |
+| `SeoImage`                            | URL и описательные размеры preview-изображения |

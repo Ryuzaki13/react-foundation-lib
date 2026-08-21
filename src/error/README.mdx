@@ -1,0 +1,95 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Errors/Missing Context" />
+
+# Ошибка отсутствующего React context через `@ryuzaki13/react-foundation-lib/error`
+
+Модуль создаёт единообразное диагностическое сообщение, когда custom hook вызван вне нужного Provider.
+
+## Установка и импорт
+
+```ts
+import { createMissingContextError, createMissingContextErrorMessage } from "@ryuzaki13/react-foundation-lib/error";
+```
+
+Модуль не импортирует React и может использоваться в любом TypeScript runtime. Типы объектов options выводятся из аргумента и отдельно не экспортируются.
+
+## Когда использовать
+
+Обычная схема context hook:
+
+```tsx
+const DemoContext = createContext<DemoValue | null>(null);
+
+export function useDemo() {
+	const value = useContext(DemoContext);
+
+	if (value === null) {
+		throw createMissingContextError({
+			hookName: "useDemo",
+			providerName: "DemoProvider",
+			contextName: "DemoContext"
+		});
+	}
+
+	return value;
+}
+```
+
+Ошибка должна выбрасываться при нарушении обязательного structural contract. Если отсутствие Provider является допустимым состоянием, возвращайте optional result по собственному явно названному API.
+
+## `createMissingContextErrorMessage`
+
+```ts
+const message = createMissingContextErrorMessage({
+	hookName: "useDemo",
+	providerName: "DemoProvider",
+	contextName: "DemoContext"
+});
+```
+
+Результат состоит из трёх предложений:
+
+1. Где разрешено использовать hook.
+2. Какой context оказался `null`.
+3. Что Provider должен находиться выше вызывающего компонента.
+
+`contextName` optional. Без него сообщение остаётся корректным, но менее конкретным.
+
+Поля вставляются буквально: функция не добавляет backticks, не проверяет имена и не локализует их.
+
+## `createMissingContextError`
+
+Возвращает обычный `Error` с тем же сообщением:
+
+```ts
+const error = createMissingContextError({
+	hookName: "useDemo",
+	providerName: "DemoProvider"
+});
+
+console.log(error.name); // "Error".
+console.log(error.message); // Подробное русское сообщение.
+```
+
+Функция сама не делает `throw`:
+
+```ts
+throw createMissingContextError(options);
+```
+
+Stack trace создаётся стандартным конструктором `Error` в месте вызова.
+
+## Полный API
+
+| Export                             | Назначение                   |
+| ---------------------------------- | ---------------------------- |
+| `createMissingContextErrorMessage` | Возвращает только строку     |
+| `createMissingContextError`        | Возвращает экземпляр `Error` |
+
+## Типичные ошибки
+
+- Возвращать fallback-object после ошибки и скрывать неправильное дерево Provider.
+- Выбрасывать ошибку прямо в Provider вместо hook, который обнаружил `null`.
+- Передавать пустые имена: helper не валидирует строки.
+- Использовать этот модуль для сетевых/validation ошибок: он предназначен только для missing context contract.

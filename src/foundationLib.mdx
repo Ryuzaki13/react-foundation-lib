@@ -40,17 +40,19 @@ import { formatDateAsDate } from "@ryuzaki13/react-foundation-lib";
 
 Большинство pure helpers не требуют React. Entry point с React hook, DOM, browser storage или Service Worker должен вызываться только в браузерном runtime и по правилам React hooks. Совместимые peer dependencies должны быть разрешены host-проектом для используемого entrypoint.
 
-| Возможность                                     | Когда нужна в host                                                                               |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `react`                                         | `hooks`, `dom`, `copy`, `media`, `pwa`, `three-scene`, selection/table и OData store hooks       |
-| `@tanstack/react-query`, persistence, broadcast | `query-client`, часть `error-report`                                                             |
-| `@tanstack/react-table`                         | `table`                                                                                          |
-| `@tanstack/react-virtual`                       | `virtualizer`                                                                                    |
-| `@tanstack/react-router`                        | search helpers из `hooks`                                                                        |
-| `@floating-ui/react`                            | `useFloatingListbox`, DOM reference guards                                                       |
-| `@dnd-kit/core`, `@dnd-kit/sortable`            | `useDndSortableSensors`                                                                          |
-| `zustand`, `immer`, `zod`                       | единый `odata-service`: collection store и OData schemas; `notifications` также использует store |
-| `write-excel-file`                              | `excel`                                                                                          |
+| Возможность                                     | Когда нужна в host                                                                         |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `react`                                         | `hooks`, `dom`, `copy`, `media`, `pwa`, `three-scene`, selection/table и OData store hooks |
+| `@tanstack/react-query`, persistence, broadcast | `query-client`, часть `error-report`                                                       |
+| `@tanstack/react-table`                         | `table`                                                                                    |
+| `@tanstack/react-virtual`                       | `virtualizer`                                                                              |
+| `@tanstack/react-router`                        | search helpers из `hooks`                                                                  |
+| `@floating-ui/react`                            | `useFloatingListbox`, DOM reference guards                                                 |
+| `@dnd-kit/core`, `@dnd-kit/sortable`            | `useDndSortableSensors`                                                                    |
+| `zustand`, `immer`, `zod`                       | единый `odata-service`: collection store и OData schemas                                   |
+| `zustand`                                       | `notifications`                                                                            |
+| `write-excel-file`                              | `excel`                                                                                    |
+| `@fingerprintjs/fingerprintjs`                  | `fingerprint`                                                                              |
 
 ## Выбор entrypoint
 
@@ -103,5 +105,17 @@ import { formatDateAsDate } from "@ryuzaki13/react-foundation-lib";
 Связанные entrypoint `table` и `tree-table` описаны на одной странице [Table и Tree Table](./table/README.mdx): документ общий, но публичные import path остаются раздельными.
 
 Для общего entrypoint clone, className, keyboard, stable stringify, lazy React components и tree helpers доступен подробный справочник [Utils](./utils/README.mdx).
+
+## Каталог подробных страниц
+
+| Область                         | Документы                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Данные и низкоуровневые helpers | [Array](./array/README.mdx), [Binary](./binary/README.mdx), [Bounded Copy Stack](./bounded-copy-stack/README.mdx), [Crypto](./crypto/README.mdx), [Types](./types/README.mdx), [Utils](./utils/README.mdx), [Validators](./validators/README.mdx), [XML](./xml/README.mdx)                                                             |
+| Значения и форматирование       | [Currency](./currency/README.mdx), [Date Segments](./date-segments/README.mdx), [Formatters](./formatters/README.mdx), [Formulas](./formulas/README.mdx), [Number Scale](./number-scale/README.mdx), [Presets](./presets/README.mdx), [Range Output](./range-output/README.mdx), [String Comparison](./string-comparison/README.mdx)   |
+| Browser и React                 | [Context Menu](./context-menu/README.mdx), [Copy](./copy/README.mdx), [DOM](./dom/README.mdx), [File](./file/README.mdx), [Fingerprint](./fingerprint/README.mdx), [Hooks](./hooks/README.mdx), [Media](./media/README.mdx), [PWA](./pwa/README.mdx), [Three Scene](./three-scene/README.mdx), [Virtualizer](./virtualizer/README.mdx) |
+| State и инфраструктура          | [Error](./error/README.mdx), [Error Report](./error-report/README.mdx), [Form](./form/README.mdx), [HTTP](./http/README.mdx), [Notifications](./notifications/README.mdx), [Query Client](./query-client/README.mdx), [Session Storage](./session-storage/README.mdx)                                                                  |
+| OData, таблицы и представление  | [Excel](./excel/README.mdx), [OData Service](./odata-service/README.mdx), [SEO](./seo/README.mdx), [Table и Tree Table](./table/README.mdx)                                                                                                                                                                                            |
+
+У `formatters` есть дополнительные страницы для [boolean](./formatters/boolean/README.mdx), [date](./formatters/date/README.mdx), [number](./formatters/number/README.mdx), [pipeline](./formatters/pipeline/README.mdx), [row-based форматирования](./formatters/rowBased/README.mdx), [strings](./formatters/strings/README.mdx) и [value state](./formatters/valueState/README.mdx).
 
 Если API не описан как публичный на соответствующей странице, не импортируйте его глубоким путём из `src` или `dist`: это не часть стабильного consumer contract.

@@ -1,0 +1,394 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Infrastructure/PWA" />
+
+# PWA
+
+Модуль PWA состоит из двух публичных входов с разной ответственностью:
+
+| Import path                                           | Что содержит                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- |
+| `@ryuzaki13/react-foundation-lib/pwa`                 | React-hook обновления Service Worker и все функции cache policy           |
+| `@ryuzaki13/react-foundation-lib/pwa/sw-cache-policy` | Только чистый parser/builder политики `x-sw-cache`, без React update-flow |
+
+Используйте точный subpath. Внутренний файл `serviceWorker` не является самостоятельным публичным export, даже если отдельные функции используются самим hook.
+
+## Установка
+
+Для `useServiceWorkerUpdate` нужен React. Cache policy не имеет React-зависимости.
+
+```bash
+npm install @ryuzaki13/react-foundation-lib react
+```
+
+## Часть 1. Обновление Service Worker
+
+### Задача hook
+
+```ts
+import { useServiceWorkerUpdate } from "@ryuzaki13/react-foundation-lib/pwa";
+```
+
+Hook:
+
+- регистрирует Service Worker в production;
+- проверяет обновление сразу после запуска;
+- затем повторяет проверку каждые 5 минут;
+- автоматически применяет накопившееся обновление вскоре после обычного открытия или reload;
+- для обновления, найденного во время активной сессии, сообщает UI о доступной версии;
+- очищает interval, startup timeout и подписку при размонтировании.
+
+### Быстрый старт
+
+```tsx
+import { useServiceWorkerUpdate } from "@ryuzaki13/react-foundation-lib/pwa";
+
+export function ServiceWorkerUpdateBanner() {
+	const { hasUpdate, applyUpdate, dismiss } = useServiceWorkerUpdate();
+
+	if (!hasUpdate) {
+		return null;
+	}
+
+	return (
+		<aside role="status" aria-live="polite">
+			<p>Доступна новая версия приложения.</p>
+			<button type="button" onClick={applyUpdate}>
+				Обновить
+			</button>
+			<button type="button" onClick={dismiss}>
+				Позже
+			</button>
+		</aside>
+	);
+}
+```
+
+Разместите этот компонент один раз в корневом client shell приложения. Несколько экземпляров создадут несколько периодических проверок.
+
+### Возвращаемое значение
+
+```ts
+const {
+	hasUpdate, // boolean
+	applyUpdate, // () => boolean
+	dismiss // () => void
+} = useServiceWorkerUpdate();
+```
+
+`hasUpdate` становится `true`, когда найден registration с `waiting` worker.
+
+`applyUpdate()`:
+
+1. отправляет waiting worker сообщение `{ type: "SKIP_WAITING" }`;
+2. запоминает reload в `sessionStorage`;
+3. ожидает смену controller и перезагружает страницу;
+4. если другой клиент уже активировал worker и `waiting` исчез, выполняет fallback reload.
+
+Возвращается `true`, если применение или fallback reload запущены, иначе `false`.
+
+`dismiss()` только скрывает текущий баннер. Он не удаляет waiting worker, не отменяет обновление и не запрещает следующей проверке снова показать баннер.
+
+## Требования к Service Worker приложения
+
+Библиотека управляет клиентской стороной, но сам файл worker принадлежит приложению. Для полного update-flow он должен выполнять два контракта.
+
+### Обработать `SKIP_WAITING`
+
+```ts
+self.addEventListener("message", (event) => {
+	if (event.data?.type === "SKIP_WAITING") {
+		void self.skipWaiting();
+	}
+});
+```
+
+Без этого нажатие «Обновить» не активирует ожидающий worker немедленно.
+
+### Сообщить вкладкам об активации
+
+```ts
+self.addEventListener("activate", (event) => {
+	event.waitUntil(
+		(async () => {
+			await self.clients.claim();
+			const clients = await self.clients.matchAll({ type: "window" });
+
+			for (const client of clients) {
+				client.postMessage({ type: "SW_ACTIVATED_BY_CLIENT" });
+			}
+		})()
+	);
+});
+```
+
+Это сообщение помогает синхронно перезагрузить другие открытые вкладки. Конкретная стратегия `claim` и рассылки должна соответствовать архитектуре worker приложения.
+
+## Compile-time конфигурация
+
+Потребитель обязан определить при сборке:
+
+```ts
+declare const __DEV__: boolean;
+declare const __SERVICE_WORKER_SCOPE__: string;
+declare const __SERVICE_WORKER_URL__: string;
+declare const __SERVICE_WORKER_UPDATE_RELOAD_COUNT_KEY__: string;
+declare const __SERVICE_WORKER_MAX_AUTO_UPDATE_RELOADS__: number;
+```
+
+Пример для Vite:
+
+```ts
+import { defineConfig } from "vite";
+
+export default defineConfig(({ mode }) => ({
+	define: {
+		__DEV__: JSON.stringify(mode !== "production"),
+		__SERVICE_WORKER_SCOPE__: JSON.stringify("/app/"),
+		__SERVICE_WORKER_URL__: JSON.stringify("/app/sw.js"),
+		__SERVICE_WORKER_UPDATE_RELOAD_COUNT_KEY__: JSON.stringify("my-app:sw-update-reload-count"),
+		__SERVICE_WORKER_MAX_AUTO_UPDATE_RELOADS__: JSON.stringify(3)
+	}
+}));
+```
+
+Значения должны быть литералами в собранном клиентском коде. Если сборщик не заменит идентификаторы, приложение получит `ReferenceError`.
+
+### Для чего нужен предел auto reload
+
+После открытия/reload hook даёт обновлениям 30 секунд на автоматическое применение. Счётчик в sessionStorage ограничивает цепочку перезагрузок значением `__SERVICE_WORKER_MAX_AUTO_UPDATE_RELOADS__`.
+
+Это защищает от бесконечного reload-loop при проблемном деплое. После 30-секундного startup-окна счётчик очищается, а дальнейшие обновления показываются через UI.
+
+## Development, SSR и browser boundary
+
+В режиме `__DEV__ === true` effect сразу завершается: Service Worker не регистрируется и интервал не запускается.
+
+Hook использует `window`, `navigator`, `performance`, `sessionStorage` и API Service Worker. Подключайте его только в браузерном React-дереве. Сам effect не выполняется при SSR, но compile-time константы всё равно должны быть доступны в bundle.
+
+Ошибки регистрации и проверки логируются, а наружу не выбрасываются. Отсутствие поддержки `navigator.serviceWorker` приводит к спокойному `hasUpdate: false`.
+
+## Жизненный цикл обновления
+
+```text
+mount
+  → register URL + scope
+  → проверить existing waiting worker
+  → вызвать registration.update()
+  → если update найден в первые 30 секунд после navigate/reload:
+       автоматически отправить SKIP_WAITING, пока не исчерпан лимит
+  → иначе установить hasUpdate = true
+  → пользователь выбирает applyUpdate или dismiss
+  → каждые 5 минут новая проверка
+```
+
+Навигация считается startup-кандидатом только для `PerformanceNavigationTiming.type` со значением `"navigate"` или `"reload"`.
+
+## Часть 2. Политика SW-кэша
+
+Эта часть описывает компактное текстовое значение, которое transport и Service Worker могут использовать как согласованный cache profile.
+
+Для кода без React импортируйте узкий subpath:
+
+```ts
+import {
+	buildSwCachePolicyValue,
+	normalizeSwCacheName,
+	parseSwCachePolicy,
+	resolveSwCacheCacheNameByPolicy,
+	type SwCachePolicyDraft
+} from "@ryuzaki13/react-foundation-lib/pwa/sw-cache-policy";
+```
+
+## Формат политики
+
+Поддерживаются три режима:
+
+```text
+off
+ttl=<duration>[;max=<count>][;name=<name>]
+bust=<duration>[;max=<count>][;name=<name>]
+```
+
+Примеры:
+
+```text
+off
+ttl=10m
+ttl=24h;max=200;name=references
+bust=7d;name=metadata
+ttl=forever;max=50
+```
+
+Опции разрешено разделять `;` или `,`. Имена ключей и режимы разбираются без учёта регистра.
+
+`ttl` и `bust` — метки профиля. Конкретное отличие их runtime-поведения реализует Service Worker/transport потребителя; parser только возвращает разобранный `mode`.
+
+## Единицы времени
+
+```ts
+type SwCacheDurationUnit = "ms" | "s" | "m" | "h" | "d";
+```
+
+Поддерживаются положительные целые и десятичные значения, например `500ms`, `1.5h`, `7d`. Максимальный конечный TTL — 365 дней. Специальное значение `forever` превращается в `Infinity`.
+
+Ноль, отрицательное число, запись без единицы, scientific notation и срок больше 365 дней считаются неверными.
+
+## `parseSwCachePolicy(value)`
+
+```ts
+const policy = parseSwCachePolicy("ttl=10m;max=200;name=UI Data");
+
+// {
+//   mode: "ttl",
+//   amount: 10,
+//   unit: "m",
+//   name: "ui-data",
+//   maxEntries: 200,
+//   resolvedMaxEntries: 200,
+//   ttlMs: 600000,
+//   cacheName: "odata-ui-data-10m-max200"
+// }
+```
+
+Пустое или полностью неверное значение возвращает `undefined`. Строка `off` возвращает `{ mode: "off" }`.
+
+Для опций поддерживаются алиасы:
+
+| Смысл            | Допустимые ключи               |
+| ---------------- | ------------------------------ |
+| Максимум записей | `maxEntries`, `max`, `entries` |
+| Имя профиля      | `cacheName`, `cache`, `name`   |
+
+Неизвестные опции игнорируются. Если одна опция повторяется, используется последнее значение из-за семантики `Map`.
+
+### `maxEntries`
+
+Допустимо положительное целое число. Значение ограничивается максимумом `5000`. Неверное значение не делает всю политику неверной: оно просто отбрасывается.
+
+`resolvedMaxEntries` всегда содержит фактический лимит для `ttl`/`bust`: переданный либо значение по умолчанию `100`.
+
+При этом cache name включает суффикс `-maxN` только для явно переданного валидного лимита. Дефолтные `100` в имени не записываются.
+
+## `normalizeSwCacheName(value)`
+
+Нормализует имя профиля:
+
+1. удаляет пробелы по краям;
+2. переводит в нижний регистр;
+3. заменяет группы недопустимых символов на `-`;
+4. удаляет крайние дефисы;
+5. возвращает `undefined`, если ничего не осталось.
+
+Разрешены латинские буквы, цифры, `_` и `-`.
+
+```ts
+normalizeSwCacheName(" UI Data / Main "); // "ui-data-main"
+normalizeSwCacheName("---"); // undefined
+```
+
+## `resolveSwCacheCacheNameByPolicy(value)`
+
+Возвращает вычисленное имя cache только для валидных режимов `ttl` и `bust`.
+
+```ts
+resolveSwCacheCacheNameByPolicy("ttl=24h;name=ref");
+// "odata-ref-24h"
+
+resolveSwCacheCacheNameByPolicy("off"); // undefined
+resolveSwCacheCacheNameByPolicy("ttl=wrong"); // undefined
+```
+
+Имя — устойчивый технический профиль, но формат может быть частью cache-versioning. Не собирайте его вручную.
+
+## `buildSwCachePolicyValue(draft)`
+
+Собирает каноническую строку из данных формы.
+
+```ts
+const draft: SwCachePolicyDraft = {
+	mode: "ttl",
+	amount: 10,
+	unit: "m",
+	name: "UI Data",
+	maxEntries: 200
+};
+
+buildSwCachePolicyValue(draft);
+// "ttl=10m;max=200;name=ui-data"
+```
+
+Правила builder:
+
+- для `off` всегда возвращает `"off"`;
+- неверный `amount` заменяет на `24`;
+- отсутствующую `unit` заменяет на `h`;
+- неверный `maxEntries` отбрасывает, больше `5000` ограничивает;
+- имя нормализует через `normalizeSwCacheName`;
+- порядок опций всегда `max`, затем `name`.
+
+Builder не ограничивает вычисленный срок 365 днями. Например, draft `400d` будет собран в строку, но parser затем вернёт `undefined`. Если данные приходят из свободной формы, проверьте результат повторным `parseSwCachePolicy` перед сохранением.
+
+## Пример формы настройки
+
+```ts
+function savePolicy(draft: SwCachePolicyDraft) {
+	const value = buildSwCachePolicyValue(draft);
+	const parsed = parseSwCachePolicy(value);
+
+	if (!parsed) {
+		throw new Error("Не удалось собрать допустимую cache policy");
+	}
+
+	return value;
+}
+```
+
+## Безопасность кэша
+
+Политика только описывает срок и профиль. Она не определяет, **что разрешено кэшировать**.
+
+Service Worker приложения обязан отдельно учитывать:
+
+- пользователя, tenant и authorization context;
+- HTTP-метод: mutation-запросы обычно не кэшируются;
+- чувствительные персональные данные;
+- response status и content type;
+- очистку cache при logout;
+- версионирование схемы ответа.
+
+Не используйте общий cache name для ответов разных пользователей, если ключ cache не содержит безопасно разделяющий контекст.
+
+## Частые ошибки
+
+### Импорт внутреннего `serviceWorker.ts`
+
+Он не объявлен в `package.json#exports`. Публичный update API — `useServiceWorkerUpdate` из `/pwa`.
+
+### Ожидать, что `dismiss()` отменит update
+
+Waiting worker остаётся установленным. Следующая проверка может снова показать UI.
+
+### Не обработать `SKIP_WAITING` в worker
+
+Кнопка применения отправит сообщение, но worker не активируется до обычного lifecycle браузера.
+
+### Путать TTL parser с cache implementation
+
+Функции policy не читают Cache Storage, не перехватывают fetch и не удаляют записи. Это обязанность Service Worker.
+
+### Считать `forever` безопасным default
+
+`ttlMs: Infinity` требует явной стратегии bust/invalidation. Без неё клиент может долго видеть устаревшие данные.
+
+## Краткая карта API
+
+| Экспорт                             | Публичный path | Назначение                                         |
+| ----------------------------------- | -------------- | -------------------------------------------------- |
+| `useServiceWorkerUpdate()`          | `/pwa`         | Регистрация, проверка и UI-состояние обновления SW |
+| `parseSwCachePolicy()`              | оба            | Разобрать текстовую политику                       |
+| `buildSwCachePolicyValue()`         | оба            | Собрать каноническую строку из draft               |
+| `normalizeSwCacheName()`            | оба            | Подготовить безопасную часть cache name            |
+| `resolveSwCacheCacheNameByPolicy()` | оба            | Получить имя cache из валидной политики            |
+| `ParsedSwCachePolicy`               | оба            | Тип разобранного результата                        |
+| `SwCachePolicyDraft`                | оба            | Тип данных формы/builder                           |

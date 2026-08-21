@@ -1,0 +1,136 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/Presets" />
+
+# Общие preset helpers через `@ryuzaki13/react-foundation-lib/presets`
+
+Модуль проверяет восстановленные preset ids, сопоставляет их с option objects и ищет одну option по id.
+
+## Установка и импорт
+
+```ts
+import { getPresetOption, normalizePresetIds, resolvePresetOptionsByIds } from "@ryuzaki13/react-foundation-lib/presets";
+
+import type { PresetOption } from "@ryuzaki13/react-foundation-lib/presets";
+```
+
+Модуль не зависит от React/browser APIs.
+
+## Базовый контракт
+
+```ts
+type PresetOption<TId extends string = string> = {
+	id: TId;
+	label: string;
+};
+```
+
+Ваш тип может добавлять поля:
+
+```ts
+type ReportPreset = PresetOption<"daily" | "monthly"> & {
+	icon: string;
+};
+```
+
+## `normalizePresetIds`
+
+Функция предназначена для явной boundary восстановления сохранённого `unknown`:
+
+```ts
+type PresetId = "first" | "second" | "third";
+
+function isPresetId(value: unknown): value is PresetId {
+	return value === "first" || value === "second" || value === "third";
+}
+
+normalizePresetIds(["second", "unknown", "second", "first"], isPresetId);
+// ["second", "first"].
+```
+
+Алгоритм:
+
+- если `value` не массив — возвращается копия `fallbackIds`;
+- если это массив — fallback не используется, даже для пустого массива;
+- элементы проверяются переданным type guard;
+- invalid ids пропускаются;
+- дубликаты удаляются;
+- сохраняется порядок первого допустимого вхождения.
+
+```ts
+normalizePresetIds(undefined, isPresetId, ["third"]); // ["third"].
+normalizePresetIds([], isPresetId, ["third"]); // [].
+```
+
+Это normalizer сохранённого payload. Не вызывайте его внутри обычного input/store setter, если пользовательский draft должен храниться буквально.
+
+## `resolvePresetOptionsByIds`
+
+```ts
+const options = [
+	{ id: "first", label: "Первый" },
+	{ id: "second", label: "Второй" },
+	{ id: "third", label: "Третий" }
+] as const;
+
+const selected = resolvePresetOptionsByIds(["third", "first", "third", "missing"], options);
+// objects third, first.
+```
+
+Правила:
+
+- порядок берётся из `presetIds`, а не из `options`;
+- повторные ids добавляются один раз;
+- отсутствующие в `options` ids пропускаются;
+- возвращается новый массив;
+- сами option objects не клонируются;
+- если в `options` повторяется id, `Map` оставляет последнюю option с этим id.
+
+## `getPresetOption`
+
+```ts
+getPresetOption("second", options);
+// { id: "second", label: "Второй" }.
+
+getPresetOption("missing", options); // null.
+getPresetOption(undefined, options); // null.
+```
+
+Функция использует первое совпадение `options.find`. Пустой id `""` считается отсутствующим и возвращает `null`.
+
+## Save/restore recipe
+
+```ts
+function restorePresetIds(value: unknown): PresetId[] {
+	return normalizePresetIds(value, isPresetId, ["daily"]);
+}
+
+function buildPresetView(ids: readonly PresetId[]) {
+	return resolvePresetOptionsByIds(ids, PRESET_OPTIONS);
+}
+```
+
+Разделяйте:
+
+```text
+unknown persisted payload ── normalizePresetIds ──► canonical ids
+literal UI draft           ── clone only          ──► literal copy
+canonical ids              ── resolve...          ──► option objects for UI
+```
+
+## API и ошибки
+
+| Export                      | Результат                            |
+| --------------------------- | ------------------------------------ |
+| `PresetOption`              | Минимальный `{ id, label }` contract |
+| `normalizePresetIds`        | Проверенные уникальные ids           |
+| `resolvePresetOptionsByIds` | Options в порядке ids                |
+| `getPresetOption`           | Option или `null`                    |
+
+Типичные ошибки:
+
+- Ожидать fallback для пустого массива.
+- Считать result options глубокими копиями.
+- Использовать normalizer во время пользовательского ввода.
+- Передавать type guard, который делает unsafe cast вместо runtime-проверки.
+- Ожидать, что неизвестный id будет создан автоматически.

@@ -1,0 +1,326 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Interaction/Context Menu State" />
+
+# Состояние и anchors контекстного меню через `@ryuzaki13/react-foundation-lib/context-menu`
+
+Модуль описывает открытое/закрытое состояние контекстного меню, источник открытия и два вида anchor: DOM element или экранная точка. Также он создаёт virtual anchor для Floating UI.
+
+Модуль не содержит React hook и не рисует меню.
+
+## Содержание
+
+- [Назначение и границы](#назначение-и-границы)
+- [Установка и импорт](#установка-и-импорт)
+- [Модель данных](#модель-данных)
+- [Получение точки](#получение-точки)
+- [`createVirtualAnchor`](#createvirtualanchor)
+- [State helpers](#state-helpers)
+- [React reducer recipe](#react-reducer-recipe)
+- [Floating UI recipe](#floating-ui-recipe)
+- [Доступность](#доступность)
+- [Полный API и ошибки](#полный-api-и-ошибки)
+
+## Назначение и границы
+
+```text
+click/contextmenu/keyboard
+          │
+          ├─ element anchor
+          └─ point {x,y}
+                 │
+                 ▼
+             MenuState
+                 │
+                 ▼
+host React/Floating UI/menu component
+```
+
+Модуль:
+
+- не добавляет event listeners;
+- не вызывает `preventDefault`;
+- не хранит global state;
+- не позиционирует floating element;
+- не закрывает меню по Escape/outside click;
+- не управляет focus/ARIA;
+- не клонирует DOM elements.
+
+Готовый visual primitive находится в `@ryuzaki13/react-foundation-ui/context-menu`.
+
+## Установка и импорт
+
+```ts
+import {
+	closeMenu,
+	createVirtualAnchor,
+	getMenuPointFromEvent,
+	getMenuPointFromRect,
+	initialMenuState,
+	openMenu,
+	toggleMenu
+} from "@ryuzaki13/react-foundation-lib/context-menu";
+
+import type {
+	ElementMenuAnchor,
+	MenuAnchor,
+	MenuOpenSource,
+	MenuPoint,
+	MenuState,
+	OpenMenuPayload,
+	PointMenuAnchor
+} from "@ryuzaki13/react-foundation-lib/context-menu";
+```
+
+Functions pure, но types/anchors используют DOM `Element`/`HTMLElement`. Публичный subpath не импортирует Floating UI runtime.
+
+## Модель данных
+
+### Point
+
+```ts
+interface MenuPoint {
+	x: number;
+	y: number;
+}
+```
+
+Координаты соответствуют viewport/client coordinates, а не page scroll coordinates.
+
+### Источник открытия
+
+```ts
+type MenuOpenSource = "click" | "contextmenu" | "keyboard" | "programmatic";
+```
+
+Source помогает UI выбирать focus/animation/recovery, но helpers сами не меняют поведение по source.
+
+### Anchors
+
+```ts
+type ElementMenuAnchor = {
+	type: "element";
+	element: HTMLElement;
+};
+
+type PointMenuAnchor = {
+	type: "point";
+	point: MenuPoint;
+	contextElement?: Element | null;
+};
+
+type MenuAnchor = ElementMenuAnchor | PointMenuAnchor;
+```
+
+`contextElement` помогает Floating UI определить document/layout context для virtual element.
+
+### State
+
+```ts
+interface MenuState {
+	open: boolean;
+	source: MenuOpenSource | null;
+	anchor: MenuAnchor | null;
+}
+```
+
+Нормальное закрытое состояние:
+
+```ts
+{
+	open: false,
+	source: null,
+	anchor: null
+}
+```
+
+## Получение точки
+
+### `getMenuPointFromEvent`
+
+```ts
+function onContextMenu(event: React.MouseEvent<HTMLElement>) {
+	event.preventDefault();
+
+	const point = getMenuPointFromEvent(event);
+	// { x: event.clientX, y: event.clientY }.
+}
+```
+
+Функции нужен только structural object с `clientX`/`clientY`, поэтому подходят native и React mouse events.
+
+Она не вызывает `preventDefault` и не проверяет finite coordinates.
+
+### `getMenuPointFromRect`
+
+Возвращает геометрический центр rect:
+
+```ts
+const point = getMenuPointFromRect({
+	left: 10,
+	top: 20,
+	width: 80,
+	height: 40
+});
+// { x: 50, y: 40 }.
+```
+
+Подходит для keyboard opening от центра `element.getBoundingClientRect()`:
+
+```ts
+const point = getMenuPointFromRect(button.getBoundingClientRect());
+```
+
+## `createVirtualAnchor`
+
+Создаёт object с `getBoundingClientRect`, представляющий точку нулевого размера:
+
+```ts
+const virtualAnchor = createVirtualAnchor({ x: 120, y: 240 }, triggerElement);
+```
+
+Возвращаемый rect:
+
+```ts
+{
+	x: 120,
+	y: 240,
+	top: 240,
+	left: 120,
+	bottom: 240,
+	right: 120,
+	width: 0,
+	height: 0,
+	toJSON: () => undefined
+}
+```
+
+Если `contextElement` равен `null`/`undefined`, в результате поле становится `undefined`.
+
+Point object читается при каждом `getBoundingClientRect`. Не мутируйте его; создайте новый anchor при изменении координат.
+
+## State helpers
+
+### `initialMenuState`
+
+Экспортируется один module-level object. Рассматривайте его как readonly-константу и не мутируйте:
+
+```ts
+const [state, setState] = useState<MenuState>(initialMenuState);
+```
+
+### `openMenu`
+
+```ts
+const state = openMenu({
+	source: "contextmenu",
+	anchor: {
+		type: "point",
+		point: { x: 100, y: 200 }
+	}
+});
+```
+
+Всегда возвращает новый state `{ open: true, source, anchor }`. Anchor/element переносятся по ссылке.
+
+### `closeMenu`
+
+```ts
+const closed = closeMenu(opened);
+```
+
+Открытое состояние превращается в canonical closed state. Если `state.open === false` и `state.anchor === null`, возвращается исходная ссылка `state`, что удобно для reducer no-op.
+
+Передавайте согласованное состояние. Если вручную создать `{ open:false, source:"click", anchor:null }`, `closeMenu` вернёт его без очистки source.
+
+### `toggleMenu`
+
+```ts
+const next = toggleMenu(current, payload);
+```
+
+- если `current.open === true`, закрывает меню и игнорирует payload;
+- если меню закрыто, вызывает `openMenu(payload)`.
+
+Toggle подходит для click button. Для `contextmenu` чаще нужен явный `openMenu`, чтобы повторный right-click перемещал anchor, а не закрывал меню.
+
+## React reducer recipe
+
+```tsx
+const [menu, setMenu] = useState<MenuState>(initialMenuState);
+
+function handleContextMenu(event: React.MouseEvent<HTMLElement>) {
+	event.preventDefault();
+
+	setMenu(
+		openMenu({
+			source: "contextmenu",
+			anchor: {
+				type: "point",
+				point: getMenuPointFromEvent(event),
+				contextElement: event.currentTarget
+			}
+		})
+	);
+}
+
+function handleClose() {
+	setMenu((current) => closeMenu(current));
+}
+```
+
+Не сохраняйте `MenuState` в JSON/localStorage: он может содержать `HTMLElement`.
+
+## Floating UI recipe
+
+```ts
+const reference =
+	menu.anchor?.type === "element"
+		? menu.anchor.element
+		: menu.anchor?.type === "point"
+			? createVirtualAnchor(menu.anchor.point, menu.anchor.contextElement)
+			: null;
+```
+
+Передайте `reference` в public API выбранного Floating UI wrapper. Не импортируйте private package files.
+
+## Доступность
+
+Host обязан реализовать:
+
+- открытие клавишей Context Menu/Shift+F10 или принятой командой;
+- focus первого/выбранного item;
+- Arrow/Home/End navigation;
+- закрытие по Escape и возврат focus;
+- `role="menu"`/`menuitem` только если semantics действительно menu;
+- disabled items;
+- outside click и focus dismissal;
+- сохранение trigger element для keyboard recovery.
+
+Для keyboard source element anchor обычно лучше point без pointer coordinates.
+
+## Полный API и ошибки
+
+| Export                  | Назначение                  |
+| ----------------------- | --------------------------- |
+| `getMenuPointFromEvent` | Читает client coordinates   |
+| `getMenuPointFromRect`  | Центр rect                  |
+| `createVirtualAnchor`   | Point-like DOMRect provider |
+| `initialMenuState`      | Canonical closed state      |
+| `openMenu`              | Новый opened state          |
+| `closeMenu`             | Закрывает/очищает state     |
+| `toggleMenu`            | Toggle по `open`            |
+| `MenuPoint`             | `{ x, y }`                  |
+| `MenuOpenSource`        | Источник открытия           |
+| `MenuAnchor`            | Element/point union         |
+| `MenuState`             | Полное state                |
+| `OpenMenuPayload`       | `{ source, anchor }`        |
+
+Типичные ошибки:
+
+- Использовать `pageX/pageY` вместо client coordinates.
+- Вызывать toggle при каждом `contextmenu` и неожиданно закрывать открытое меню.
+- Мутировать `initialMenuState`.
+- Persist DOM element.
+- Считать virtual anchor готовым positioner-ом.
+- Не возвращать focus после keyboard menu.

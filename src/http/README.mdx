@@ -1,0 +1,126 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/HTTP/Headers and Text Response" />
+
+# HTTP headers и текстовые ответы через `@ryuzaki13/react-foundation-lib/http`
+
+Модуль создаёт стандартный набор HTTP-заголовков запрета кеширования и обычный `Response` с UTF-8 plain text.
+
+## Содержание
+
+- [Назначение и границы](#назначение-и-границы)
+- [Установка и импорт](#установка-и-импорт)
+- [`createNoStoreHeaders`](#createnostoreheaders)
+- [`createTextHttpResponse`](#createtexthttpresponse)
+- [Runtime и безопасность](#runtime-и-безопасность)
+- [API](#api)
+
+## Назначение и границы
+
+```text
+HeadersInit + text + status
+             │
+             ▼
+Headers с no-store + Response(text/plain; charset=UTF-8)
+```
+
+Модуль не выполняет `fetch`, не сериализует JSON, не задаёт CORS, CSP, cookies или authorization и не превращает ошибки transport в response автоматически.
+
+## Установка и импорт
+
+```ts
+import { createNoStoreHeaders, createTextHttpResponse } from "@ryuzaki13/react-foundation-lib/http";
+
+import type { NoStoreHeadersInit, TextHttpResponseOptions } from "@ryuzaki13/react-foundation-lib/http";
+```
+
+Нужны стандартные Web API `Headers` и `Response`. Они есть в браузерах, Service Worker и современных server runtimes, но могут отсутствовать в старом Node.js без polyfill.
+
+## `createNoStoreHeaders`
+
+```ts
+const headers = createNoStoreHeaders({
+	"X-Request-Id": "request-1"
+});
+```
+
+Функция создаёт новый `Headers` и устанавливает:
+
+```text
+Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate
+Pragma: no-cache
+Expires: 0
+```
+
+Поддерживаются все стандартные формы `HeadersInit`:
+
+```ts
+createNoStoreHeaders();
+createNoStoreHeaders(new Headers({ "X-Test": "1" }));
+createNoStoreHeaders({ "X-Test": "1" });
+createNoStoreHeaders([["X-Test", "1"]]);
+```
+
+Исходный `Headers` не изменяется: constructor создаёт новую коллекцию.
+
+Если `init` уже содержит `Cache-Control`, `Pragma` или `Expires`, библиотечное значение перезаписывает его.
+
+> `no-store` — инструкция кешам, а не гарантия уничтожения уже сохранённых данных. Не помещайте секреты в response только потому, что добавлены эти headers.
+
+## `createTextHttpResponse`
+
+```ts
+const response = createTextHttpResponse({
+	status: 400,
+	text: "Некорректный запрос",
+	headers: {
+		"X-Request-Id": "request-1"
+	}
+});
+```
+
+Результат:
+
+- обычный экземпляр `Response`;
+- переданный HTTP status;
+- body с исходной строкой;
+- no-store headers;
+- `Content-Type: text/plain; charset=UTF-8`.
+
+```ts
+console.log(response.status); // 400.
+console.log(await response.text()); // "Некорректный запрос".
+console.log(response.headers.get("Content-Type"));
+// "text/plain; charset=UTF-8".
+```
+
+Переданный `Content-Type` перезаписывается. Для JSON, HTML, XML, file stream или redirect создайте специализированный response соответствующего владельца.
+
+`Response` сам проверяет допустимость status. Например, некорректное значение может привести к исключению конструктора; helper его не перехватывает.
+
+## Runtime и безопасность
+
+- Функции синхронны; чтение body через `response.text()` асинхронно по стандарту Web API.
+- Модуль подходит browser, worker и server runtime с Web Fetch API.
+- Текст вставляется как plain text, а не HTML.
+- CORS-заголовки не добавляются.
+- `Cache-Control` не заменяет authorization и redaction.
+- Не возвращайте пользователю stack trace, tokens или внутренний transport payload.
+- В Service Worker учитывайте общую cache policy: no-store response не должен вручную помещаться в Cache Storage.
+
+## API
+
+```ts
+type NoStoreHeadersInit = HeadersInit | undefined;
+
+type TextHttpResponseOptions = {
+	readonly status: number;
+	readonly text: string;
+	readonly headers?: HeadersInit;
+};
+```
+
+| Export                   | Результат        |
+| ------------------------ | ---------------- |
+| `createNoStoreHeaders`   | Новый `Headers`  |
+| `createTextHttpResponse` | Новый `Response` |

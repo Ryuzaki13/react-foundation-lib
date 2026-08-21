@@ -1,0 +1,612 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Errors/Error Report" />
+
+# Error Report
+
+Модуль `@ryuzaki13/react-foundation-lib/error-report` собирает клиентскую диагностику ошибки в структурированный draft и временно хранит последние drafts в `sessionStorage`.
+
+Он умеет объединить:
+
+- нормализованную ошибку и stack trace;
+- сведения о browser/build;
+- URL и viewport;
+- последние действия пользователя — breadcrumbs;
+- состояние TanStack Query без полного query data;
+- технические сведения о persisted queries;
+- контекст React/runtime/transport;
+- lifecycle доставки: `pending`, `sending`, `sent`, `failed`.
+
+Важная граница: **lib-пакет не отправляет отчёт на сервер**. Он формирует draft и предоставляет точки подключения. Авторизация, HTTP/API delivery, retry, пользовательское согласие и UI принадлежат приложению либо API-пакету.
+
+## Установка
+
+Модуль интегрируется с TanStack Query и query persistence.
+
+```bash
+npm install @ryuzaki13/react-foundation-lib \
+  @tanstack/react-query \
+  @tanstack/query-persist-client-core
+```
+
+```ts
+import {
+	captureRuntimeErrorReport,
+	createErrorInfo,
+	installErrorReportBrowserBreadcrumbs,
+	setErrorReportRuntimeErrorReporter,
+	type ErrorReportDraft
+} from "@ryuzaki13/react-foundation-lib/error-report";
+```
+
+## Ментальная модель
+
+```text
+исходная ошибка
+  → capture-функция
+  → нормализация + diagnostics + breadcrumbs
+  → ErrorReportDraft(status = pending)
+  → sessionStorage, максимум 10 drafts
+  → app/API delivery
+  → updateErrorReportDraft(status = sending/sent/failed)
+```
+
+Сбор отчёта — дополнительный диагностический сценарий. Ошибка репортера не должна заменять исходную ошибку и ломать основной пользовательский поток.
+
+## Когда сбор включён
+
+### `isErrorReportingEnabled(options?)`
+
+```ts
+isErrorReportingEnabled();
+isErrorReportingEnabled({ isDev: false });
+```
+
+Возвращает `true` только в браузере и только вне dev-режима. По умолчанию режим читается из compile-time `__DEV__`.
+
+Следствия:
+
+- при SSR draft не создаётся;
+- в development capture-функции возвращают `undefined`;
+- тест может явно передать `{ isDev: false }` только в эту функцию, но остальные capture-функции всё равно используют общий `__DEV__`.
+
+## Compile-time константы
+
+Потребитель должен определить:
+
+```ts
+declare const __DEV__: boolean;
+declare const __APP_ID__: string;
+declare const __APP_BUILD_ID__: string;
+```
+
+`__APP_ID__` входит в ключи `sessionStorage`, а `__APP_BUILD_ID__` помогает связать ошибку с деплоем.
+
+Пример Vite:
+
+```ts
+define: {
+  __DEV__: JSON.stringify(mode !== "production"),
+  __APP_ID__: JSON.stringify("education-arm"),
+  __APP_BUILD_ID__: JSON.stringify(process.env.BUILD_ID ?? "local"),
+}
+```
+
+Модуль persisted diagnostics использует инфраструктуру `/query-client`; её compile-time persistence-константы тоже должны быть настроены, если приложение включает соответствующую часть query persistence.
+
+## Быстрый старт для runtime-ошибок
+
+### Прямой capture
+
+```ts
+try {
+	await runImport();
+} catch (error) {
+	const draft = await captureRuntimeErrorReport(error, {
+		source: "users-import",
+		detail: {
+			fileType: selectedFile.type,
+			step: "upload"
+		}
+	});
+
+	if (draft) {
+		await sendDraft(draft);
+	}
+
+	throw error;
+}
+```
+
+### Через независимый runtime facade
+
+Общий код может не знать о QueryClient и delivery. Приложение один раз регистрирует reporter:
+
+```ts
+setErrorReportRuntimeErrorReporter(async (error, context) => {
+	const draft = await captureRuntimeErrorReport(error, context, queryClient);
+
+	if (draft) {
+		await deliverErrorReport(draft);
+	}
+});
+```
+
+После этого любой нижний слой может безопасно вызвать:
+
+```ts
+await reportRuntimeError(error, {
+	source: "document-download",
+	detail: { action: "download" }
+});
+```
+
+`reportRuntimeError` ничего не делает без зарегистрированного reporter и подавляет ошибки самого reporter. Для отключения:
+
+```ts
+setErrorReportRuntimeErrorReporter(undefined);
+```
+
+Одновременно хранится один runtime reporter. Новая регистрация заменяет предыдущую и очищает внутреннее окно runtime-дедупликации.
+
+## Нормализация ошибки
+
+### `createErrorInfo(error)`
+
+Любое брошенное значение преобразуется к форме:
+
+```ts
+type ErrorReportErrorInfo = {
+	name: string;
+	message: string;
+	code?: string;
+	stackTrace?: string;
+	httpStatus?: number;
+};
+```
+
+Для обычного `Error` сохраняются `name`, непустой `message` и полный `stack`.
+
+```ts
+createErrorInfo(new Error("Не удалось сохранить"));
+// { name: "Error", message: "Не удалось сохранить", stackTrace: "..." }
+```
+
+Пустое сообщение, пустая строка и строка из пробелов заменяются на «Неизвестная ошибка».
+
+Для plain object читаются `name`, `message`, `stack` и первый из числовых `status`, `statusCode`, `httpStatus`. Другие поля объекта автоматически не включаются.
+
+Также распознаётся serverFn transport-форма с `error.appError`: она превращается в `name: "AppError"`, сохраняет `message`, `code` и status.
+
+## Безопасные диагностические значения
+
+### `createDiagnosticValue(value, depth?)`
+
+Преобразует произвольное значение в JSON-совместимое дерево `ErrorReportSafeValue`.
+
+Правила ограничения:
+
+- максимальная глубина — 4;
+- максимум 20 элементов массива;
+- максимум 40 ключей объекта;
+- `undefined`, function, symbol и усечённая ветка получают специальные объекты `{ type: ... }`;
+- `bigint` превращается в строку;
+- `Date` — в ISO-строку.
+
+```ts
+createDiagnosticValue({ retry: 2, handler: () => undefined });
+// { retry: 2, handler: { type: "function" } }
+```
+
+Критически важно: функция **не скрывает значения по имени ключа**. Поля `token`, `password`, `authorization`, email и другие секреты сохранятся, если их передать. Это ограничитель размера и типа, а не security sanitizer.
+
+### `sanitizeDetail(detail)`
+
+Применяет `createDiagnosticValue` к первым 40 полям объекта. Для `undefined` или пустого объекта возвращает `undefined`.
+
+Передавайте только заранее отобранные технические данные:
+
+```ts
+sanitizeDetail({
+	operation: "save-order",
+	entitySet: "Orders",
+	rowCount: rows.length
+});
+```
+
+Не передавайте request body, access token, cookie, персональные поля и полные backend responses.
+
+### `createDataShape(value, depth?)`
+
+Описывает структуру данных без leaf-значений:
+
+```ts
+createDataShape({ rows: [{ id: "42", amount: 100 }] });
+// объект с keys/shape, массивом length и shape первых трёх элементов
+```
+
+Для массива сохраняются длина и формы первых трёх элементов. Для объекта — первые 40 ключей и их формы. Именно эта функция используется для query data, чтобы не копировать содержимое кэша.
+
+## Breadcrumbs
+
+Breadcrumb — короткая запись о событии перед ошибкой.
+
+```ts
+type ErrorReportBreadcrumb = {
+	utc: string;
+	type: "route" | "click" | "visibility" | "query-error" | "mutation-error" | "runtime-error";
+	routeId?: string;
+	appId?: string;
+	viewId?: string;
+	target?: string;
+	detail?: Record<string, ErrorReportSafeValue>;
+};
+```
+
+### Ручное добавление
+
+```ts
+addErrorReportBreadcrumb({
+	type: "route",
+	routeId: "/orders/$id",
+	detail: sanitizeDetail({ orderId: "42" })
+});
+```
+
+Если `utc` отсутствует, используется текущий ISO timestamp. В памяти остаются последние 80 breadcrumbs.
+
+```ts
+getErrorReportBreadcrumbs();
+clearErrorReportBreadcrumbs();
+```
+
+Возвращаемый массив является текущим внутренним массивом, а не глубокой копией. Считайте его readonly и не меняйте элементы вручную.
+
+### Автоматические browser breadcrumbs
+
+```ts
+const uninstallBreadcrumbs = installErrorReportBrowserBreadcrumbs();
+
+// При демонтаже client shell:
+uninstallBreadcrumbs();
+```
+
+Установщик слушает:
+
+- click в capture phase;
+- `document.visibilitychange`.
+
+Для click сохраняются координаты/модификаторы и ограниченное описание meaningful target: tag, стабильные атрибуты, короткий текст и цепочка родителей. Глубина DOM-цепочки ограничена 20, текст — 80 символами, атрибут — 120.
+
+Код не читает `input.value` и не копирует CSS class list, но текст/ARIA/title/data-атрибуты тоже могут содержать чувствительные данные. Не помещайте секреты в DOM-атрибуты и UI-текст.
+
+На сервере установщик возвращает пустую cleanup-функцию.
+
+## Диагностика TanStack Query
+
+### `collectQueryDiagnostics(query)`
+
+Собирает:
+
+- `queryHash` и диагностическое представление `queryKey`;
+- status/fetchStatus;
+- timestamps обновления data/error;
+- failure count, invalidation и observer count;
+- meta;
+- `dataShape` вместо data;
+- нормализованную query error.
+
+Значения `queryKey` и `meta` сохраняются. Если туда попал token или персональный идентификатор, он попадёт в отчёт. Проектируйте query keys как диагностически безопасный контракт.
+
+### `collectMutationDiagnostics(mutation)`
+
+Собирает mutation key, status, failure count, submitted timestamp, meta и error. Mutation variables/data не копируются.
+
+### `collectQueryClientDiagnostics(queryClient)`
+
+Возвращает последние 40 query и последние 40 mutations из соответствующих cache. Это синхронный snapshot текущего QueryClient.
+
+### `collectPersistedQueryDiagnostics()`
+
+Асинхронно читает IndexedDB persistence из `/query-client` и возвращает максимум 40 записей.
+
+Сохраняются storage key, buster, query hash/key, statuses, timestamps, failure count и error. `state.data` намеренно исключён полностью.
+
+Если IndexedDB/persistence недоступны или чтение бросает ошибку, возвращается пустой массив — сбор отчёта не падает.
+
+## Capture query-ошибки
+
+### `captureQueryErrorReport(error, query, queryClient, context?)`
+
+```ts
+const draft = await captureQueryErrorReport(error, query, queryClient, {
+	source: "orders-list",
+	detail: { routeId: "/orders" }
+});
+```
+
+Функция:
+
+1. подавляет отложенный transport-report для того же экземпляра `Error`;
+2. добавляет breadcrumb `query-error`;
+3. параллельно читает persisted diagnostics и QueryClient snapshot;
+4. собирает подробности конкретной query;
+5. создаёт draft категории `query`.
+
+Возвращает `ErrorReportDraft | undefined`. В development/SSR будет `undefined`.
+
+`context.errorInfo` позволяет передать уже нормализованную ошибку, `context.queryKey` — переопределить breadcrumb key, `context.detail` — добавить контролируемый context.
+
+Параметр `query` — реальный объект TanStack Query cache, а не `UseQueryResult` и не query options.
+
+## Capture mutation-ошибки
+
+### `captureMutationErrorReport(error, mutation, queryClient, context?)`
+
+Работает аналогично query capture: подавляет дублирующий transport-report, добавляет mutation breadcrumb и собирает QueryClient/persistence snapshot.
+
+```ts
+const draft = await captureMutationErrorReport(error, mutation, queryClient, { source: "save-order", detail: { form: "order-edit" } });
+```
+
+Текущая реализация включает `detail` в breadcrumb, но не переносит его в `payload.context` mutation draft. Если этот контекст критичен для доставки, добавьте безопасные данные в app-level envelope либо используйте явную согласованную модель до capture.
+
+## Capture runtime/React-ошибки
+
+### `captureRuntimeErrorReport(error, context?, queryClient?)`
+
+```ts
+const draft = await captureRuntimeErrorReport(
+	error,
+	{
+		category: "react",
+		source: "error-boundary",
+		componentStack: info.componentStack,
+		detail: { routeId }
+	},
+	queryClient
+);
+```
+
+Без `queryClient` отчёт создаётся без query/persisted diagnostics. Это полезно для низкоуровневого runtime кода. С QueryClient добавляется общий snapshot.
+
+По умолчанию category/source — `runtime`. `componentStack` записывается в секцию `react`.
+
+Одинаковые runtime/React capture в браузере объединяются примерно на 60 секунд по fingerprint ошибки, source, path, component stack и detail. Параллельные вызовы получают одну Promise/draft. Это защищает от лавины одинаковых отчётов. После отклонения capture внутренняя запись удаляется.
+
+## Draft и payload
+
+```ts
+type ErrorReportStatus = "pending" | "sending" | "sent" | "failed";
+
+type ErrorReportDraft = {
+	reportId: string;
+	sessionId: string;
+	createdUtc: string;
+	category: ErrorReportCategory;
+	status: ErrorReportStatus;
+	sentUtc?: string;
+	failedReason?: string;
+	payload: ErrorReportPayload;
+};
+```
+
+`reportId` — UUID отдельного отчёта. `sessionId` стабилен в текущем `sessionStorage`. `createdUtc` формируется как OData datetime UTC.
+
+Payload содержит category/source/error, build environment, client, location, viewport, breadcrumbs и optional секции query/mutation/react/context.
+
+### Хранение
+
+Drafts сохраняются под ключом `${__APP_ID__}.errorReport.drafts.v1`. В одной вкладке остаются последние 10 элементов. Старые удаляются с начала массива.
+
+Storage errors и некорректный JSON подавляются. При переполнении sessionStorage текущее in-memory состояние обновится, но запись на диск может не сохраниться.
+
+Модуль загружает drafts при первом импорте. Это модульное состояние, общее для всех consumers одного bundle.
+
+## Низкоуровневый `captureErrorReportDraft(args)`
+
+Используйте, когда все diagnostic sections уже подготовлены вручную:
+
+```ts
+const draft = captureErrorReportDraft({
+	category: "runtime",
+	source: "custom-engine",
+	error: createErrorInfo(error),
+	context: sanitizeDetail({ stage: "compile" })
+});
+```
+
+Функция добавит report/session IDs, environment, client/location/viewport и текущие breadcrumbs. Она синхронная и не собирает QueryClient автоматически.
+
+## Чтение и обновление drafts
+
+```ts
+const drafts = getErrorReportDrafts();
+const draft = getErrorReportDraft(reportId);
+```
+
+Возвращаются ссылки из внутреннего массива. Считайте их readonly; для lifecycle используйте `updateErrorReportDraft`.
+
+```ts
+updateErrorReportDraft(reportId, { status: "sending" });
+
+try {
+	await api.sendErrorReport(draft.payload);
+	updateErrorReportDraft(reportId, {
+		status: "sent",
+		sentUtc: new Date().toISOString(),
+		failedReason: undefined
+	});
+} catch (error) {
+	updateErrorReportDraft(reportId, {
+		status: "failed",
+		failedReason: createErrorInfo(error).message
+	});
+}
+```
+
+Для неизвестного ID update возвращает `undefined`. Обновление поверхностное и принимает `Partial<ErrorReportDraft>`: библиотека не проверяет разрешённые переходы статусов. App delivery обязан не менять `reportId`, payload и другие identity-поля без необходимости.
+
+## Environment API
+
+### `getErrorReportEnvironment()`
+
+Возвращает mode из `__DEV__` и build ID.
+
+### `getErrorReportClientEnvironment()`
+
+В браузере возвращает user agent, language и timezone. На сервере — `undefined`.
+
+Эти поля могут считаться персональными/идентифицирующими данными в политике организации. Согласуйте срок хранения и доступ к отчётам.
+
+## Transport reporter
+
+Transport-слой может сообщить об ошибке parsing/fetch, не зная о QueryClient и UI.
+
+### Регистрация
+
+```ts
+setErrorReportTransportErrorReporter(async (error, context) => {
+	const draft = await captureRuntimeErrorReport(
+		error,
+		{
+			source: context.source,
+			detail: context
+		},
+		queryClient
+	);
+
+	if (draft) {
+		await deliverErrorReport(draft);
+	}
+});
+```
+
+Для отключения передайте `undefined`. Регистрация очищает недавние transport keys.
+
+### `reportTransportError(error, context)`
+
+Context имеет source `fetch.parseResponse` или `fetch.buildHttpError` и может содержать URL, method, SAP client, status/content type, redirect/response type и безопасное summary HTML-response.
+
+Вызов планирует reporter через 250 мс. Задержка позволяет TanStack Query перехватить тот же `Error` и создать более полезный query/mutation report.
+
+### Подавление дубля
+
+```ts
+isTransportErrorReportScheduled(error);
+suppressTransportErrorReport(error);
+```
+
+Capture query/mutation вызывает suppression автоматически. Проверка работает только для того же экземпляра `Error`, потому что внутри используются WeakSet.
+
+Transport reports дополнительно дедуплицируются на 60 секунд по source, method, status и URL. Хранится ограниченное число недавних ключей.
+
+Если reporter отсутствует, подавлен, недавно уже сработал или сам бросил ошибку, основной transport-сценарий не ломается.
+
+## Рекомендуемая app-level интеграция
+
+```ts
+export function installErrorReporting(queryClient: QueryClient) {
+	const uninstallBreadcrumbs = installErrorReportBrowserBreadcrumbs();
+
+	setErrorReportRuntimeErrorReporter(async (error, context) => {
+		const draft = await captureRuntimeErrorReport(error, context, queryClient);
+		if (draft) await deliverDraft(draft);
+	});
+
+	setErrorReportTransportErrorReporter(async (error, context) => {
+		const draft = await captureRuntimeErrorReport(
+			error,
+			{ source: context.source, detail: pickSafeTransportFields(context) },
+			queryClient
+		);
+		if (draft) await deliverDraft(draft);
+	});
+
+	return () => {
+		uninstallBreadcrumbs();
+		setErrorReportRuntimeErrorReporter(undefined);
+		setErrorReportTransportErrorReporter(undefined);
+	};
+}
+```
+
+Создавайте lifecycle один раз в client shell. Функция `pickSafeTransportFields` — ответственность приложения и должна явно разрешать поля, а не копировать произвольный объект.
+
+## Безопасность и приватность
+
+Перед включением production delivery обязательно определите data policy.
+
+### Что намеренно не сохраняется
+
+- полное `query.state.data`;
+- persisted `state.data`;
+- mutation variables;
+- значения input при автоматическом click breadcrumb;
+- тела transport-запросов.
+
+### Что всё ещё может содержать данные
+
+- queryKey и mutationKey;
+- query/mutation meta;
+- `context.detail`;
+- URL и pathname;
+- error message/stack;
+- UI text, ARIA/title/data attributes breadcrumbs;
+- user agent, language, timezone;
+- имена persisted storage keys.
+
+Поэтому:
+
+1. не помещайте секреты в query keys/meta;
+2. собирайте detail по allow-list;
+3. очищайте URL от token/query secrets до передачи в custom context;
+4. защищайте endpoint доставки;
+5. задайте срок хранения и права доступа;
+6. при необходимости запрашивайте согласие пользователя;
+7. не показывайте необработанный stack trace всем пользователям.
+
+## Частые ошибки
+
+### Ожидать автоматическую отправку
+
+Capture только создаёт draft. Delivery нужно явно подключить.
+
+### Использовать `createDiagnosticValue` как redactor
+
+Он ограничивает размер, но сохраняет значения независимо от имени поля.
+
+### Вызывать production capture в development и ждать draft
+
+По контракту вернётся `undefined`.
+
+### Не очищать глобальные reporters
+
+При hot reload, тестах или размонтировании shell снимайте bindings, чтобы старый QueryClient/delivery не оставался в closure.
+
+### Мутировать результат `getErrorReportDrafts()`
+
+Используйте `updateErrorReportDraft`; прямое изменение обходит сохранение в sessionStorage.
+
+### Передавать `UseQueryResult` вместо cache Query
+
+`captureQueryErrorReport` нужен объект Query, обычно доступный внутри QueryCache callbacks/instrumentation.
+
+### Создать цикл отчётов
+
+Ошибка endpoint доставки не должна снова проходить через тот же автоматический transport reporter. Пометьте/исключите delivery transport или используйте отдельный канал.
+
+## Краткая карта API
+
+| Группа           | Экспорты                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Capture          | `captureQueryErrorReport`, `captureMutationErrorReport`, `captureRuntimeErrorReport`, `captureErrorReportDraft`                   |
+| Errors           | `createErrorInfo`                                                                                                                 |
+| Safe values      | `createDiagnosticValue`, `createDataShape`, `sanitizeDetail`                                                                      |
+| Breadcrumbs      | `addErrorReportBreadcrumb`, `getErrorReportBreadcrumbs`, `clearErrorReportBreadcrumbs`, `installErrorReportBrowserBreadcrumbs`    |
+| Diagnostics      | `collectQueryDiagnostics`, `collectMutationDiagnostics`, `collectQueryClientDiagnostics`, `collectPersistedQueryDiagnostics`      |
+| Drafts           | `getErrorReportDraft`, `getErrorReportDrafts`, `updateErrorReportDraft`                                                           |
+| Environment      | `isErrorReportingEnabled`, `getErrorReportEnvironment`, `getErrorReportClientEnvironment`                                         |
+| Runtime facade   | `setErrorReportRuntimeErrorReporter`, `reportRuntimeError`                                                                        |
+| Transport facade | `setErrorReportTransportErrorReporter`, `reportTransportError`, `isTransportErrorReportScheduled`, `suppressTransportErrorReport` |
+| Contracts        | `ErrorReportDraft`, `ErrorReportPayload`, contexts, diagnostics и transport types                                                 |

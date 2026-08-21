@@ -1,0 +1,149 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/XML" />
+
+# Простые XML helpers через `@ryuzaki13/react-foundation-lib/xml`
+
+Модуль экранирует XML-текст, строит последовательность простых полей и читает текст первого тега через `DOMParser`.
+
+## Содержание
+
+- [Назначение и границы](#назначение-и-границы)
+- [Установка и импорт](#установка-и-импорт)
+- [`escapeXmlValue`](#escapexmlvalue)
+- [`buildXmlFields`](#buildxmlfields)
+- [`getXmlTagText`](#getxmltagtext)
+- [Безопасность и ограничения](#безопасность-и-ограничения)
+- [API](#api)
+
+## Назначение и границы
+
+Подходит для небольших flat XML fragments:
+
+```xml
+<ORDER_ID>42</ORDER_ID><COMMENT>A&amp;B</COMMENT>
+```
+
+Модуль не является полноценным XML builder/parser:
+
+- не строит document/envelope;
+- не управляет namespaces и attributes;
+- не валидирует XSD;
+- не обрабатывает коллекции/вложенные объекты;
+- не проверяет parser errors;
+- не выполняет network request.
+
+## Установка и импорт
+
+```ts
+import { buildXmlFields, escapeXmlValue, getXmlTagText } from "@ryuzaki13/react-foundation-lib/xml";
+
+import type { XmlPrimitive } from "@ryuzaki13/react-foundation-lib/xml";
+```
+
+Builder-функции не требуют DOM. `getXmlTagText` требует global `DOMParser`, доступный в браузере/jsdom, но обычно отсутствующий в чистом Node.js.
+
+## `escapeXmlValue`
+
+```ts
+escapeXmlValue(`a&b<c>d"e'f`);
+// "a&amp;b&lt;c&gt;d&quot;e&apos;f"
+```
+
+Тип входа:
+
+```ts
+type XmlPrimitive = string | number | null | undefined;
+```
+
+Правила:
+
+| Символ | XML entity |
+| ------ | ---------- |
+| `&`    | `&amp;`    |
+| `<`    | `&lt;`     |
+| `>`    | `&gt;`     |
+| `"`    | `&quot;`   |
+| `'`    | `&apos;`   |
+
+`null` и `undefined` превращаются в пустую строку. Number сначала преобразуется через `String`.
+
+Функция предназначена для текстового содержимого. Для attribute value она экранирует основные символы, но сам attribute builder модуль не предоставляет.
+
+Не передавайте уже экранированную строку повторно:
+
+```ts
+escapeXmlValue("A&amp;B"); // "A&amp;amp;B".
+```
+
+## `buildXmlFields`
+
+```ts
+const xml = buildXmlFields({
+	ORDER_ID: 42,
+	COMMENT: "A&B",
+	OPTIONAL: null
+});
+
+// <ORDER_ID>42</ORDER_ID><COMMENT>A&amp;B</COMMENT><OPTIONAL></OPTIONAL>
+```
+
+Функция:
+
+- обходит `Object.entries` в стандартном порядке ключей;
+- строит для каждого поля `<NAME>escaped value</NAME>`;
+- не добавляет переносы строк;
+- сохраняет поля с `null`/`undefined` как пустые теги;
+- не изменяет исходный объект.
+
+Имя тега вставляется без валидации и escaping. Ключи должны быть доверенными валидными XML names из программного contract:
+
+```ts
+// Нельзя строить key из пользовательского ввода.
+buildXmlFields({ [userProvidedTagName]: value });
+```
+
+Для вложенной структуры передайте уже собранный fragment как часть внешнего builder-а; `buildXmlFields` сам воспринимает строку как текст и экранирует markup.
+
+## `getXmlTagText`
+
+```ts
+const message = getXmlTagText("<root><EX_MESSAGE>  Ошибка  </EX_MESSAGE></root>", "EX_MESSAGE");
+
+console.log(message); // "Ошибка".
+```
+
+Алгоритм:
+
+1. Парсит всю строку как `application/xml`.
+2. Вызывает `getElementsByTagName(tagName)`.
+3. Берёт только первый найденный element.
+4. Читает объединённый `textContent`.
+5. Обрезает пробелы.
+6. Возвращает `undefined`, если элемента/непустого текста нет.
+
+```ts
+getXmlTagText("<root />", "MESSAGE"); // undefined.
+getXmlTagText("<root><MESSAGE>   </MESSAGE></root>", "MESSAGE"); // undefined.
+```
+
+Для namespace-sensitive XML точное поведение `getElementsByTagName` зависит от переданного имени. Модуль не предоставляет `getElementsByTagNameNS`.
+
+## Безопасность и ограничения
+
+- Не вставляйте результат XML в HTML DOM через `innerHTML`.
+- Не используйте dynamic tag names из недоверенного ввода.
+- Parser не проверяется на `<parsererror>`; malformed XML обычно даёт `undefined` или parser-specific tree, а не явное исключение этого helper.
+- Читается только первое совпадение.
+- Большие documents лучше разбирать специализированным parser/streaming boundary.
+- Модуль не предотвращает XML signature wrapping и не предназначен для security validation.
+- `XmlPrimitive` number допускает `NaN`/`Infinity` на уровне TypeScript; они станут строками `"NaN"`/`"Infinity"`.
+
+## API
+
+| Export           | Результат                               |
+| ---------------- | --------------------------------------- |
+| `escapeXmlValue` | Экранированная строка                   |
+| `buildXmlFields` | Компактный XML fragment                 |
+| `getXmlTagText`  | `string \| undefined`                   |
+| `XmlPrimitive`   | `string \| number \| null \| undefined` |

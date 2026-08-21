@@ -1,0 +1,125 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Browser/Session Storage ID" />
+
+# Идентификатор вкладочной сессии через `@ryuzaki13/react-foundation-lib/session-storage`
+
+`getSessionStorageId` возвращает стабильный id в пределах одной browser-вкладки. При первом вызове id создаётся и сохраняется в `sessionStorage`, при следующих — читается по тому же ключу.
+
+## Установка и импорт
+
+```ts
+import { getSessionStorageId } from "@ryuzaki13/react-foundation-lib/session-storage";
+```
+
+Default generator — `uuidv4` из `/crypto`.
+
+## Базовый пример
+
+```ts
+const sessionId = getSessionStorageId("sales-app.error-report.session.v1");
+```
+
+Повторный вызов в той же вкладке:
+
+```ts
+const first = getSessionStorageId("sales-app.session.v1");
+const second = getSessionStorageId("sales-app.session.v1");
+
+console.log(first === second); // true, если storage доступен.
+```
+
+Другая вкладка имеет отдельный `sessionStorage` и обычно получит другой id.
+
+## Алгоритм
+
+```text
+sessionStorage недоступен ──► createId() без сохранения
+          │
+          ▼
+getItem(key)
+  ├─ непустая строка ──────► вернуть её
+  └─ нет значения ─────────► createId() → setItem → вернуть id
+
+ошибка getItem/setItem ─────► fallback createId()
+```
+
+```ts
+const id = getSessionStorageId("demo.session", () => "known-id");
+```
+
+Второй аргумент удобен для теста или другого генератора.
+
+## Граница стабильности
+
+Идентификатор стабилен только при успешном storage:
+
+- reload той же вкладки обычно сохраняет значение;
+- новая вкладка получает своё storage;
+- закрытие вкладки удаляет session storage по правилам браузера;
+- privacy policy, sandbox iframe или переполнение могут запретить доступ;
+- если storage недоступен, каждый вызов может создать новый fallback id.
+
+Функция ловит ошибки чтения/записи и не ломает основной пользовательский сценарий.
+
+Если `setItem` выбросил ошибку после первого вызова generator, fallback generator может быть вызван повторно. Не используйте `createId` с внешними необратимыми side effects.
+
+## Ключ storage
+
+Ключ полностью задаёт host. Рекомендуемый формат:
+
+```text
+<app-id>.<purpose>.v<schema-version>
+```
+
+Примеры:
+
+```text
+sales-app.error-report.session.v1
+warehouse.telemetry.tab-session.v2
+```
+
+Не используйте один ключ для несвязанных подсистем. При изменении семантики меняйте версию.
+
+## SSR и безопасность
+
+Вне browser `sessionStorage` отсутствует, поэтому функция просто возвращает новый id generator-а. Она не пытается создать server session.
+
+```ts
+const id = getSessionStorageId("demo", () => "server-fallback");
+```
+
+Идентификатор:
+
+- не является authentication token;
+- не подтверждает пользователя;
+- не должен давать доступ к данным;
+- не является cross-tab device id;
+- не должен включать персональные данные.
+
+Для долговременного client fingerprint используйте отдельный `/fingerprint`, понимая его privacy-границы.
+
+## Тестирование
+
+```ts
+sessionStorage.clear();
+
+const createId = vi.fn(() => "session-1");
+
+expect(getSessionStorageId("test.session", createId)).toBe("session-1");
+expect(getSessionStorageId("test.session", () => "session-2")).toBe("session-1");
+expect(createId).toHaveBeenCalledOnce();
+```
+
+Очищайте `sessionStorage` между тестами.
+
+## API и ошибки
+
+```ts
+function getSessionStorageId(key: string, createId?: () => string): string;
+```
+
+- Пустой сохранённый string считается отсутствующим и заменяется.
+- Ключ и результат generator не валидируются.
+- Исключение самого fallback generator может быть проброшено.
+- Функция ничего не удаляет из storage.

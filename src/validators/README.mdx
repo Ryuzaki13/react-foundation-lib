@@ -1,0 +1,239 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Validation/Runtime Guards" />
+
+# Runtime guards и validators через `@ryuzaki13/react-foundation-lib/validators`
+
+Модуль содержит небольшие проверки для `unknown`, object-like значений, image extensions, positive integer, URL и Floating UI DOM reference.
+
+> Название функции не расширяет её контракт. Например, `isSafe` проверяет только отсутствие `null`/`undefined`, а `isRecord` допускает `Date` и `Map`. Ниже указано точное поведение каждой проверки.
+
+## Содержание
+
+- [Установка и импорт](#установка-и-импорт)
+- [Как работают type guards](#как-работают-type-guards)
+- [`isSafe`](#issafe)
+- [`isObject`, `isRecord`, `asRecord`](#isobject-isrecord-asrecord)
+- [`isPlainObject`](#isplainobject)
+- [`readPositiveInteger`](#readpositiveinteger)
+- [Image extensions](#image-extensions)
+- [`isDomReference`](#isdomreference)
+- [`validateUrl`](#validateurl)
+- [Security boundary](#security-boundary)
+- [Полный API](#полный-api)
+
+## Установка и импорт
+
+```ts
+import {
+	asRecord,
+	IMAGE_EXTENSIONS,
+	isDomReference,
+	isImageExtension,
+	isObject,
+	isPlainObject,
+	isRecord,
+	isSafe,
+	readPositiveInteger,
+	validateUrl
+} from "@ryuzaki13/react-foundation-lib/validators";
+```
+
+`isDomReference` использует type из `@floating-ui/react`; host entrypoint должен разрешить совместимую peer dependency. Остальные функции не требуют React.
+
+## Как работают type guards
+
+Type guard возвращает boolean и помогает TypeScript сузить значение:
+
+```ts
+function readCode(value: unknown): string | undefined {
+	if (!isRecord(value)) return undefined;
+	return typeof value.code === "string" ? value.code : undefined;
+}
+```
+
+Guard не преобразует значение и не гарантирует поля, которые сам не проверил.
+
+## `isSafe`
+
+```ts
+function isSafe<T>(value: T | null | undefined): value is T;
+```
+
+Возвращает `false` только для `null` и `undefined`:
+
+```ts
+[0, "", false, null, undefined, "ok"].filter(isSafe);
+// [0, "", false, "ok"].
+```
+
+`0`, пустая строка и `false` являются безопасными в смысле этой функции. `isSafe` не проверяет XSS, SQL, URL, число, object schema или authorization.
+
+## `isObject`, `isRecord`, `asRecord`
+
+Три функции используют одинаковую базовую проверку: значение truthy, `typeof === "object"`, не array.
+
+| Вход         | `isObject` / `isRecord` | `asRecord`                             |
+| ------------ | :---------------------: | -------------------------------------- |
+| `{}`         |         `true`          | тот же object                          |
+| `new Date()` |         `true`          | тот же Date, типизированный как record |
+| `new Map()`  |         `true`          | тот же Map                             |
+| DOM element  |         `true`          | тот же element                         |
+| `[]`         |         `false`         | `null`                                 |
+| `null`       |         `false`         | `null`                                 |
+| function     |         `false`         | `null`                                 |
+
+`isObject` сужает до `object`, `isRecord` — до `Record<string, unknown>`, `asRecord` возвращает record или `null`.
+
+Они не проверяют plain object и не гарантируют JSON-compatible данные.
+
+## `isPlainObject`
+
+Возвращает `true`, только если prototype равен `Object.prototype` или `null`:
+
+```ts
+isPlainObject({}); // true.
+isPlainObject(Object.create(null)); // true.
+isPlainObject(new Date()); // false.
+isPlainObject(new Map()); // false.
+```
+
+Сигнатура принимает `object`, поэтому сначала сузьте `unknown`:
+
+```ts
+if (isObject(value) && isPlainObject(value)) {
+	// Plain record-like object.
+}
+```
+
+Прямой runtime-вызов `isPlainObject(null as never)` приведёт к ошибке `Object.getPrototypeOf`. TypeScript contract запрещает такой аргумент.
+
+## `readPositiveInteger`
+
+```ts
+readPositiveInteger(12); // 12.
+readPositiveInteger("12"); // 12.
+readPositiveInteger(" 12 "); // 12.
+readPositiveInteger(0); // undefined.
+readPositiveInteger(-1); // undefined.
+readPositiveInteger(1.5); // undefined.
+readPositiveInteger("bad"); // undefined.
+```
+
+String преобразуется стандартным `Number(value)`, затем проверяются:
+
+- runtime type number;
+- `Number.isInteger`;
+- значение строго больше `0`.
+
+Следствия стандартного `Number`:
+
+```ts
+readPositiveInteger("1e2"); // 100.
+readPositiveInteger("0x10"); // 16.
+readPositiveInteger(""); // undefined, потому что Number("") = 0.
+```
+
+Если формат input должен быть только decimal digits, дополнительно проверьте строковую грамматику на своей boundary.
+
+## Image extensions
+
+```ts
+isImageExtension("PNG"); // true.
+isImageExtension("svg"); // true.
+isImageExtension("pdf"); // false.
+```
+
+Список:
+
+```ts
+["png", "jpg", "jpeg", "gif", "webp", "svg"];
+```
+
+Проверка регистронезависима через `toLowerCase`, но не делает trim и ожидает расширение без точки:
+
+```ts
+isImageExtension(".png"); // false.
+isImageExtension(" png "); // false.
+```
+
+`IMAGE_EXTENSIONS` экспортирован как изменяемый array по текущему типу. Рассматривайте его как библиотечную константу и не вызывайте `push/splice`.
+
+Расширение имени не доказывает MIME/type и безопасность содержимого. Для file/image boundary используйте `/file` и server-side validation.
+
+## `isDomReference`
+
+```ts
+if (isDomReference(floatingReference)) {
+	floatingReference.focus();
+}
+```
+
+Возвращает `true`, только если reference является browser `Element`. Virtual element Floating UI и `null` возвращают `false`.
+
+Функция выполняет `ref instanceof Element`. В server runtime без global `Element` её вызов может привести к `ReferenceError`; вызывайте только в browser boundary или после проверки DOM environment.
+
+## `validateUrl`
+
+```ts
+const result = validateUrl("https://example.com/path");
+
+if (!result.isValid) {
+	showError(result.error);
+}
+```
+
+Возможные результаты:
+
+```ts
+{ isValid: true, error: "" }
+{ isValid: false, error: "URL не может быть пустым" }
+{ isValid: false, error: "URL слишком длинный" }
+{ isValid: false, error: "URL содержит недопустимые символы" }
+{ isValid: false, error: "Некорректный формат URL" }
+```
+
+Алгоритм:
+
+1. Отклоняет пустую строку.
+2. Если строка не начинается с lowercase `http`, временно добавляет `https://` для `new URL`.
+3. Проверяет длину исходной строки не больше `2048`.
+4. Применяет консервативное регулярное выражение.
+
+Поддерживаемая грамматика намеренно узкая:
+
+- optional `http://` или `https://`;
+- domain с точкой;
+- lowercase TLD длиной 2–6 по regex;
+- простой path из ограниченного набора символов.
+
+Query string, hash, port, localhost, IP-адреса, internationalized domains, многие валидные Unicode/path characters и длинные современные TLD могут быть отклонены.
+
+## Security boundary
+
+`validateUrl` — UI-проверка формата, не security policy. Она не:
+
+- проверяет allowlist host/protocol;
+- делает DNS resolution;
+- защищает backend от SSRF;
+- гарантирует отсутствие redirect на опасный host;
+- проверяет доступность ресурса;
+- санитизирует HTML;
+- подтверждает, что URL ведёт на изображение.
+
+Для внешней навигации/запроса применяйте отдельную security policy владельца boundary.
+
+## Полный API
+
+| Export                | Точное назначение                       |
+| --------------------- | --------------------------------------- |
+| `isSafe`              | Исключает `null`/`undefined`            |
+| `isObject`            | Non-array truthy object                 |
+| `isRecord`            | Та же runtime-проверка с record type    |
+| `asRecord`            | Record или `null`                       |
+| `isPlainObject`       | Проверяет prototype                     |
+| `readPositiveInteger` | Positive integer number или `undefined` |
+| `IMAGE_EXTENSIONS`    | Список поддерживаемых extensions        |
+| `isImageExtension`    | Регистронезависимая проверка extension  |
+| `isDomReference`      | Floating reference является `Element`   |
+| `validateUrl`         | Консервативный UI URL result            |

@@ -1,0 +1,318 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/Number Scale" />
+
+# Number Scale
+
+`@ryuzaki13/react-foundation-lib/number-scale` содержит чистую математику для slider, range, числовой шкалы и управления значением с клавиатуры. Модуль не содержит React-компонентов и не рисует ползунок.
+
+Он решает четыре связанные задачи:
+
+1. нормализует границы и шаг;
+2. ограничивает и округляет значение;
+3. преобразует значение в позицию `0..100%` и обратно;
+4. работает с дискретными точками `marks`.
+
+## Установка и импорт
+
+```ts
+import {
+	offsetNumberScaleValue,
+	percentToSnappedNumberScaleValue,
+	prepareNumberScaleMarks,
+	snapNumberScaleValue,
+	valueToNumberScalePercent,
+	type NumberScaleMark,
+	type NumberScaleOptions
+} from "@ryuzaki13/react-foundation-lib/number-scale";
+```
+
+Все функции синхронные, не меняют DOM и подходят для браузера, сервера и тестов.
+
+## Две модели шкалы
+
+### Шаговая шкала
+
+```ts
+const options = {
+	min: 0,
+	max: 100,
+	step: 5
+};
+
+snapNumberScaleValue(17, options); // 15
+snapNumberScaleValue(18, options); // 20
+```
+
+Когда `marks` отсутствуют, допустимые точки идут от `min` с интервалом `step`.
+
+### Шкала с marks
+
+```ts
+const marks = [
+	{ value: 1, label: "1 час" },
+	{ value: 3, label: "3 часа" },
+	{ value: 6, label: "6 часов" },
+	{ value: 12, label: "12 часов" },
+	{ value: 24, label: "Сутки" }
+];
+
+snapNumberScaleValue(10, { min: 1, max: 24, marks }); // 12
+```
+
+Если после подготовки остаётся хотя бы один mark, `marks` полностью заменяют `step` для snap-логики.
+
+## Базовые типы
+
+```ts
+type NumberScaleMarksPosition = "value" | "index";
+
+interface NumberScaleMark {
+	value: number;
+}
+
+interface NumberScaleOptions<TMark extends NumberScaleMark = NumberScaleMark> {
+	min: number;
+	max: number;
+	step?: number;
+	marks?: readonly TMark[];
+	marksPosition?: NumberScaleMarksPosition;
+}
+```
+
+Mark может иметь дополнительные поля: `label`, `disabled`, `description` и любые данные UI. Функции требуют только числовой `value` и сохраняют исходный объект.
+
+## Границы, clamp и шаг
+
+### `resolveNumberScaleBounds(min, max)`
+
+Возвращает `{ min, max }` в правильном порядке.
+
+```ts
+resolveNumberScaleBounds(0, 100); // { min: 0, max: 100 }
+resolveNumberScaleBounds(100, 0); // { min: 0, max: 100 }
+resolveNumberScaleBounds(NaN, 10); // { min: 0, max: 100 }
+```
+
+Если хотя бы одна граница не является конечным числом, используются безопасные значения `0` и `100`.
+
+### `clampNumberScaleValue(value, min, max)`
+
+Ограничивает число переданными границами.
+
+```ts
+clampNumberScaleValue(-10, 0, 100); // 0
+clampNumberScaleValue(120, 0, 100); // 100
+clampNumberScaleValue(NaN, 10, 100); // 10
+```
+
+Функция не переставляет `min` и `max`. Если они могут прийти в обратном порядке, сначала вызовите `resolveNumberScaleBounds`.
+
+### `normalizeNumberScaleStep(step)`
+
+Возвращает `step`, если это конечное положительное число. Для `undefined`, `NaN`, `Infinity`, нуля и отрицательного значения возвращает `1`.
+
+## Подготовка marks
+
+### `prepareNumberScaleMarks(marks, min, max)`
+
+Функция:
+
+- удаляет marks с `NaN`, `Infinity` и значениями вне диапазона;
+- создаёт новый массив;
+- сортирует его по `value` по возрастанию;
+- удаляет повторные `value`, сохраняя первый объект.
+
+```ts
+const prepared = prepareNumberScaleMarks(
+	[
+		{ value: 75, label: "75" },
+		{ value: 25, label: "первый 25" },
+		{ value: 25, label: "повтор" },
+		{ value: 200, label: "вне шкалы" }
+	],
+	0,
+	100
+);
+
+// [{ value: 25, label: "первый 25" }, { value: 75, label: "75" }]
+```
+
+Исходный массив не сортируется и не изменяется. Границы считаются уже нормализованными.
+
+## Привязка значения к допустимой точке
+
+### `snapNumberScaleValueToStep(value, min, max, step?)`
+
+Сначала ограничивает значение, затем округляет его к ближайшему шагу, отсчитываемому от `min`.
+
+```ts
+snapNumberScaleValueToStep(16, 0, 100, 5); // 15
+snapNumberScaleValueToStep(18, 0, 100, 5); // 20
+snapNumberScaleValueToStep(16.24, 0, 100, 0.25); // 16.25
+```
+
+Десятичная точность вычисляется из `min`, `max` и `step`, что уменьшает типичные артефакты вроде `0.30000000000000004`.
+
+При точном равенстве расстояний используется `Math.round`: выбирается точка с большим смещением от `min`.
+
+### `findClosestNumberScaleMark(value, marks)`
+
+Возвращает ближайший объект mark или `undefined` для пустого массива. При равном расстоянии остаётся первый элемент массива. Обычно перед этим следует подготовить marks, чтобы первый означал меньшее значение.
+
+### `snapNumberScaleValueToMarks(value, marks, min, max)`
+
+Ограничивает значение и возвращает `value` ближайшего mark. Для пустого массива возвращает только ограниченное значение без округления к шагу.
+
+### `snapNumberScaleValue(value, options)`
+
+Высокоуровневая функция. Она сама нормализует границы и marks, затем выбирает:
+
+- snap к `marks`, если после фильтрации они есть;
+- snap к `step`, если marks нет.
+
+Для большинства форм и reducer это основной метод.
+
+## Значение и проценты
+
+### `valueToNumberScalePercent(value, min, max)`
+
+Преобразует число шкалы в позицию от `0` до `100`.
+
+```ts
+valueToNumberScalePercent(25, 0, 100); // 25
+valueToNumberScalePercent(6, 1, 24); // около 21.739
+```
+
+Если `max <= min`, возвращается `0`.
+
+### `percentToNumberScaleValue(percent, min, max)`
+
+Выполняет обратное преобразование. Процент ограничивается диапазоном `0..100`. Если `max <= min`, возвращается `min`.
+
+```ts
+percentToNumberScaleValue(50, 0, 10); // 5
+percentToNumberScaleValue(150, 0, 10); // 10
+```
+
+Эта функция не делает snap. Для значения от pointer обычно нужен `percentToSnappedNumberScaleValue`.
+
+## Позиционирование marks
+
+`marksPosition` определяет только визуальное расположение marks и выбор ближайшего mark по проценту.
+
+### Режим `value`
+
+Значения располагаются пропорционально числовой шкале. Например, `1, 3, 6, 12, 24` будут сгруппированы ближе к началу.
+
+### Режим `index`
+
+Все точки располагаются равномерно независимо от числового расстояния:
+
+```text
+1        3        6        12       24
+0%      25%      50%      75%      100%
+```
+
+Это полезно для категориальной шкалы, где каждое значение — отдельный выбор, а не физическое расстояние.
+
+### `getNumberScaleMarkPercent(index, marks, min, max, marksPosition?)`
+
+Возвращает процент позиции одного mark. В режиме `index` единственный mark находится на `0%`. В режиме `value` используется `marks[index]?.value`; при неверном индексе — `min`.
+
+### `findClosestNumberScaleMarkByPercent(...)`
+
+Находит mark, визуально ближайший к переданному проценту. Процент ограничивается `0..100`; для пустого массива возвращается `undefined`. При равном расстоянии выбирается первый mark.
+
+### `percentToSnappedNumberScaleValue(percent, options)`
+
+Основная функция для pointer-события:
+
+```ts
+const nextValue = percentToSnappedNumberScaleValue(pointerPercent, {
+	min: 1,
+	max: 24,
+	marks,
+	marksPosition: "index"
+});
+```
+
+С marks она выбирает ближайшую визуальную точку. Без marks преобразует процент в число и округляет его к `step`.
+
+## Клавиатура и смещение
+
+### `offsetNumberScaleValue(currentValue, offset, options, lowerBound?, upperBound?)`
+
+Сдвигает значение на количество шагов или marks.
+
+```ts
+offsetNumberScaleValue(34, 1, {
+	min: 0,
+	max: 100,
+	marks: [{ value: 0 }, { value: 30 }, { value: 80 }]
+}); // 80
+
+offsetNumberScaleValue(34, 2, {
+	min: 0,
+	max: 100,
+	step: 10
+}); // 50
+```
+
+`offset = -1` подходит для `ArrowLeft`/`ArrowDown`, `offset = 1` — для `ArrowRight`/`ArrowUp`.
+
+`lowerBound` и `upperBound` позволяют временно сузить допустимую область, например чтобы левый thumb не пересёк правый.
+
+Для шкалы с marks передавайте целое смещение. Дробный индекс не является корректной позицией массива и может привести к `undefined` на уровне JavaScript, хотя тип функции выводится как число.
+
+## Пример reducer для slider
+
+```ts
+const options = { min: 0, max: 100, step: 5 } as const;
+
+function fromPointer(clientX: number, left: number, width: number) {
+	const percent = width > 0 ? ((clientX - left) / width) * 100 : 0;
+	return percentToSnappedNumberScaleValue(percent, options);
+}
+
+function fromKeyboard(current: number, key: string) {
+	if (key === "ArrowLeft" || key === "ArrowDown") {
+		return offsetNumberScaleValue(current, -1, options);
+	}
+
+	if (key === "ArrowRight" || key === "ArrowUp") {
+		return offsetNumberScaleValue(current, 1, options);
+	}
+
+	return current;
+}
+```
+
+UI отдельно отвечает за `role="slider"`, `aria-valuemin`, `aria-valuemax`, `aria-valuenow`, фокус и обработку клавиатуры.
+
+## Частые ошибки
+
+- Передавать ненормализованные обратные границы напрямую в низкоуровневый `clamp`.
+- Ожидать, что `step` действует одновременно с непустыми `marks`.
+- Считать `marksPosition: "index"` изменением самих числовых значений. Меняется только визуальная геометрия выбора.
+- Изменять исходные marks после мемоизации UI. Подготовка возвращает новый массив, но сами объекты не клонирует.
+- Передавать дробный `offset` при работе с marks.
+
+## Краткая карта API
+
+| Функция                               | Результат                                           |
+| ------------------------------------- | --------------------------------------------------- |
+| `resolveNumberScaleBounds`            | Безопасные границы в правильном порядке             |
+| `clampNumberScaleValue`               | Значение внутри границ                              |
+| `normalizeNumberScaleStep`            | Положительный конечный шаг или `1`                  |
+| `prepareNumberScaleMarks`             | Отфильтрованные, отсортированные и уникальные marks |
+| `snapNumberScaleValueToStep`          | Ближайшая точка шага                                |
+| `findClosestNumberScaleMark`          | Ближайший объект mark                               |
+| `snapNumberScaleValueToMarks`         | Значение ближайшего mark                            |
+| `snapNumberScaleValue`                | Snap по marks либо step                             |
+| `valueToNumberScalePercent`           | Число → процент                                     |
+| `percentToNumberScaleValue`           | Процент → число без snap                            |
+| `getNumberScaleMarkPercent`           | Визуальная позиция mark                             |
+| `findClosestNumberScaleMarkByPercent` | Ближайший mark по track                             |
+| `percentToSnappedNumberScaleValue`    | Процент → готовое допустимое значение               |
+| `offsetNumberScaleValue`              | Смещение по step или marks                          |

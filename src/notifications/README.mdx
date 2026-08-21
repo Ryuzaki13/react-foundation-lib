@@ -1,0 +1,323 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Infrastructure/Notifications" />
+
+# Notifications
+
+Модуль `@ryuzaki13/react-foundation-lib/notifications` хранит очередь коротких уведомлений и предоставляет два способа управления ею:
+
+- Zustand-store — для React-интерфейса, который отображает уведомления;
+- объект `notify` — для императивных вызовов из обработчиков, сервисов и `try/catch`.
+
+Модуль **не рисует интерфейс**. Компонент toast/snackbar создаёт приложение: он подписывается на `store`, отображает `items` и вызывает действия уведомления.
+
+## Когда использовать
+
+Подходит для сообщений вроде:
+
+- «Изменения сохранены»;
+- «Не удалось загрузить данные»;
+- «Файл формируется…» с последующей заменой на результат;
+- предупреждения с одной или несколькими кнопками-действиями.
+
+Для ошибок внутри формы лучше показывать сообщение рядом с полем. Уведомление — дополнительный, а не единственный канал обратной связи.
+
+## Установка и импорт
+
+Модулю нужен peer dependency `zustand`.
+
+```bash
+npm install @ryuzaki13/react-foundation-lib zustand
+```
+
+```ts
+import { bindNotifications, createNotificationsStore, notify, type Notification } from "@ryuzaki13/react-foundation-lib/notifications";
+```
+
+Используйте только публичный subpath `/notifications`. Импорт внутренних файлов пакета не является публичным контрактом.
+
+## Быстрый старт
+
+### 1. Создайте один store приложения
+
+```ts
+// notificationsStore.ts
+import { bindNotifications, createNotificationsStore } from "@ryuzaki13/react-foundation-lib/notifications";
+
+export const notificationsStore = createNotificationsStore();
+export const unbindNotifications = bindNotifications(notificationsStore);
+```
+
+`createNotificationsStore()` возвращает vanilla Zustand-store. Его следует создать вне React-компонента, иначе каждый рендер может создать новую независимую очередь.
+
+`bindNotifications(store)` связывает глобальный фасад `notify` с этим store. Без привязки вызов `notify.success(...)` выбросит ошибку.
+
+### 2. Подпишите UI на store
+
+```tsx
+import { useStore } from "zustand";
+
+import { notificationsStore } from "./notificationsStore";
+
+export function NotificationsViewport() {
+	const items = useStore(notificationsStore, (state) => state.items);
+	const dismiss = useStore(notificationsStore, (state) => state.actions.dismiss);
+
+	return (
+		<section aria-label="Уведомления" aria-live="polite">
+			{items.map((item) => (
+				<article key={item.id} role={item.type === "error" ? "alert" : "status"}>
+					{item.title && <strong>{item.title}</strong>}
+					<p>{item.message}</p>
+
+					{item.actions?.map((action) => (
+						<button key={action.label} type="button" onClick={action.onClick}>
+							{action.label}
+						</button>
+					))}
+
+					{item.dismissible !== false && (
+						<button type="button" onClick={() => dismiss(item.id)}>
+							Закрыть
+						</button>
+					)}
+				</article>
+			))}
+		</section>
+	);
+}
+```
+
+### 3. Показывайте уведомления
+
+```ts
+notify.success("Данные сохранены");
+notify.info("Началась синхронизация", { title: "Синхронизация" });
+notify.warning("Соединение нестабильно", { ttlMs: 0 });
+notify.error("Не удалось сохранить запись", { ttlMs: 15_000 });
+```
+
+Значение `ttlMs: 0` или отрицательное число отключает автоматическое закрытие.
+
+## Модель уведомления
+
+```ts
+type NotificationType = "error" | "warning" | "info" | "success";
+type NotificationTone = "neutral" | NotificationType;
+type NotificationId = string;
+
+type NotificationAction = {
+	label: string;
+	onClick: () => void | Promise<void>;
+	tone?: NotificationTone;
+};
+
+type Notification = {
+	id: NotificationId;
+	type: NotificationType;
+	title?: string;
+	message: string;
+	createdAt: number;
+	ttlMs?: number;
+	dismissible?: boolean;
+	actions?: NotificationAction[];
+};
+```
+
+`createdAt` — Unix-время в миллисекундах. `dismissible: false` означает, что UI не должен показывать обычную кнопку закрытия. Это только договор с UI: store не запрещает программный `dismiss(id)`.
+
+`actions` содержат функции и потому не сериализуются. Не сохраняйте очередь уведомлений в JSON, localStorage или серверной базе.
+
+## API store
+
+### `createNotificationsStore()`
+
+Создаёт независимый store со структурой:
+
+```ts
+type NotificationsStore = {
+	items: Notification[];
+	actions: {
+		push(input): NotificationId;
+		update(id, patch): boolean;
+		upsert(inputWithId): NotificationId;
+		dismiss(id): void;
+		clear(): void;
+	};
+};
+```
+
+Очередь ограничена шестью элементами. Новое уведомление помещается в начало. При добавлении с уже существующим `id` старый элемент удаляется, а новый получает новое `createdAt`.
+
+### `push(input)`
+
+Добавляет уведомление и возвращает его `id`.
+
+```ts
+const id = notificationsStore.getState().actions.push({
+	type: "warning",
+	title: "Проверка",
+	message: "Некоторые поля не заполнены",
+	ttlMs: 8_000,
+	dismissible: true
+});
+```
+
+Если `id` не передан, он генерируется из текущего времени и случайной части. Это идентификатор UI, а не криптографический или бизнес-идентификатор.
+
+Если `ttlMs` отсутствует, внутренний таймер всё равно запускается на 10 секунд. При этом в объекте уведомления поле остаётся `undefined`.
+
+### `update(id, patch)`
+
+Частично меняет существующий элемент. Возвращает `true`, если элемент найден, иначе `false`.
+
+```ts
+const updated = notificationsStore.getState().actions.update(id, {
+	type: "success",
+	message: "Проверка завершена",
+	ttlMs: 2_500
+});
+```
+
+`id` и `createdAt` изменить нельзя. Таймер перестраивается только тогда, когда в patch явно присутствует ключ `ttlMs`. Изменение одного `message` не продлевает исходный срок жизни.
+
+### `upsert(input)`
+
+Обновляет элемент с заданным `id`, а если его нет — добавляет новый.
+
+```ts
+notificationsStore.getState().actions.upsert({
+	id: "import-users",
+	type: "info",
+	message: "Импортировано 40 из 100 строк",
+	dismissible: false
+});
+```
+
+Важная деталь: при обновлении существующего элемента `upsert` меняет `type`, `title`, `message`, `ttlMs` и `dismissible`, но не заменяет `actions`. Для явной смены действий используйте `update(id, { actions })`.
+
+### `dismiss(id)` и `clear()`
+
+`dismiss(id)` удаляет один элемент и очищает его таймер. `clear()` удаляет всю очередь и все таймеры.
+
+## Императивный API `notify`
+
+### Привязка и жизненный цикл
+
+```ts
+const unbind = bindNotifications(notificationsStore);
+
+// При полном демонтаже приложения:
+unbind();
+```
+
+Одновременно фасад хранит только одну привязку. Повторный `bindNotifications(otherStore)` переключит вызовы на другой store. Старый cleanup не отвяжет новый store.
+
+Пакет не экспортирует `NotificationsProvider`, несмотря на текст ошибки при отсутствии привязки. Provider или другой lifecycle-компонент является ответственностью приложения.
+
+### Основные методы
+
+```ts
+notify.push(input);
+notify.upsert(inputWithId);
+notify.update(id, patch);
+notify.dismiss(id);
+notify.clear();
+
+notify.success(message, options);
+notify.info(message, options);
+notify.warning(message, options);
+notify.error(message, options);
+```
+
+Сокращённые методы автоматически подставляют `type`, но принимают остальные параметры `push`, включая `id`, `title`, `ttlMs`, `dismissible` и `actions`.
+
+### Долгая операция: `notify.progress()`
+
+```ts
+async function importFile(file: File) {
+	const progress = notify.progress("Читаем файл…", {
+		id: "users-import",
+		title: "Импорт пользователей"
+	});
+
+	try {
+		progress.update("Отправляем данные…");
+		await upload(file);
+		progress.success("Импорт завершён");
+	} catch (error) {
+		progress.error("Импорт завершился с ошибкой");
+		throw error;
+	}
+}
+```
+
+Начальное уведомление имеет `type: "info"` и `dismissible: false`. Возвращаемый объект содержит:
+
+- `id` — идентификатор уведомления;
+- `update(message)` — меняет текст, не перезапуская таймер;
+- `success(message, ttlMs = 2500)` — делает уведомление успешным и закрываемым;
+- `error(message, ttlMs = 5000)` — делает уведомление ошибкой и закрываемым;
+- `dismiss()` — удаляет уведомление.
+
+При переданном стабильном `id` повторный `progress` продолжит существующий элемент. Это удобно для операции, которая может стартовать из нескольких мест.
+
+## Browser и SSR
+
+Store использует `window.setTimeout` и `window.clearTimeout`. Создать store можно заранее, но методы, которые запускают или очищают таймеры, предназначены для браузера. Не вызывайте `push`, `update` с `ttlMs`, `dismiss` или `clear` во время серверного рендера.
+
+Практически безопасная схема: создавать и привязывать store в client entrypoint либо в модуле, который импортируется только браузерным приложением.
+
+## Доступность интерфейса
+
+Store не задаёт ARIA-разметку. В UI рекомендуется:
+
+- использовать `aria-live="polite"` для обычных сообщений;
+- использовать `role="alert"` только для действительно срочных ошибок;
+- давать кнопке закрытия понятное доступное имя;
+- не делать TTL слишком коротким, если уведомление содержит много текста или действия;
+- обеспечить управление действиями с клавиатуры.
+
+## Частые ошибки
+
+### Вызов `notify` до `bindNotifications`
+
+```ts
+// Ошибка времени выполнения: store ещё не привязан.
+notify.success("Готово");
+```
+
+Сначала создайте store и выполните `bindNotifications` в точке запуска приложения.
+
+### Создание store внутри тела компонента
+
+```tsx
+function App() {
+	// Плохо: при повторном рендере можно потерять очередь и таймеры.
+	const store = createNotificationsStore();
+	return null;
+}
+```
+
+Создайте singleton на уровне модуля или один раз через подходящий lifecycle-контейнер.
+
+### Ожидание, что `dismissible: false` блокирует удаление
+
+Это только поле модели для UI. `notify.dismiss(id)` всё равно удалит элемент.
+
+### Использование уведомления вместо состояния операции
+
+Очередь ограничена шестью элементами и живёт в памяти страницы. Не используйте её как журнал аудита, источник истины о фоновой задаче или долговременное хранилище ошибок.
+
+## Краткая карта API
+
+| Экспорт                      | Назначение                                               |
+| ---------------------------- | -------------------------------------------------------- |
+| `createNotificationsStore()` | Создать независимый Zustand-store уведомлений            |
+| `bindNotifications(store)`   | Привязать store к глобальному фасаду `notify`            |
+| `notify`                     | Императивно добавлять, обновлять и закрывать уведомления |
+| `Notification`               | Полная модель сохранённого элемента                      |
+| `NotificationPushInput`      | Параметры добавления элемента                            |
+| `NotificationUpdatePatch`    | Допустимые поля частичного обновления                    |
+| `NotificationsStoreApi`      | Тип vanilla Zustand-store                                |
+| `NotificationAction`         | Кнопка-действие уведомления                              |

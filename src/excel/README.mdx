@@ -1,0 +1,449 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/Excel" />
+
+# Excel
+
+Модуль `@ryuzaki13/react-foundation-lib/excel` формирует и скачивает `.xlsx`-файлы в браузере. Он поддерживает:
+
+- одну или несколько таблиц-листов;
+- типизированные ячейки `String`, `Number`, `Date`, `Boolean`;
+- Excel number/date formats;
+- ширину колонок;
+- стили отдельных ячеек;
+- auto-filter;
+- адаптацию OData/table-описаний к Excel.
+
+Модуль строится поверх `write-excel-file/browser` и не предназначен для Node.js/SSR-скачивания.
+
+## Установка
+
+```bash
+npm install @ryuzaki13/react-foundation-lib write-excel-file
+```
+
+Версия `write-excel-file` должна соответствовать peer dependency пакета.
+
+```ts
+import {
+	buildExcelSheetData,
+	downloadExcelFile,
+	downloadExcelWorkbook,
+	type ExcelColumn,
+	type ExcelRow
+} from "@ryuzaki13/react-foundation-lib/excel";
+```
+
+## Самый простой экспорт
+
+```ts
+await downloadExcelFile({
+	fileName: "orders.xlsx",
+	columns: [
+		{ id: "ID", header: "Номер", type: String, width: 18 },
+		{
+			id: "AMOUNT",
+			header: "Сумма",
+			type: Number,
+			format: "#,##0.00",
+			width: 14
+		},
+		{
+			id: "CREATED_AT",
+			header: "Создан",
+			type: Date,
+			format: "dd.mm.yyyy hh:mm",
+			width: 20
+		}
+	],
+	rows: [
+		{
+			ID: "A-100",
+			AMOUNT: 1250.5,
+			CREATED_AT: "2026-08-21T09:30:00+05:00"
+		}
+	],
+	autoFilter: true
+});
+```
+
+Браузер скачает книгу с единственным листом `Sheet1`.
+
+## Базовая модель
+
+```ts
+type ExcelColumn = {
+	id: string;
+	header: string;
+	width?: number;
+	type?: StringConstructor | NumberConstructor | DateConstructor | BooleanConstructor;
+	format?: string;
+};
+
+type ExcelRow = Record<string, unknown>;
+```
+
+`column.id` — ключ, по которому значение читается из строки. Если в row такого ключа нет, ячейка будет пустой.
+
+`header` попадает в первую строку. Заголовок автоматически получает жирный шрифт и тонкую серую нижнюю границу.
+
+`width` передаётся writer как ширина Excel-колонки. Единица соответствует API `write-excel-file`, а не CSS-пикселям.
+
+`format` — маска Excel, например `#,##0.00`, `dd.mm.yyyy`, `hh:mm:ss`. Это не `Intl`-формат и не строковый formatter: Excel применяет маску к настоящему числу или дате.
+
+## Почему тип ячейки важен
+
+Неправильно передавать заранее отформатированную сумму:
+
+```ts
+{
+	AMOUNT: "1 250,50 ₽";
+}
+```
+
+Excel увидит текст и не сможет корректно суммировать, сортировать и применять числовую маску.
+
+Правильно:
+
+```ts
+columns: [{ id: "AMOUNT", header: "Сумма", type: Number, format: "#,##0.00" }],
+rows: [{ AMOUNT: 1250.5 }],
+```
+
+## Нормализация значений
+
+`buildExcelSheetData` приводит данные согласно `column.type`.
+
+### Пустые значения
+
+`null`, `undefined` и пустая строка `""` становятся пустой ячейкой. Строка из пробелов не считается пустой.
+
+### `Number`
+
+Число сохраняется как есть. Другое значение проходит через `Number(value)` и принимается только при конечном результате.
+
+```ts
+"125.5"; // 125.5
+""; // пустая ячейка
+"not a number"; // пустая ячейка
+Infinity; // пустая ячейка
+```
+
+Учитывайте стандартные правила JavaScript: строки `"0x10"` и `"1e2"` преобразуются в `16` и `100`.
+
+### `String`
+
+Используется `String(value)`. Объект без собственного осмысленного `toString` станет строкой `"[object Object]"`, поэтому сложные данные подготавливайте заранее.
+
+### `Boolean`
+
+Используется `Boolean(value)`. Непустая строка `"false"` является `true`. Если backend присылает строковые флаги, сначала преобразуйте их в реальный boolean.
+
+### `Date`
+
+Готовый `Date` используется напрямую. Остальное разбирается общим `parseDate` из formatters. Нераспознанное значение становится пустым.
+
+Для предсказуемого времени используйте ISO/OData-формат с явной временной зоной. Excel хранит дату как значение, а отображение дополнительно зависит от format и настроек программы пользователя.
+
+### Без `type`
+
+Значение передаётся writer почти без преобразования. Этот режим требует, чтобы вызывающий код уже подготовил тип, поддерживаемый `write-excel-file`.
+
+## `buildExcelSheetData(args)`
+
+Создаёт `SheetData` без скачивания файла. Полезно для тестов и собственного вызова writer.
+
+```ts
+const data = buildExcelSheetData({
+	columns,
+	rows,
+	getCellStyle: ({ row, column, rowIndex, columnIndex }) => {
+		if (column.id === "AMOUNT" && Number(row.AMOUNT) < 0) {
+			return { textColor: "#C50F1F", fontWeight: "bold" };
+		}
+
+		return undefined;
+	}
+});
+```
+
+Первая строка результата — header, затем строки данных. `rowIndex` и `columnIndex` в callback начинаются с нуля **для данных**, не включая header.
+
+Стиль объединяется после `value`, `type` и `format`. Тип `ExcelCellStyle` специально исключает эти три поля, поэтому callback предназначен только для визуальных параметров writer.
+
+## Стили по value state
+
+### `resolveExcelCellStyleFromState(state)`
+
+Преобразует общий `State` в цвет текста:
+
+| State         | Цвет      |
+| ------------- | --------- |
+| `information` | `#2563EB` |
+| `success`     | `#107C10` |
+| `warning`     | `#B7791F` |
+| `error`       | `#C50F1F` |
+
+Для `none`, пустой строки и `undefined` возвращается `undefined`.
+
+```ts
+getCellStyle: ({ row }) =>
+  resolveExcelCellStyleFromState(row.STATE as State),
+```
+
+Helper задаёт только `textColor`. При необходимости объедините результат со своим стилем.
+
+## Auto-filter
+
+```ts
+autoFilter: true;
+```
+
+Фильтр охватывает header и все строки данных. Он добавляется через низкоуровневую OpenXML transform-feature, потому что используемый writer не предоставляет отдельной высокоуровневой опции.
+
+### `buildExcelAutoFilterRef(columnCount, rowCount)`
+
+```ts
+buildExcelAutoFilterRef(1, 2); // "A1:A2"
+buildExcelAutoFilterRef(28, 10); // "A1:AB10"
+buildExcelAutoFilterRef(0, 10); // undefined
+```
+
+`rowCount` должен включать строку header. `downloadExcelFile` и workbook API вычисляют его автоматически.
+
+## Несколько листов
+
+### `downloadExcelWorkbook(args)`
+
+```ts
+await downloadExcelWorkbook({
+	fileName: "report.xlsx",
+	sheets: [
+		{
+			name: "Заказы",
+			columns: orderColumns,
+			rows: orders,
+			autoFilter: true
+		},
+		{
+			name: "Справочник статусов",
+			columns: statusColumns,
+			rows: statuses,
+			autoFilter: false
+		}
+	]
+});
+```
+
+Каждый лист имеет собственные колонки, ширины, строки, стили и filter. Порядок массива — порядок вкладок Excel.
+
+Пустой массив `sheets` приводит к ошибке: «Для формирования Excel-книги нужен минимум один лист».
+
+`fileName` передаётся browser writer. Рекомендуется явно добавлять расширение `.xlsx` и заранее очищать пользовательский ввод от нежелательных символов имени файла.
+
+## Имена листов
+
+### `resolveExcelSheetNames(names)`
+
+Excel ограничивает имя листа 31 символом и запрещает управляющие символы, `[ ] / \ : * ?`. Helper:
+
+- заменяет запрещённые группы пробелом;
+- схлопывает пробелы;
+- удаляет апострофы по краям;
+- использует `Лист N` для пустого результата;
+- обрезает до 31 символа;
+- делает имена уникальными без учёта регистра через суффиксы ` (2)`, ` (3)`.
+
+```ts
+resolveExcelSheetNames(["Продажи/Россия", "продажи россия", ""]);
+
+// ["Продажи Россия", "продажи россия (2)", "Лист 3"]
+```
+
+Функция возвращает новый массив и не меняет входные строки.
+
+## Table/OData-адаптер
+
+Вторая часть модуля помогает экспортировать таблицу, описание колонок которой использует `ColumnRole`, `ODataMetaType` и formatter pipeline.
+
+### `TableExcelColumnDescriptor`
+
+```ts
+type TableExcelColumnDescriptor = {
+	id: string;
+	header: string;
+	width?: number;
+	role?: ColumnRole;
+	odataType?: ODataMetaType;
+	clientOnly?: boolean;
+	formattersPipeline?: FormattersPipelineConfig;
+};
+```
+
+### `resolveTableExcelColumnType(descriptor)`
+
+Тип определяется в следующем порядке:
+
+1. `clientOnly: true` → `Number`;
+2. OData date/time type → `Date`;
+3. OData boolean type → `Boolean`;
+4. OData numeric type → `Number`;
+5. `role: "measure"` → `Number`;
+6. иначе → `String`.
+
+`clientOnly` здесь предполагает вычисляемую числовую колонку. Если приложение создаёт client-only текст, generic descriptor не сможет вывести его автоматически — сформируйте `ExcelColumn` вручную.
+
+### `createTableExcelColumn(descriptor)`
+
+Создаёт `ExcelColumn`, включая тип и format.
+
+```ts
+const column = createTableExcelColumn({
+	id: "NET_AMOUNT",
+	header: "Сумма",
+	odataType: "decimal",
+	role: "measure",
+	width: 16,
+	formattersPipeline: {
+		steps: [
+			{
+				type: "typedValueFormat",
+				config: { numberPresetName: "currency" }
+			}
+		]
+	}
+});
+```
+
+Точная структура pipeline описана в документации `/formatters`. Excel использует первый валидированный step `typedValueFormat`.
+
+### Числовые форматы из presets
+
+Если pipeline содержит существующий `numberPresetName`, число получает столько десятичных нулей, сколько указано в preset:
+
+```text
+decimals = 0 → #,##0
+decimals = 2 → #,##0.00
+```
+
+Для OData integer по умолчанию выбирается preset `integer`, для других чисел — `decimal`. Неизвестное имя preset игнорируется и заменяется подходящим default.
+
+### Форматы дат из presets
+
+По умолчанию:
+
+- OData `time` → time preset;
+- `datetime`/`datetimeOffset` → datetime preset;
+- остальные date types → date preset.
+
+Встроенные presets переводятся в Excel-маски, включая варианты `dd.mm`, `d mmm`, `mmm yyyy`, `hh:mm` и форматы с секундами.
+
+Для пользовательского date pattern токены нормализуются для Excel: `H` заменяется на `h`, `M` — на `m`. Если `datePresetName` не найден в registry, он исторически трактуется как ручной pattern.
+
+Форматы даты в JavaScript formatter и Excel не полностью взаимозаменяемы. Всегда проверяйте пользовательские patterns в реальном Excel/LibreOffice.
+
+## Подготовленная таблица
+
+```ts
+type ResolvedExcelTable = {
+	columns: ExcelColumn[];
+	rows: ExcelRow[];
+	cellStyles?: ReadonlyArray<Readonly<Record<string, ExcelCellStyle | undefined>>>;
+};
+```
+
+`cellStyles[rowIndex][columnId]` задаёт стиль конкретной ячейки. Индекс соответствует массиву `rows`.
+
+### `downloadResolvedExcelTable(args)`
+
+```ts
+await downloadResolvedExcelTable({
+	fileName: "table.xlsx",
+	table: {
+		columns,
+		rows,
+		cellStyles: [{ AMOUNT: { textColor: "#107C10" } }, { AMOUNT: { textColor: "#C50F1F" } }]
+	}
+});
+```
+
+`autoFilter` по умолчанию `true`.
+
+### `downloadResolvedExcelWorkbook(args)`
+
+```ts
+await downloadResolvedExcelWorkbook({
+	fileName: "analytics.xlsx",
+	sheets: [
+		{ name: "План", table: planTable },
+		{ name: "Факт", table: factTable, autoFilter: false }
+	]
+});
+```
+
+Для каждого resolved sheet auto-filter тоже включён по умолчанию.
+
+## Browser boundary и обработка ошибок
+
+`downloadExcelFile`, `downloadExcelWorkbook` и resolved download-функции используют browser bundle writer и инициируют сохранение файла. Вызывайте их из пользовательского действия в клиентском коде.
+
+```ts
+async function onExportClick() {
+	setExporting(true);
+
+	try {
+		await downloadExcelFile(args);
+	} catch (error) {
+		showExportError(error);
+	} finally {
+		setExporting(false);
+	}
+}
+```
+
+Promise завершается после `toFile`. Ошибки writer, нехватка памяти и запрет скачивания браузером не подавляются.
+
+Для больших таблиц построение всей книги происходит в памяти главного потока и может временно заблокировать UI. Модуль не реализует streaming, worker и серверную генерацию.
+
+## Частые ошибки
+
+### Передавать display-строки вместо typed values
+
+Excel теряет возможность вычислять и сортировать данные. Передавайте настоящие `number`, `boolean` и `Date`.
+
+### Ожидать JavaScript-формат в поле `format`
+
+Это маска Excel. `Intl.DateTimeFormat` options и formatter preset напрямую туда не подходят.
+
+### Экспортировать `"false"` как Boolean
+
+Непустая строка истинна. Нормализуйте transport-значение до `false`.
+
+### Использовать API на сервере
+
+Импорт идёт из `write-excel-file/browser`. Для server-side Excel нужен другой owner/адаптер.
+
+### Передавать пустой workbook
+
+Многолистовая книга требует минимум один sheet. Пустой лист с header допустим, если есть columns.
+
+### Полагаться на исходные имена листов
+
+Они нормализуются и могут получить суффикс. Если имя нужно показывать пользователю заранее, вызовите `resolveExcelSheetNames` до download.
+
+## Краткая карта API
+
+| Экспорт                                     | Назначение                                     |
+| ------------------------------------------- | ---------------------------------------------- |
+| `buildExcelSheetData`                       | Собрать типизированные ячейки без скачивания   |
+| `downloadExcelFile`                         | Скачать книгу с одним листом `Sheet1`          |
+| `downloadExcelWorkbook`                     | Скачать книгу из нескольких независимых листов |
+| `buildExcelAutoFilterRef`                   | Построить Excel-диапазон фильтра               |
+| `resolveExcelSheetNames`                    | Нормализовать и дедуплицировать имена листов   |
+| `resolveExcelCellStyleFromState`            | Получить цвет текста из общего value state     |
+| `resolveTableExcelColumnType`               | Вывести Excel type из OData/table descriptor   |
+| `createTableExcelColumn`                    | Создать колонку с type и format                |
+| `downloadResolvedExcelTable`                | Скачать заранее подготовленную таблицу         |
+| `downloadResolvedExcelWorkbook`             | Скачать несколько подготовленных таблиц        |
+| `ExcelColumn`, `ExcelRow`, `ExcelCellStyle` | Базовые generic-типы                           |
+| `ResolvedExcelTable`                        | Таблица с optional map стилей                  |

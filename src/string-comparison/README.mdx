@@ -1,0 +1,96 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/Data/String Comparison" />
+
+# Сравнение строк через `@ryuzaki13/react-foundation-lib/string-comparison`
+
+`compareStrings` задаёт единый порядок строк для русскоязычных UI-списков, смешанной кириллицы/латиницы и числовых суффиксов.
+
+## Установка и импорт
+
+```ts
+import { compareStrings } from "@ryuzaki13/react-foundation-lib/string-comparison";
+```
+
+Модуль использует стандартный `Intl.Collator` и не зависит от React.
+
+## Использование
+
+```ts
+const names = ["item10", "item2", "item1"];
+const sorted = [...names].sort(compareStrings);
+
+console.log(sorted); // ["item1", "item2", "item10"].
+console.log(names); // Исходный массив не изменён из-за [...names].
+```
+
+Важно: сам `Array.prototype.sort` мутирует массив. `compareStrings` только comparator.
+
+```ts
+names.sort(compareStrings); // names изменится.
+```
+
+## Правила сравнения
+
+Основной collator настроен так:
+
+```ts
+new Intl.Collator("ru-RU", {
+	usage: "sort",
+	sensitivity: "base",
+	numeric: true
+});
+```
+
+Это означает:
+
+- locale фиксирован как `ru-RU`, а не зависит от системного языка;
+- числовые части сравниваются как числа: `item2` раньше `item10`;
+- основной проход не различает регистр и часть диакритики;
+- если collator считает разные строки равными, применяется строгий UTF-16 fallback;
+- результат нормализуется до `-1`, `0` или `1`.
+
+```ts
+["a", "A"].sort(compareStrings); // ["A", "a"].
+```
+
+UTF-16 fallback нужен для детерминированного порядка, а не для лингвистической оценки регистра.
+
+## Контракт comparator
+
+```ts
+function compareStrings(left: string, right: string): number;
+```
+
+| Результат | Значение                                        |
+| --------: | ----------------------------------------------- |
+|      `-1` | `left` должен находиться раньше `right`         |
+|       `0` | строки полностью равны для итогового comparator |
+|       `1` | `left` должен находиться позже `right`          |
+
+Подходящие места:
+
+- `array.sort` / `toSorted`;
+- сортировка labels справочника;
+- предсказуемый порядок смешанных технических и русских названий;
+- tie-breaker после бизнес-сортировки.
+
+## Ограничения
+
+- Аргументы должны быть strings; функция не приводит `null`/число.
+- Это UI-сортировка, а не database collation или backend `$orderby`.
+- Не используйте comparator для equality/identity: разные строки могут быть близки по основной collation.
+- Порядок не является Unicode normalization; при необходимости нормализуйте вход на явной boundary.
+- Для server-side таблицы сортировку полного набора должен выполнять backend, а не одна загруженная страница.
+- Runtime должен поддерживать `Intl.Collator` и locale data `ru-RU`.
+
+## Пример с объектами
+
+```ts
+type Option = { id: string; label: string };
+
+const sortedOptions = options.toSorted((left, right) => {
+	const byLabel = compareStrings(left.label, right.label);
+	return byLabel !== 0 ? byLabel : compareStrings(left.id, right.id);
+});
+```

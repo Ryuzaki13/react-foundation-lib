@@ -27,19 +27,19 @@ import type { RowRecord } from "@ryuzaki13/react-foundation-lib/types";
 
 Большинство внешних пакетов объявлены как optional peers. Это означает только то, что их не нужно ставить для каждого сценария. Если host использует entrypoint, который импортирует внешний пакет, совместимая peer-зависимость должна быть установлена в host-проекте.
 
-| Entry point                                      | Что может потребоваться в host-проекте                                                                           |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `formatters`, `array`, `utils`, `validators`     | Обычно не требуют дополнительных runtime-зависимостей.                                                           |
-| `hooks`, `binary`, `dom`, `copy`, `media`, `pwa` | `react`: `binary` экспортирует `useBinaryFile`, остальные entrypoints требуют React при использовании hooks.     |
-| `query-client`, `error-report`                   | `@tanstack/react-query`, `@tanstack/query-persist-client-core`, `@tanstack/query-broadcast-client-experimental`. |
-| `odata-service`                                  | `zod`, `zustand`, `immer`, `react`; `unwrapODataQueryResult` типизирован вокруг `@tanstack/react-query`.         |
-| `notifications`                                  | `zustand`, для store-helpers также `immer`.                                                                      |
-| `table`                                          | `@tanstack/react-table` и `react` для selection hooks.                                                           |
-| `virtualizer`                                    | `@tanstack/react-virtual` и `react`.                                                                             |
-| `hooks` search helpers                           | `@tanstack/react-router`.                                                                                        |
-| `hooks` DnD helpers                              | `@dnd-kit/core`, `@dnd-kit/sortable`.                                                                            |
-| `hooks` floating/listbox и DOM references        | `@floating-ui/react`.                                                                                            |
-| `excel`                                          | `write-excel-file`.                                                                                              |
+| Entry point                                               | Что может потребоваться в host-проекте                                                                           |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `formatters`, `array`, `validators`                       | Обычно не требуют дополнительных runtime-зависимостей.                                                           |
+| `utils`, `hooks`, `binary`, `dom`, `copy`, `media`, `pwa` | `react`: `utils` экспортирует React helpers, `binary` — `useBinaryFile`, остальные entrypoints содержат hooks.   |
+| `query-client`, `error-report`                            | `@tanstack/react-query`, `@tanstack/query-persist-client-core`, `@tanstack/query-broadcast-client-experimental`. |
+| `odata-service`                                           | `zod`, `zustand`, `immer`, `react`; `unwrapODataQueryResult` типизирован вокруг `@tanstack/react-query`.         |
+| `notifications`                                           | `zustand`, для store-helpers также `immer`.                                                                      |
+| `table`                                                   | `@tanstack/react-table` и `react` для selection hooks.                                                           |
+| `virtualizer`                                             | `@tanstack/react-virtual` и `react`.                                                                             |
+| `hooks` search helpers                                    | `@tanstack/react-router`.                                                                                        |
+| `hooks` DnD helpers                                       | `@dnd-kit/core`, `@dnd-kit/sortable`.                                                                            |
+| `hooks` floating/listbox и DOM references                 | `@floating-ui/react`.                                                                                            |
+| `excel`                                                   | `write-excel-file`.                                                                                              |
 
 Такая схема оставляет пакет библиотечным: зависимости не зашиваются в bundle, а host-приложение контролирует версии React, TanStack, Zod и других runtime-библиотек.
 
@@ -92,7 +92,7 @@ npm run pack:dry-run
 | QueryClient, persistence, broadcast                                         | [`query-client`](./src/query-client/index.ts), подробный README: [`query-client/README.mdx`](./src/query-client/README.mdx)                                                                                                         |
 | PWA service worker update и `x-sw-cache` policy                             | [`pwa`](./src/pwa/index.ts), README: [`pwa/README.md`](./src/pwa/README.md)                                                                                                                                                         |
 | Подстановки открытых границ диапазона                                       | [`range-output`](./src/range-output/index.ts), тест: [`rangeOutput.test.ts`](./src/range-output/rangeOutput.test.ts)                                                                                                                |
-| Unknown guards, className, stable stringify, clone                          | [`validators`](./src/validators/index.ts), [`utils`](./src/utils/index.ts)                                                                                                                                                          |
+| Unknown guards, className, stable stringify, clone                          | [`validators`](./src/validators/index.ts), [`utils`](./src/utils/index.ts), подробный README: [`utils/README.mdx`](./src/utils/README.mdx)                                                                                          |
 
 ## Форматирование и значения
 
@@ -660,7 +660,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 
 ### `utils`
 
-Файлы: [`utils/index.ts`](./src/utils/index.ts), тесты: [`utils.test.ts`](./src/utils/utils.test.ts), [`keyboard.test.ts`](./src/utils/keyboard.test.ts), [`createLazyComponent.test.tsx`](./src/utils/createLazyComponent.test.tsx).
+Файлы: [`utils/index.ts`](./src/utils/index.ts), подробный README: [`utils/README.mdx`](./src/utils/README.mdx), тесты: [`utils.test.ts`](./src/utils/utils.test.ts), [`keyboard.test.ts`](./src/utils/keyboard.test.ts), [`createLazyComponent.test.tsx`](./src/utils/createLazyComponent.test.tsx).
 
 | API                                                                             | Поведение                                                                                                 |
 | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |

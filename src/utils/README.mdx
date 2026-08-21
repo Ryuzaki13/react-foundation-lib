@@ -1,0 +1,1724 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/API/Utils" />
+
+# Общие утилиты `@ryuzaki13/react-foundation-lib/utils`
+
+Модуль `utils` объединяет небольшие технические функции, которые нужны в разных частях React- и TypeScript-приложения:
+
+- сборка строки `className`;
+- глубокое копирование данных без функций;
+- стабильная JSON-сериализация;
+- UTF-8-кодирование текста в Base64;
+- обработка клавиатурной активации и расчёт следующего элемента навигации;
+- ленивое подключение React-компонентов;
+- подсчёт React children;
+- копирование древовидной структуры;
+- единая точка вывода ошибок в `console.error`.
+
+Документ рассчитан на разработчика без доступа к исходному коду пакета и с минимальным знанием JavaScript, TypeScript и React. Поэтому ниже объясняются назначение каждого аргумента, точный результат, побочные эффекты, различия похожих функций и ограничения.
+
+> `utils` — это опубликованный entrypoint, а не приглашение складывать сюда любую бизнес-логику. В модуле нет HTTP-запросов, UI-компонентов, доменных правил, нормализации пользовательского ввода и криптографии.
+
+## Содержание
+
+- [Назначение и границы](#назначение-и-границы)
+- [Установка и импорт](#установка-и-импорт)
+- [Среда выполнения](#среда-выполнения)
+- [Минимальные понятия](#минимальные-понятия)
+- [Как выбрать функцию](#как-выбрать-функцию)
+- [Быстрый старт](#быстрый-старт)
+- [`cn` и deprecated `classNames`](#cn-и-deprecated-classnames)
+- [Как выбрать функцию клонирования](#как-выбрать-функцию-клонирования)
+- [`deepCopyWithoutFunctions`](#deepcopywithoutfunctions)
+- [`deepCloneWithoutFunctions`](#deepclonewithoutfunctions)
+- [Clone не является normalize](#clone-не-является-normalize)
+- [`stableStringify`](#stablestringify)
+- [`toBase64` и `encodeBase64`](#tobase64-и-encodebase64)
+- [Клавиатурная активация](#клавиатурная-активация)
+- [Roving focus](#roving-focus)
+- [Навигация по доступным опциям](#навигация-по-доступным-опциям)
+- [`createLazyComponent`](#createlazycomponent)
+- [`childrenCount`](#childrencount)
+- [`deepCopyNodes` и `deepCopyTree`](#deepcopynodes-и-deepcopytree)
+- [`logError`](#logerror)
+- [SSR, browser и React-границы](#ssr-browser-и-react-границы)
+- [Производительность](#производительность)
+- [Тестирование consumer-кода](#тестирование-consumer-кода)
+- [Полный API-справочник](#полный-api-справочник)
+- [Типичные ошибки](#типичные-ошибки)
+- [Вопросы и ответы](#вопросы-и-ответы)
+
+## Назначение и границы
+
+### Что делает модуль
+
+`utils` предоставляет общие технические операции, не зависящие от бизнес-сущности приложения:
+
+```text
+входные данные или UI-событие
+              │
+              ▼
+      маленькая utility-функция
+              │
+              ▼
+строка / копия / индекс / React lazy component
+```
+
+Большинство функций являются синхронными: они сразу возвращают результат. Исключение по жизненному циклу — `createLazyComponent`: функция синхронно создаёт React lazy component, но его модуль загружается асинхронно только при первом рендере.
+
+### Чего модуль не делает
+
+Модуль:
+
+- не отправляет HTTP- или OData-запросы;
+- не создаёт готовые визуальные компоненты;
+- не хранит React state и не создаёт store;
+- не валидирует backend payload;
+- не нормализует пользовательский draft;
+- не шифрует данные и не создаёт криптографические подписи;
+- не декодирует Base64 обратно в строку;
+- не управляет DOM-фокусом самостоятельно;
+- не заменяет Error Boundary, logger transport или error-reporting service;
+- не гарантирует копирование любого встроенного browser/JavaScript-объекта.
+
+### Соседние владельцы
+
+| Задача                                         | Предпочтительный модуль                                    |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| Массивы, группировка, дедупликация и reorder   | `@ryuzaki13/react-foundation-lib/array`                    |
+| Runtime-проверки `unknown`                     | `@ryuzaki13/react-foundation-lib/validators`               |
+| Hash, UUID и стабильный DOM id                 | `@ryuzaki13/react-foundation-lib/crypto`                   |
+| Base64/Binary в `Blob`                         | `@ryuzaki13/react-foundation-lib/binary`                   |
+| Clipboard                                      | `@ryuzaki13/react-foundation-lib/copy`                     |
+| DOM, portal, focus и browser download          | `@ryuzaki13/react-foundation-lib/dom`                      |
+| Debounce, throttle и React hooks               | `@ryuzaki13/react-foundation-lib/hooks`                    |
+| Форматирование дат, чисел, строк и value state | `@ryuzaki13/react-foundation-lib/formatters`               |
+| Сериализуемый error report и его доставка      | `@ryuzaki13/react-foundation-lib/error-report` и API-пакет |
+| UI primitives                                  | `@ryuzaki13/react-foundation-ui/<module>`                  |
+| Бизнес-преобразование сущности                 | entity/feature/widget host-приложения                      |
+
+## Установка и импорт
+
+Установите пакет:
+
+```bash
+npm install @ryuzaki13/react-foundation-lib
+```
+
+Entrypoint `/utils` также экспортирует React-функции `childrenCount` и `createLazyComponent`. Поэтому host-приложение должно разрешить совместимую peer dependency React:
+
+```bash
+npm install react
+```
+
+Текущий контракт пакета рассчитан на React `>=19.2.0 <20.0.0`.
+
+Импортируйте API только из опубликованного subpath:
+
+```ts
+import { cn, deepCopyWithoutFunctions, handleKeyboardActivation, stableStringify, toBase64 } from "@ryuzaki13/react-foundation-lib/utils";
+```
+
+Публичные типы импортируйте через `import type`:
+
+```ts
+import type {
+	KeyboardActivationKey,
+	PureClassName,
+	RovingFocusTargetOptions,
+	ToggleClassName
+} from "@ryuzaki13/react-foundation-lib/utils";
+```
+
+Неверные варианты:
+
+```ts
+// Корневой entrypoint пакета не опубликован.
+import { cn } from "@ryuzaki13/react-foundation-lib";
+
+// Внутренний файл не является публичным контрактом.
+import { cn } from "@ryuzaki13/react-foundation-lib/dist/utils/cn";
+
+// Исходный путь пакета также нельзя использовать из consumer-приложения.
+import { cn } from "@ryuzaki13/react-foundation-lib/src/utils/cn";
+```
+
+Пакет распространяется как ESM. Используйте `import`, а не CommonJS `require`.
+
+### Почему некоторые типы опций нельзя импортировать
+
+Типы параметров `deepCopyWithoutFunctions`, `deepCloneWithoutFunctions`, `handleKeyboardActivation`, `findNextEnabledIndex` и `createLazyComponent` участвуют в публичных сигнатурах, но не экспортируются как отдельные имена. Обычно это не мешает: TypeScript проверит переданный объект прямо в месте вызова.
+
+```ts
+deepCopyWithoutFunctions(source, {
+	arrayFunctionStrategy: "undefined"
+});
+```
+
+Не импортируйте внутренние типы глубоким путём. Если тип нужен для собственной обёртки, получите его из публичной функции:
+
+```ts
+type DeepCopyOptions = NonNullable<Parameters<typeof deepCopyWithoutFunctions>[1]>;
+```
+
+## Среда выполнения
+
+У разных функций разные runtime-требования:
+
+| API                                                                           | React |      Browser API      |        Можно вызвать на сервере        |
+| ----------------------------------------------------------------------------- | :---: | :-------------------: | :------------------------------------: |
+| `cn`, clone-функции, `stableStringify`, keyboard/select navigation, tree copy |  нет  |          нет          |                   да                   |
+| `logError`                                                                    |  нет  |          нет          |       да, если доступен console        |
+| `childrenCount`                                                               |  да   |          нет          |                   да                   |
+| `createLazyComponent`                                                         |  да   |          нет          | создаётся да; рендер по правилам React |
+| `toBase64`                                                                    |  нет  | `btoa`, `TextEncoder` |         только при наличии API         |
+| `encodeBase64`                                                                |  нет  |        `btoa`         |         только при наличии API         |
+
+В современных браузерах нужные Base64 API обычно доступны. В Node.js их наличие зависит от версии и окружения. Модуль намеренно не подменяет их через `Buffer`.
+
+## Минимальные понятия
+
+### Примитивы и ссылочные значения
+
+Строки, числа, `boolean`, `null` и `undefined` — примитивные значения. Объекты, массивы, `Map`, `Set`, `Date` и функции — ссылочные значения.
+
+```ts
+const source = { name: "Анна" };
+const same = source;
+
+console.log(same === source); // true: обе переменные указывают на один объект.
+```
+
+Копия должна иметь другое внешнее значение:
+
+```ts
+const copy = deepCopyWithoutFunctions(source);
+
+console.log(copy === source); // false.
+console.log(copy.name); // "Анна".
+```
+
+### Поверхностная и глубокая копия
+
+Поверхностная копия создаёт только новый внешний объект:
+
+```ts
+const source = { profile: { city: "Казань" } };
+const shallow = { ...source };
+
+console.log(shallow !== source); // true.
+console.log(shallow.profile === source.profile); // true: вложенный объект общий.
+```
+
+Глубокая копия рекурсивно копирует поддерживаемые вложенные значения:
+
+```ts
+const deep = deepCopyWithoutFunctions(source);
+
+console.log(deep.profile === source.profile); // false.
+```
+
+### Мутация
+
+Мутация — изменение уже существующего объекта:
+
+```ts
+source.profile.city = "Пермь";
+```
+
+Функции клонирования и tree copy не изменяют входное значение. Они создают новый результат. Но копирование дерева клонирует только узлы и массивы дочерних узлов, а не каждое произвольное вложенное поле.
+
+### Функция как значение
+
+Функцию можно хранить в поле объекта или элементе массива:
+
+```ts
+const value = {
+	id: "A",
+	onClick: () => console.log("click")
+};
+```
+
+Clone-функции этого модуля специально не переносят функции в результат. Это полезно для data-only конфигураций и snapshots, но не подходит для клонирования объектов, где callback является обязательной частью поведения.
+
+### Индекс массива и разреженный массив
+
+Индекс — позиция элемента, начиная с нуля. Разреженный массив содержит пропущенную позицию, то есть «дыру»:
+
+```ts
+const sparse = ["A", , "C"];
+
+console.log(sparse.length); // 3.
+console.log(1 in sparse); // false: индекс 1 отсутствует.
+```
+
+Это не то же самое, что явное значение `undefined`:
+
+```ts
+const indexed = ["A", undefined, "C"];
+
+console.log(1 in indexed); // true.
+```
+
+Разница важна для `deepCloneWithoutFunctions`.
+
+### `JSON` и Base64
+
+JSON — текстовый формат данных. `stableStringify` создаёт JSON-строку с отсортированными ключами объектов.
+
+Base64 — способ представить байты печатными символами. Это кодирование, а не шифрование: любой получатель может декодировать исходный текст.
+
+## Как выбрать функцию
+
+| Задача                                                         | API                                                                     |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Собрать `className` из строк и boolean-флагов                  | `cn`                                                                    |
+| Поддержать старый код с прежним именем                         | `classNames`, но новый код — `cn`                                       |
+| Клонировать строгую data-only конфигурацию                     | `deepCopyWithoutFunctions`                                              |
+| Клонировать также `Map`, `Set`, `RegExp`, cycles и descriptors | `deepCloneWithoutFunctions`                                             |
+| Получить одинаковый JSON для объектов с разным порядком ключей | `stableStringify`                                                       |
+| Кодировать Unicode-текст в стандартный Base64                  | `toBase64`                                                              |
+| Распознать `Enter` или пробел                                  | `isKeyboardActivationKey`                                               |
+| Активировать кастомный control с клавиатуры                    | `handleKeyboardActivation`                                              |
+| Рассчитать новый индекс для `Tabs`/`RadioGroup`                | `getRovingFocusTargetIndex`                                             |
+| Найти первую, последнюю или следующую enabled-опцию            | `findFirstEnabledIndex`, `findLastEnabledIndex`, `findNextEnabledIndex` |
+| Лениво загрузить именованный React-компонент                   | `createLazyComponent`                                                   |
+| Посчитать React children, раскрывая fragments                  | `childrenCount`                                                         |
+| Скопировать узлы дерева с полем `children`                     | `deepCopyNodes`                                                         |
+| Скопировать дерево с произвольным названием поля детей         | `deepCopyTree`                                                          |
+| Направить ошибку в `globalThis.console.error`                  | `logError`                                                              |
+
+## Быстрый старт
+
+```ts
+import { cn, deepCopyWithoutFunctions, findNextEnabledIndex, stableStringify, toBase64 } from "@ryuzaki13/react-foundation-lib/utils";
+
+const className = cn("button", {
+	"button--active": true,
+	"button--disabled": false
+});
+// "button button--active"
+
+const draft = {
+	title: "Новая группа ",
+	enabled: false,
+	items: [{ id: "A" }],
+	onSave: () => undefined
+};
+
+const copy = deepCopyWithoutFunctions(draft);
+// title сохраняет завершающий пробел, enabled остаётся false,
+// items глубоко скопирован, onSave отсутствует.
+
+const cachePart = stableStringify({ page: 1, filter: { status: "OPEN" } });
+// '{"filter":{"status":"OPEN"},"page":1}'
+
+const encoded = toBase64("Привет");
+// Стандартная Base64-строка для UTF-8-байтов текста.
+
+const options = [{ disabled: false }, { disabled: true }, { disabled: false }];
+const nextIndex = findNextEnabledIndex(options, 0, 1, (option) => option.disabled);
+// 2: индекс 1 пропущен, потому что опция disabled.
+```
+
+## `cn` и deprecated `classNames`
+
+### Назначение
+
+`cn` собирает одну строку CSS-классов из:
+
+- строк;
+- `false`, `undefined`, `null`, пустой строки и `true`, которые игнорируются;
+- объекта вида `{ "имя-класса": условие }`.
+
+```ts
+import { cn } from "@ryuzaki13/react-foundation-lib/utils";
+
+const result = cn("button", isPrimary && "button--primary", {
+	"button--loading": isLoading,
+	"button--disabled": disabled
+});
+```
+
+Если `isPrimary === true`, `isLoading === false`, `disabled === true`, результат:
+
+```text
+button button--primary button--disabled
+```
+
+### Сигнатура
+
+```ts
+type PureClassName = string | boolean | undefined | null;
+type ToggleClassName = Record<string, boolean | undefined>;
+
+function cn(...args: Array<PureClassName | ToggleClassName>): string;
+```
+
+`...args` означает любое количество аргументов.
+
+### Точные правила
+
+- `cn()` возвращает пустую строку `""`.
+- Строки добавляются в порядке аргументов.
+- Ключи объекта с truthy-значением добавляются в порядке обхода объекта.
+- Строки не обрезаются и не разбиваются на отдельные слова.
+- Повторяющиеся классы не удаляются.
+- Числа не входят в публичный тип и в runtime игнорируются.
+- Массивы игнорируются: `cn` не является рекурсивным `classnames`-парсером.
+
+```ts
+cn("a b", "b", { c: true }); // "a b b c".
+cn(["a", "b"] as never, "c"); // "c": массив проигнорирован.
+```
+
+Передавайте обычные object literals. Реализация обходит enumerable-ключи через `for...in`, поэтому объект с вручную настроенным prototype может добавить унаследованный enumerable-ключ.
+
+### `classNames`
+
+`classNames` — deprecated-алиас той же функции `cn`:
+
+```ts
+import { classNames } from "@ryuzaki13/react-foundation-lib/utils";
+```
+
+Новый код должен использовать `cn`. Алиас существует только для уже написанного consumer-кода и не предоставляет другого поведения.
+
+## Как выбрать функцию клонирования
+
+В модуле есть две похожие функции. Они не взаимозаменяемы во всех сценариях.
+
+| Свойство                            | `deepCopyWithoutFunctions`                     | `deepCloneWithoutFunctions`                     |
+| ----------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
+| Основное назначение                 | Строгая data-only конфигурация                 | Более широкий JavaScript object graph           |
+| Примитивы, массивы, plain object    | да                                             | да                                              |
+| `Date`                              | да                                             | да                                              |
+| `RegExp`, `Map`, `Set`              | нет, выбрасывает `TypeError`                   | да                                              |
+| Циклические ссылки                  | да                                             | да                                              |
+| Функции в object                    | поле удаляется                                 | data-свойство удаляется                         |
+| Функции в array по умолчанию        | элемент удаляется, массив сжимается (`"omit"`) | индекс остаётся со значением `undefined`        |
+| Разреженные позиции массива         | превращаются в явный `undefined`               | сохраняются как пропущенные позиции             |
+| Symbol и non-enumerable properties  | не копируются                                  | копируются                                      |
+| Getter/setter                       | getter может быть вызван; значение копируется  | accessor полностью пропускается и не вызывается |
+| Property descriptors                | не сохраняются                                 | сохраняются для data-свойств                    |
+| Prototype                           | результат — обычный объект                     | обычный объект или исходный prototype по опции  |
+| Неподдержанный специальный built-in | явный `TypeError`                              | поведение не гарантировано                      |
+
+Практическое правило:
+
+```text
+сохраняемая конфигурация, DTO-like draft, Zustand snapshot
+                         │
+                         ▼
+           deepCopyWithoutFunctions
+
+Map / Set / RegExp / descriptors / общий object graph
+                         │
+                         ▼
+          deepCloneWithoutFunctions
+```
+
+Если значения должны пережить JSON/localStorage/backend boundary, строгая функция обычно безопаснее: неподдерживаемый объект обнаружится сразу, а не превратится в объект с неожиданным поведением.
+
+## `deepCopyWithoutFunctions`
+
+### Назначение
+
+`deepCopyWithoutFunctions` создаёт независимую копию строгой data-only структуры и удаляет функции. Поддерживаются:
+
+- `null`, `undefined`, строки, числа, `boolean`, `bigint`, `symbol` как корневые/вложенные примитивы;
+- `Date`;
+- массивы;
+- plain objects с prototype `Object.prototype` или `null`;
+- циклические ссылки и повторное использование одного массива/plain object.
+
+> Поддержка `bigint` и `symbol` клонированием не означает, что их затем сможет сериализовать JSON. `stableStringify` подчиняется ограничениям `JSON.stringify`.
+
+### Базовый пример
+
+```ts
+import { deepCopyWithoutFunctions } from "@ryuzaki13/react-foundation-lib/utils";
+
+const source = {
+	id: "REPORT-1",
+	title: " Мой отчёт ",
+	enabled: false,
+	filters: [{ field: "STATUS", values: [] }],
+	createdAt: new Date("2026-01-02T00:00:00.000Z"),
+	onOpen: () => undefined
+};
+
+const copy = deepCopyWithoutFunctions(source);
+
+console.log(copy !== source); // true.
+console.log(copy.filters !== source.filters); // true.
+console.log(copy.filters[0] !== source.filters[0]); // true.
+console.log(copy.createdAt !== source.createdAt); // true.
+console.log("onOpen" in copy); // false.
+```
+
+Строка `" Мой отчёт "`, явный `false` и пустой массив сохраняются буквально.
+
+### Функции внутри массива
+
+По умолчанию применяется стратегия `"omit"`: функция удаляется, а следующие элементы сдвигаются влево.
+
+```ts
+const result = deepCopyWithoutFunctions(["A", () => "skip", "C"]);
+
+console.log(result); // ["A", "C"].
+console.log(result.length); // 2.
+```
+
+Стратегия `"undefined"` сохраняет длину и индексы:
+
+```ts
+const result = deepCopyWithoutFunctions(["A", () => "skip", "C"], {
+	arrayFunctionStrategy: "undefined"
+});
+
+console.log(result); // ["A", undefined, "C"].
+console.log(result.length); // 3.
+```
+
+Выбирайте `"undefined"`, если индекс имеет самостоятельное значение. Учитывайте, что JSON затем превратит `undefined` в массиве в `null`.
+
+### Plain object
+
+Plain object — обычный объект `{}` или объект без prototype:
+
+```ts
+const ordinary = { id: "A" };
+const withoutPrototype = Object.create(null) as Record<string, unknown>;
+```
+
+Функция копирует только собственные enumerable string-свойства, возвращая обычный объект `{}`. Symbol-ключи, non-enumerable свойства и исходный prototype не сохраняются.
+
+Getter может быть вызван, потому что значение читается как обычное свойство:
+
+```ts
+const source = {
+	get total() {
+		return 10;
+	}
+};
+
+const copy = deepCopyWithoutFunctions(source);
+console.log(copy.total); // 10, теперь это обычное поле результата.
+```
+
+Не используйте getter с побочными эффектами в data-only конфигурациях.
+
+### Cycles и повторные ссылки
+
+Для массивов и plain objects используется таблица уже скопированных ссылок. Поэтому цикл не вызывает бесконечную рекурсию:
+
+```ts
+const source: { id: string; self?: unknown } = { id: "A" };
+source.self = source;
+
+const copy = deepCopyWithoutFunctions(source);
+
+console.log(copy.self === copy); // true.
+```
+
+Если один вложенный plain object встречается в двух местах, в результате оба поля будут ссылаться на одну и ту же его копию.
+
+### Неподдерживаемые объекты
+
+Функция выбрасывает `TypeError` для объектов, которые не являются `Date`, массивом или plain object:
+
+```ts
+deepCopyWithoutFunctions(new Map());
+// TypeError: Unsupported object for config clone: [object Map]
+```
+
+К неподдерживаемым значениям относятся, например:
+
+- `Map`, `Set`, `RegExp`;
+- экземпляры пользовательских классов;
+- `URL`, `Error`, `Promise`, `WeakMap`;
+- `ArrayBuffer` и typed arrays;
+- browser `Blob`, `File` и DOM nodes.
+
+Не подавляйте такую ошибку без анализа. Она обычно сообщает, что в сериализуемую конфигурацию попал объект неправильного слоя.
+
+### Корневая функция
+
+Если само входное значение является функцией, runtime-результат — `undefined`:
+
+```ts
+const result = deepCopyWithoutFunctions(() => "value");
+console.log(result); // undefined.
+```
+
+Обычно корневая функция означает ошибочный вызов. Не полагайтесь на generic return type как на runtime-проверку.
+
+## `deepCloneWithoutFunctions`
+
+### Назначение
+
+`deepCloneWithoutFunctions` работает с более широким object graph. Помимо обычных объектов и массивов функция отдельно поддерживает:
+
+- `Date`;
+- `RegExp`, включая `lastIndex`;
+- `Map`, включая клонирование ключей и значений;
+- `Set`;
+- циклические ссылки;
+- symbol и non-enumerable data-свойства;
+- property descriptors;
+- опциональное сохранение prototype.
+
+### Базовый пример
+
+```ts
+import { deepCloneWithoutFunctions } from "@ryuzaki13/react-foundation-lib/utils";
+
+const source: Record<string, unknown> = {
+	pattern: /order/gi,
+	lookup: new Map([["A", { title: "Первая" }]]),
+	selected: new Set(["A", "B"]),
+	onReset: () => undefined
+};
+source.self = source;
+
+const clone = deepCloneWithoutFunctions(source);
+
+console.log(clone !== source); // true.
+console.log(clone.self === clone); // true.
+console.log(clone.lookup !== source.lookup); // true.
+console.log("onReset" in clone); // false.
+```
+
+### Массивы: значение по умолчанию
+
+В отличие от `deepCopyWithoutFunctions`, здесь default-стратегия сохраняет индекс и записывает `undefined` вместо функции:
+
+```ts
+const result = deepCloneWithoutFunctions(["A", () => "skip", "C"]);
+
+console.log(result); // ["A", undefined, "C"].
+console.log(result.length); // 3.
+```
+
+Чтобы удалить функции и сжать массив, передайте `"omit"`:
+
+```ts
+const result = deepCloneWithoutFunctions(["A", () => "skip", "C"], {
+	arrayFunctionStrategy: "omit"
+});
+
+console.log(result); // ["A", "C"].
+```
+
+Default-режим сохраняет настоящие «дыры» разреженного массива:
+
+```ts
+const source = ["A", , "C"];
+const clone = deepCloneWithoutFunctions(source);
+
+console.log(clone.length); // 3.
+console.log(1 in clone); // false.
+```
+
+В режиме `"omit"` все существующие нефункциональные элементы уплотняются, поэтому исходные индексы больше не сохраняются.
+
+### `Map`
+
+Клонируются и ключи, и значения:
+
+```ts
+const key = { id: "A" };
+const source = new Map([[key, { title: "Запись" }]]);
+const clone = deepCloneWithoutFunctions(source);
+
+console.log(clone.has(key)); // false: исходный object key был скопирован.
+console.log([...clone.keys()][0] === key); // false.
+```
+
+Если ключ или значение пары является функцией, вся пара пропускается.
+
+### `Set`
+
+Каждый элемент клонируется. Элементы-функции пропускаются:
+
+```ts
+const clone = deepCloneWithoutFunctions(new Set([1, () => 2, 3]));
+
+console.log([...clone]); // [1, 3].
+```
+
+### Descriptors, symbols и accessors
+
+Для обычного объекта обходятся все собственные ключи через `Reflect.ownKeys`, включая symbols и non-enumerable properties. Для data-свойства сохраняются флаги `enumerable`, `writable` и `configurable`.
+
+Getter/setter-свойства полностью пропускаются: getter не вызывается, но accessor также не переносится в clone.
+
+```ts
+let calls = 0;
+const source = {
+	get computed() {
+		calls += 1;
+		return 10;
+	}
+};
+
+const clone = deepCloneWithoutFunctions(source);
+
+console.log(calls); // 0.
+console.log("computed" in clone); // false.
+```
+
+### `preservePrototype`
+
+По умолчанию generic object превращается в plain object:
+
+```ts
+class Model {
+	value = 1;
+}
+
+const source = new Model();
+const plain = deepCloneWithoutFunctions(source);
+
+console.log(plain instanceof Model); // false.
+```
+
+Опция `preservePrototype: true` создаёт результат с тем же prototype:
+
+```ts
+const clone = deepCloneWithoutFunctions(source, {
+	preservePrototype: true
+});
+
+console.log(clone instanceof Model); // true.
+```
+
+Это не вызывает constructor и не восстанавливает private fields или внутренние слоты платформенных объектов. `instanceof === true` не доказывает, что экземпляр полностью работоспособен.
+
+### Граница поддерживаемых built-ins
+
+Специальная корректная логика есть только для `Date`, `RegExp`, `Map`, `Set`, массивов и generic objects. Для `URL`, `Error`, `Promise`, `WeakMap`, `ArrayBuffer`, typed arrays, `Blob`, `File` и DOM nodes поведение не является поддерживаемым контрактом. Они могут превратиться в внешне похожий, но неработоспособный объект без внутренних slots.
+
+Для таких типов используйте специализированный способ копирования или явно преобразуйте значение в data-only representation.
+
+### Ограничение повторных `Date` и `RegExp`
+
+Сами containers участвуют в восстановлении повторных ссылок и cycles. `Date` и `RegExp` копируются как отдельные значения до регистрации в таблице ссылок. Если один и тот же экземпляр `Date`/`RegExp` находится в нескольких полях, каждое поле может получить отдельную эквивалентную копию.
+
+## Clone не является normalize
+
+Обе функции клонирования создают независимую структуру и удаляют функции. Они не должны использоваться как скрытая нормализация пользовательского draft.
+
+Клонирование сохраняет:
+
+- пробелы в начале и конце строк;
+- пустую строку `""`;
+- явный `false`;
+- пустые массивы и объекты;
+- дубликаты;
+- порядок элементов;
+- исходные строковые значения.
+
+```ts
+const draft = {
+	title: "Новая группа ",
+	visible: false,
+	tags: ["A", "A", ""],
+	columns: []
+};
+
+const copy = deepCopyWithoutFunctions(draft);
+
+console.log(copy);
+// {
+//   title: "Новая группа ",
+//   visible: false,
+//   tags: ["A", "A", ""],
+//   columns: []
+// }
+```
+
+Если приложению нужна canonical save-форма, выполняйте отдельный явно названный `normalize...` на границе сохранения или восстановления:
+
+```text
+пользовательский ввод
+        │
+        ▼
+literal draft ── clone ──► literal draft copy
+        │
+        │ только команда save
+        ▼
+normalizeForSave(draft) ──► canonical snapshot
+```
+
+Не записывайте нормализованный snapshot обратно в редактируемый draft без отдельного пользовательского действия.
+
+## `stableStringify`
+
+### Назначение
+
+`stableStringify` вызывает JSON-сериализацию, но перед этим сортирует string-ключи каждого объекта по алфавиту. Поэтому одинаковые JSON-compatible структуры дают одинаковую строку независимо от порядка добавления полей.
+
+```ts
+import { stableStringify } from "@ryuzaki13/react-foundation-lib/utils";
+
+const first = { b: 2, a: { d: 4, c: 3 } };
+const second = { a: { c: 3, d: 4 }, b: 2 };
+
+console.log(stableStringify(first));
+// '{"a":{"c":3,"d":4},"b":2}'
+
+console.log(stableStringify(first) === stableStringify(second));
+// true.
+```
+
+### Что сортируется
+
+- Ключи каждого объекта сортируются лексикографически.
+- Вложенные объекты обрабатываются рекурсивно.
+- Порядок элементов массивов сохраняется.
+- `Date` сериализуется стандартным JSON-механизмом в ISO-строку.
+
+```ts
+stableStringify({ list: [{ z: 1, a: 2 }], order: ["B", "A"] });
+// '{"list":[{"a":2,"z":1}],"order":["B","A"]}'
+```
+
+### Когда использовать
+
+Подходящие сценарии:
+
+- стабильная часть cache/query key, если структура полностью JSON-compatible;
+- сравнение двух небольших data-only snapshots;
+- обнаружение изменения serializable form state;
+- стабильный ключ memoization на доверенных данных.
+
+Для TanStack Query сначала предпочитайте структурный query key-массив. `stableStringify` нужен только там, где consumer действительно требует строку.
+
+### Ограничения стандартного JSON
+
+Функция наследует семантику `JSON.stringify`:
+
+| Значение                                  | Результат                 |
+| ----------------------------------------- | ------------------------- |
+| `undefined`, function, symbol в object    | свойство пропускается     |
+| `undefined`, function, symbol в array     | элемент становится `null` |
+| `NaN`, `Infinity`, `-Infinity`            | `null`                    |
+| `Date`                                    | ISO-строка                |
+| `Map`, `Set` без enumerable string fields | `{}`                      |
+| `bigint`                                  | выбрасывается `TypeError` |
+| circular reference                        | выбрасывается `TypeError` |
+| object с `toJSON`                         | вызывается `toJSON`       |
+| getter enumerable-свойства                | getter может быть вызван  |
+
+Из-за этих правил разные JavaScript-значения иногда дают одинаковую строку:
+
+```ts
+stableStringify({ value: undefined }); // "{}".
+stableStringify({}); // "{}".
+```
+
+Не используйте строку как доказательство полной идентичности произвольных объектов.
+
+### Корневое `undefined`
+
+Публичная TypeScript-сигнатура указывает `string`, но стандартный `JSON.stringify` возвращает runtime `undefined` для корневых `undefined`, function и symbol.
+
+```ts
+const result = stableStringify(undefined);
+console.log(result); // undefined во время выполнения.
+```
+
+Передавайте JSON-compatible top-level value: объект, массив, строку, число, `boolean` или `null`.
+
+### Не security canonicalization
+
+`stableStringify` не является криптографической canonical JSON-реализацией. Не используйте его напрямую для цифровых подписей, security tokens, authorization или сериализации недоверенного объекта с getters/`toJSON`.
+
+## `toBase64` и `encodeBase64`
+
+### Назначение
+
+Обе функции кодируют JavaScript-строку в UTF-8-байты, а затем в стандартный Base64:
+
+```ts
+import { toBase64 } from "@ryuzaki13/react-foundation-lib/utils";
+
+const value = toBase64("Привет");
+console.log(value); // 0J/RgNC40LLQtdGC
+```
+
+В отличие от прямого `btoa("Привет")`, Unicode-текст не теряется.
+
+### Какую функцию выбрать
+
+| API            | Способ преобразования текста в байты              | Рекомендация                                     |
+| -------------- | ------------------------------------------------- | ------------------------------------------------ |
+| `toBase64`     | `TextEncoder`, затем `btoa`                       | Предпочитать для нового browser-кода             |
+| `encodeBase64` | `encodeURIComponent`, percent bytes, затем `btoa` | Использовать для существующего совместимого кода |
+
+Для одиночного некорректного UTF-16 surrogate поведение различается: `TextEncoder` заменяет его replacement character, а `encodeURIComponent` может выбросить `URIError`.
+
+### Декодирование
+
+Модуль не экспортирует decoder. В браузере UTF-8 Base64 можно декодировать так:
+
+```ts
+function decodeBase64(value: string): string {
+	const binary = atob(value);
+	const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+
+	return new TextDecoder().decode(bytes);
+}
+
+const original = decodeBase64(toBase64("Привет"));
+console.log(original); // "Привет".
+```
+
+### Важные ограничения
+
+- Результат — обычный Base64 с символами `+`, `/` и padding `=`; это не Base64URL.
+- Base64 не шифрует и не скрывает содержимое.
+- Размер строки обычно увеличивается примерно на треть относительно количества байтов.
+- API предназначен для текста, а не для произвольного `Blob`/`ArrayBuffer`.
+- `toBase64("")` и `encodeBase64("")` возвращают пустую строку.
+- Для работы нужны соответствующие global browser APIs.
+
+Если нужно преобразовать Base64/binary payload в `Blob`, используйте `@ryuzaki13/react-foundation-lib/binary`.
+
+## Клавиатурная активация
+
+### `keyboardActivationKeys`
+
+Readonly tuple содержит точные значения `KeyboardEvent.key`, которые активируют элемент с поведением кнопки:
+
+```ts
+import { keyboardActivationKeys } from "@ryuzaki13/react-foundation-lib/utils";
+
+console.log(keyboardActivationKeys); // ["Enter", " "].
+```
+
+Пробел представлен строкой из одного символа `" "`, а не словами `"Space"` или `"Spacebar"`.
+
+Тип:
+
+```ts
+type KeyboardActivationKey = "Enter" | " ";
+```
+
+### `isKeyboardActivationKey`
+
+Функция возвращает type guard:
+
+```ts
+function onKey(key: string) {
+	if (isKeyboardActivationKey(key)) {
+		// Здесь TypeScript знает: key — "Enter" | " ".
+	}
+}
+```
+
+Точные результаты:
+
+```ts
+isKeyboardActivationKey("Enter"); // true.
+isKeyboardActivationKey(" "); // true.
+isKeyboardActivationKey("Spacebar"); // false.
+isKeyboardActivationKey("Escape"); // false.
+```
+
+### `handleKeyboardActivation`
+
+Функция объединяет проверку клавиши, `preventDefault()` и вызов действия:
+
+```tsx
+import { handleKeyboardActivation } from "@ryuzaki13/react-foundation-lib/utils";
+
+type CustomButtonProps = {
+	disabled?: boolean;
+	onActivate: () => void;
+};
+
+export function CustomButton({ disabled = false, onActivate }: CustomButtonProps) {
+	return (
+		<div
+			aria-disabled={disabled || undefined}
+			onClick={disabled ? undefined : onActivate}
+			onKeyDown={(event) => {
+				handleKeyboardActivation(event, onActivate, { disabled });
+			}}
+			role="button"
+			tabIndex={disabled ? -1 : 0}>
+			Открыть
+		</div>
+	);
+}
+```
+
+Алгоритм:
+
+1. Если `disabled === true`, возвращает `false` и ничего не делает.
+2. Если клавиша не `Enter` и не пробел, возвращает `false`.
+3. Вызывает `event.preventDefault()`.
+4. Синхронно вызывает `action()`.
+5. Возвращает `true`.
+
+Исключение из `action` не перехватывается.
+
+> Для обычного `<button>` используйте нативное поведение браузера и `onClick`. Helper предназначен для обоснованных кастомных controls. Добавление собственного Enter/Space handler к `<button>` может привести к двойной активации.
+
+Helper не добавляет `role`, `tabIndex`, ARIA-состояния и обработчик click автоматически. Доступность всего компонента остаётся ответственностью host.
+
+## Roving focus
+
+### Что это такое
+
+Roving focus — паттерн для составного control (`Tabs`, `RadioGroup`, toolbar): только один элемент имеет `tabIndex={0}`, остальные `tabIndex={-1}`. Arrow/Home/End меняют активный индекс, после чего host переводит DOM-фокус.
+
+`getRovingFocusTargetIndex` только вычисляет индекс. Функция не хранит state и не вызывает `.focus()`.
+
+### Сигнатура
+
+```ts
+interface RovingFocusTargetOptions {
+	currentIndex: number;
+	itemCount: number;
+	key: string;
+	orientation: "horizontal" | "vertical";
+	wrap?: boolean;
+}
+
+function getRovingFocusTargetIndex(options: RovingFocusTargetOptions): number | null;
+```
+
+### Клавиши
+
+| Orientation  | Предыдущий элемент | Следующий элемент | Начало | Конец |
+| ------------ | ------------------ | ----------------- | ------ | ----- |
+| `horizontal` | `ArrowLeft`        | `ArrowRight`      | `Home` | `End` |
+| `vertical`   | `ArrowUp`          | `ArrowDown`       | `Home` | `End` |
+
+`Home` и `End` работают в обеих ориентациях.
+
+### Пример расчёта
+
+```ts
+const target = getRovingFocusTargetIndex({
+	currentIndex: 1,
+	itemCount: 4,
+	key: "ArrowRight",
+	orientation: "horizontal"
+});
+
+console.log(target); // 2.
+```
+
+`wrap` по умолчанию равен `true`:
+
+```ts
+getRovingFocusTargetIndex({
+	currentIndex: 3,
+	itemCount: 4,
+	key: "ArrowRight",
+	orientation: "horizontal"
+});
+// 0: переход с конца в начало.
+```
+
+При `wrap: false` на границе возвращается текущая крайняя позиция:
+
+```ts
+getRovingFocusTargetIndex({
+	currentIndex: 3,
+	itemCount: 4,
+	key: "ArrowRight",
+	orientation: "horizontal",
+	wrap: false
+});
+// 3.
+```
+
+### Граничные случаи
+
+- `itemCount <= 0` возвращает `null`.
+- Необрабатываемая клавиша возвращает `null`.
+- `currentIndex` меньше `0` при положительном `itemCount` прижимается к `0`.
+- `currentIndex` больше последнего индекса прижимается к последнему индексу.
+- Передавайте целые конечные `currentIndex` и `itemCount`; функция не является validator для `NaN` и дробей.
+
+### React-применение
+
+```tsx
+const targetIndex = getRovingFocusTargetIndex({
+	currentIndex: activeIndex,
+	itemCount: tabs.length,
+	key: event.key,
+	orientation: "horizontal"
+});
+
+if (targetIndex !== null) {
+	event.preventDefault();
+	setActiveIndex(targetIndex);
+	tabRefs.current[targetIndex]?.focus();
+}
+```
+
+Если в группе есть disabled-элементы, одного `getRovingFocusTargetIndex` недостаточно: используйте select-navigation helpers или дополнительный поиск enabled-индекса.
+
+## Навигация по доступным опциям
+
+Эти функции работают с обычным readonly-массивом и callback, который отвечает на вопрос «эта опция disabled?».
+
+```ts
+type Option = {
+	id: string;
+	label: string;
+	disabled?: boolean;
+};
+
+const options: Option[] = [
+	{ id: "A", label: "Первая" },
+	{ id: "B", label: "Вторая", disabled: true },
+	{ id: "C", label: "Третья" }
+];
+
+const getDisabled = (option: Option) => option.disabled === true;
+```
+
+### `findFirstEnabledIndex`
+
+Возвращает индекс первой enabled-опции или `-1`:
+
+```ts
+findFirstEnabledIndex(options, getDisabled); // 0.
+findFirstEnabledIndex([], getDisabled); // -1.
+```
+
+Если callback не передан, все элементы считаются enabled.
+
+### `findLastEnabledIndex`
+
+Возвращает индекс последней enabled-опции или `-1`:
+
+```ts
+findLastEnabledIndex(options, getDisabled); // 2.
+```
+
+Для пустого списка или списка, где все элементы disabled, возвращается `-1`.
+
+### `findNextEnabledIndex`
+
+Ищет enabled-опцию после текущей позиции:
+
+```ts
+findNextEnabledIndex(options, 0, 1, getDisabled);
+// 2: движение вперёд, disabled индекс 1 пропущен.
+```
+
+Аргументы:
+
+| Позиция | Аргумент            | Значение                                              |
+| ------: | ------------------- | ----------------------------------------------------- |
+|       1 | `options`           | readonly-массив опций                                 |
+|       2 | `currentIndex`      | текущий индекс; для отсутствующей позиции обычно `-1` |
+|       3 | `step`              | только `1` вперёд или `-1` назад                      |
+|       4 | `getOptionDisabled` | callback; truthy означает disabled                    |
+|       5 | `optionsConfig`     | объект `{ wrap?: boolean }`; default `wrap` — `false` |
+
+С циклическим переходом:
+
+```ts
+findNextEnabledIndex(options, 2, 1, getDisabled, { wrap: true });
+// 0: после конца поиск продолжается с начала.
+```
+
+Если следующей опции нет и `wrap === false`, возвращается текущий валидный индекс. Если текущий индекс не входит в массив, возвращается `-1`.
+
+```ts
+findNextEnabledIndex(options, 2, 1, getDisabled); // 2.
+findNextEnabledIndex(options, -1, -1, getDisabled); // -1.
+```
+
+### Важные предусловия
+
+- Передавайте `currentIndex` в диапазоне `-1..options.length - 1`.
+- Callback должен уметь работать с каждым элементом списка и не должен менять массив.
+- Если текущая опция сама disabled и другого кандидата нет, fallback всё равно может вернуть текущий индекс.
+- Функции не пропускают `hidden`, `aria-disabled` или другие признаки автоматически — это решает callback.
+- `wrap` у `findNextEnabledIndex` по умолчанию `false`, а у `getRovingFocusTargetIndex` — `true`.
+
+## `createLazyComponent`
+
+### Назначение
+
+`createLazyComponent` создаёт `React.lazy` component для именованного export и кеширует созданную lazy-обёртку.
+
+```tsx
+import { Suspense } from "react";
+import { createLazyComponent } from "@ryuzaki13/react-foundation-lib/utils";
+
+type ProfileCardProps = {
+	userId: string;
+};
+
+const LazyProfileCard = createLazyComponent<ProfileCardProps>(() => import("./ProfileCard"), "ProfileCard", "profile-card");
+
+export function ProfilePage() {
+	return (
+		<Suspense fallback={<p>Загрузка профиля…</p>}>
+			<LazyProfileCard userId="U-1" />
+		</Suspense>
+	);
+}
+```
+
+Ожидаемый модуль:
+
+```tsx
+export function ProfileCard({ userId }: ProfileCardProps) {
+	return <article>Пользователь {userId}</article>;
+}
+```
+
+### Когда начинается загрузка
+
+Вызов `createLazyComponent(...)` не вызывает dynamic import. Importer запускается при первом React-рендере lazy component.
+
+```text
+создание LazyProfileCard
+          │
+          │ importer ещё не вызван
+          ▼
+первый render <LazyProfileCard />
+          │
+          ▼
+    import("./ProfileCard")
+          │
+          ├─ pending ──► ближайший Suspense fallback
+          │
+          ├─ fulfilled ─► component render
+          │
+          └─ rejected ──► ближайший Error Boundary
+```
+
+Оборачивайте использование в `<Suspense>`. Для ошибок сети, отсутствующего chunk или неверного export предусмотрите Error Boundary на подходящем уровне приложения.
+
+### Поиск export
+
+Параметр `componentName` — имя свойства module object. Алгоритм:
+
+1. Если `module[componentName]` существует, выбирается оно.
+2. Иначе выбирается `module.default`.
+3. Если default нет, выбирается первое значение `Object.values(module)`.
+4. Если модуль отсутствует или выбранное значение не является функцией, lazy render завершается ошибкой.
+
+Это fallback-поведение означает, что опечатка в `componentName` не всегда обнаружится: функция может молча выбрать default или первый export. Передавайте точное имя и покрывайте lazy boundary тестом.
+
+React-компонент должен быть function/class component. Export, созданный как объект `memo(...)` или `forwardRef(...)`, может не пройти runtime-проверку `typeof component === "function"` и не является гарантированно поддержанным значением этого helper.
+
+### Кеш по importer
+
+Без `cacheKey` результат кешируется по идентичности функции-importer и `componentName`:
+
+```ts
+const importProfile = () => import("./ProfileCard");
+
+const first = createLazyComponent(importProfile, "ProfileCard");
+const second = createLazyComponent(importProfile, "ProfileCard");
+
+console.log(first === second); // true.
+```
+
+Две синтаксически одинаковые, но отдельно созданные arrow-функции имеют разные ссылки:
+
+```ts
+const first = createLazyComponent(() => import("./ProfileCard"), "ProfileCard");
+const second = createLazyComponent(() => import("./ProfileCard"), "ProfileCard");
+
+console.log(first === second); // false.
+```
+
+Обычно объявляйте lazy component на уровне модуля, а не внутри React render.
+
+### Глобальный строковый `cacheKey`
+
+Третий аргумент создаёт ключ `${cacheKey}:${componentName}`. Он позволяет разным importer-функциям получить одну lazy-обёртку:
+
+```ts
+createLazyComponent(firstImporter, "ProfileCard", "profile");
+createLazyComponent(secondImporter, "ProfileCard", "profile");
+```
+
+Второй вызов вернёт ранее созданный результат и фактически будет использовать importer первого вызова. Поэтому `cacheKey` должен быть глобально уникальным и стабильным. Коллизия может загрузить не тот модуль или создать несоответствие TypeScript props и runtime-компонента.
+
+Публичного API для очистки module-level cache нет.
+
+### Ошибки
+
+Возможные сообщения helper:
+
+```text
+Component not found or invalid in module: ProfileCard
+Could not lazy-load component "ProfileCard"
+```
+
+Ошибка возникает во время lazy render, а не обязательно в момент вызова `createLazyComponent`.
+
+## `childrenCount`
+
+### Назначение
+
+`childrenCount` считает React children как плоский список и рекурсивно раскрывает только React fragments.
+
+```tsx
+import { Fragment } from "react";
+import { childrenCount } from "@ryuzaki13/react-foundation-lib/utils";
+
+const count = childrenCount(
+	<>
+		<span>Первый</span>
+		<Fragment>
+			<span>Второй</span>
+			<span>Третий</span>
+		</Fragment>
+		{null}
+	</>
+);
+
+console.log(count); // 3.
+```
+
+### Что именно считается
+
+- Массивы children обрабатываются стандартным `React.Children.toArray`.
+- `null`, `undefined` и boolean placeholders не добавляют видимого child в полученный массив.
+- Fragment не считается отдельным child: функция рекурсивно считает его содержимое.
+- Обычный React element считается как `1` независимо от количества его внутренних descendants.
+- Строковый/числовой React child считается как один элемент.
+
+```tsx
+childrenCount(
+	<section>
+		<span>A</span>
+		<span>B</span>
+	</section>
+);
+// 1: section — один переданный child; его DOM-потомки не раскрываются.
+```
+
+Функция не рендерит дерево, не обращается к DOM и может использоваться при SSR.
+
+## `deepCopyNodes` и `deepCopyTree`
+
+Эти функции копируют структуру дерева: создают новые objects-узлы и новые arrays дочерних узлов. Другие произвольные вложенные поля копируются поверхностно.
+
+### `deepCopyNodes`
+
+Используйте для дерева с фиксированным полем `children`:
+
+```ts
+const metadata = { color: "blue" };
+const source = [
+	{
+		id: "root",
+		metadata,
+		children: [{ id: "child", metadata }]
+	}
+];
+
+const copy = deepCopyNodes(source);
+
+console.log(copy !== source); // true.
+console.log(copy[0] !== source[0]); // true.
+console.log(copy[0].children !== source[0].children); // true.
+console.log(copy[0].metadata === source[0].metadata); // true: поле shallow.
+```
+
+### `deepCopyTree`
+
+Используйте, если поле дочерних узлов называется иначе:
+
+```ts
+type MenuNode = {
+	id: string;
+	items?: MenuNode[];
+};
+
+const source: MenuNode[] = [{ id: "root", items: [{ id: "child" }] }];
+
+const copy = deepCopyTree(source, "items");
+
+console.log(copy[0].items !== source[0].items); // true.
+```
+
+Если значение выбранного поля не является массивом, оно не обходится рекурсивно и остаётся частью поверхностной копии.
+
+### Ограничения tree copy
+
+- Входной массив не изменяется.
+- Все посещённые nodes и child arrays получают новые ссылки.
+- Остальные nested objects, functions, `Date`, `Map` и т. п. сохраняют исходные ссылки.
+- Циклическое дерево не поддерживается и приведёт к бесконечной рекурсии/ошибке стека.
+- Если один и тот же node встречается в двух ветвях, он будет скопирован дважды; identity sharing не сохраняется.
+- Функции не проверяют уникальность `id`, корректность parent-child связей или максимальную глубину.
+
+Для полного data-only clone всей конфигурации используйте `deepCopyWithoutFunctions`. Для построения таблицы-дерева из `id`/`parentId` используйте `@ryuzaki13/react-foundation-lib/tree-table`.
+
+## `logError`
+
+`logError` передаёт все аргументы в `globalThis.console.error`:
+
+```ts
+import { logError } from "@ryuzaki13/react-foundation-lib/utils";
+
+try {
+	await saveReport();
+} catch (error) {
+	logError("Не удалось сохранить отчёт", error);
+}
+```
+
+Сигнатура:
+
+```ts
+function logError(...args: unknown[]): void;
+```
+
+Функция:
+
+- ничего не возвращает;
+- не форматирует аргументы;
+- не скрывает персональные данные и секреты;
+- не преобразует `unknown` в безопасный report;
+- не отправляет ошибку на сервер;
+- не подавляет исключения;
+- не выполняет retry.
+
+Не логируйте access tokens, passwords, cookies, полные персональные payloads и другие секреты. Для централизованного сбора и sanitization используйте `error-report` и его transport.
+
+## SSR, browser и React-границы
+
+### Безопасно на сервере
+
+Следующие функции не читают `window` или DOM:
+
+- `cn`;
+- обе clone-функции;
+- `stableStringify`;
+- keyboard и select navigation;
+- tree copy;
+- `childrenCount`;
+- создание lazy component;
+- `logError`, если runtime предоставляет console.
+
+### Требуют globals
+
+`toBase64` требует `TextEncoder` и `btoa`, `encodeBase64` — `btoa`. Не вызывайте их без проверки в старом/нестандартном server runtime.
+
+```ts
+const canEncode = typeof TextEncoder !== "undefined" && typeof btoa === "function";
+```
+
+### React.lazy и SSR
+
+`createLazyComponent` не обращается к DOM, однако дальнейшее поведение зависит от React renderer/framework. Suspense и загрузку chunk на сервере настраивает host framework. Не предполагавайте, что обычный browser dynamic import автоматически настроит streaming SSR или preload.
+
+## Производительность
+
+### Clone-функции
+
+Обе функции обходят весь поддерживаемый graph, то есть время и дополнительная память примерно линейны относительно количества посещённых элементов и свойств: `O(n)`.
+
+Не клонируйте большой state на каждом React render. Клонирование обычно выполняют:
+
+- при создании initial draft;
+- при обработке явного изменения;
+- при формировании save snapshot;
+- на границе восстановления конфигурации.
+
+### `stableStringify`
+
+Объекты дополнительно сортируют ключи. Для объекта с `k` ключами сортировка стоит примерно `O(k log k)`. Не сериализуйте большой payload на каждом render без memoization.
+
+### Navigation и tree helpers
+
+- First/last/next navigation в худшем случае просматривает `O(n)` опций.
+- Tree copy посещает каждый node один раз, но глубокое дерево может исчерпать call stack.
+- `childrenCount` посещает переданные React children и fragments.
+- `cn` линейно проходит аргументы и ключи conditional objects.
+
+### Lazy cache
+
+Кеш `createLazyComponent` живёт на уровне загруженного модуля библиотеки. Строковые `cacheKey` удерживаются до выгрузки module runtime; не создавайте бесконечное количество динамических ключей из user input.
+
+## Тестирование consumer-кода
+
+### `cn`
+
+```ts
+import { expect, it } from "vitest";
+import { cn } from "@ryuzaki13/react-foundation-lib/utils";
+
+it("добавляет active-класс", () => {
+	expect(cn("button", { active: true, disabled: false })).toBe("button active");
+});
+```
+
+### Literal draft и clone
+
+Проверяйте отдельно неизменность пользовательского draft и форму save snapshot:
+
+```ts
+it("сохраняет literal draft при клонировании", () => {
+	const draft = {
+		title: "Новая группа ",
+		visible: false,
+		tags: ["A", "A", ""]
+	};
+
+	const copy = deepCopyWithoutFunctions(draft);
+
+	expect(copy).toEqual(draft);
+	expect(copy).not.toBe(draft);
+	expect(copy.tags).not.toBe(draft.tags);
+});
+```
+
+Для cycles проверяйте связь с clone, а не только deep equality:
+
+```ts
+expect(copy.self).toBe(copy);
+```
+
+### Keyboard
+
+Проверяйте три результата: return value, `preventDefault` и действие.
+
+```ts
+const preventDefault = vi.fn();
+const action = vi.fn();
+
+expect(handleKeyboardActivation({ key: "Enter", preventDefault }, action)).toBe(true);
+expect(preventDefault).toHaveBeenCalledOnce();
+expect(action).toHaveBeenCalledOnce();
+```
+
+Отдельно проверьте `disabled` и необрабатываемую клавишу.
+
+### Lazy component
+
+Используйте DOM-окружение теста, `<Suspense>` и дождитесь разрешения Promise. Проверяйте:
+
+- видимость fallback во время ожидания, если это важно для UX;
+- успешный named export;
+- ошибку загрузки через Error Boundary;
+- props загруженного компонента;
+- отсутствие повторной загрузки при повторном render.
+
+Не делайте тест зависимым от кеша, оставленного другим тестом: используйте уникальные importer-функции и уникальные `cacheKey`.
+
+### Base64
+
+Сравнивайте результат после UTF-8 decode, особенно для кириллицы и emoji:
+
+```ts
+expect(decodeBase64(toBase64("Привет 👋"))).toBe("Привет 👋");
+```
+
+## Полный API-справочник
+
+### Runtime exports
+
+| Export                      | Параметры                                                  | Результат                  | Side effect / особенность                             |
+| --------------------------- | ---------------------------------------------------------- | -------------------------- | ----------------------------------------------------- |
+| `cn`                        | строки, boolean/nullish и conditional objects              | `string`                   | нет                                                   |
+| `classNames`                | как у `cn`                                                 | `string`                   | deprecated-алиас `cn`                                 |
+| `deepCopyWithoutFunctions`  | значение, `{ arrayFunctionStrategy? }`                     | строгая глубокая копия     | unsupported object бросает `TypeError`                |
+| `deepCloneWithoutFunctions` | значение, `{ arrayFunctionStrategy?, preservePrototype? }` | расширенная глубокая копия | неподдержанные built-ins не гарантируются             |
+| `stableStringify`           | `unknown`                                                  | JSON string                | может вызвать `toJSON`/getter или бросить JSON-ошибку |
+| `toBase64`                  | строка                                                     | Base64 string              | использует `TextEncoder` и `btoa`                     |
+| `encodeBase64`              | строка                                                     | Base64 string              | использует `encodeURIComponent` и `btoa`              |
+| `keyboardActivationKeys`    | —                                                          | readonly `["Enter", " "]`  | module constant                                       |
+| `isKeyboardActivationKey`   | `key: string`                                              | type-guard boolean         | нет                                                   |
+| `handleKeyboardActivation`  | event-like, action, `{ disabled? }`                        | `boolean`                  | вызывает `preventDefault` и action при обработке      |
+| `getRovingFocusTargetIndex` | `RovingFocusTargetOptions`                                 | `number \| null`           | только вычисляет индекс                               |
+| `findFirstEnabledIndex`     | options, optional disabled callback                        | `number`, `-1` если нет    | нет                                                   |
+| `findLastEnabledIndex`      | options, optional disabled callback                        | `number`, `-1` если нет    | нет                                                   |
+| `findNextEnabledIndex`      | options, current index, `1 \| -1`, callback, `{ wrap? }`   | `number`, иногда `-1`      | нет                                                   |
+| `createLazyComponent`       | importer, component name, optional cache key               | `LazyExoticComponent`      | кеш; import при первом render                         |
+| `childrenCount`             | `ReactNode`                                                | `number`                   | fragments раскрываются                                |
+| `deepCopyNodes`             | дерево с `children`                                        | новое дерево               | произвольные nested fields shallow                    |
+| `deepCopyTree`              | дерево, optional children field                            | новое дерево               | произвольные nested fields shallow                    |
+| `logError`                  | любое количество `unknown`                                 | `void`                     | вызывает `globalThis.console.error`                   |
+
+### Публичные типы
+
+| Тип                        | Значение                                                       |
+| -------------------------- | -------------------------------------------------------------- |
+| `ToggleClassName`          | `Record<string, boolean \| undefined>` для conditional classes |
+| `PureClassName`            | `string \| boolean \| undefined \| null`                       |
+| `KeyboardActivationKey`    | union `"Enter" \| " "`                                         |
+| `RovingFocusTargetOptions` | current index, count, key, orientation и optional wrap         |
+
+### Значения по умолчанию
+
+| API                         | Опция                   | Default       |
+| --------------------------- | ----------------------- | ------------- |
+| `deepCopyWithoutFunctions`  | `arrayFunctionStrategy` | `"omit"`      |
+| `deepCloneWithoutFunctions` | `arrayFunctionStrategy` | `"undefined"` |
+| `deepCloneWithoutFunctions` | `preservePrototype`     | `false`       |
+| `handleKeyboardActivation`  | `disabled`              | `false`       |
+| `getRovingFocusTargetIndex` | `wrap`                  | `true`        |
+| `findNextEnabledIndex`      | `wrap`                  | `false`       |
+| `deepCopyTree`              | `childrenField`         | `"children"`  |
+
+## Типичные ошибки
+
+### Импорт из корня пакета
+
+```ts
+// Неверно.
+import { cn } from "@ryuzaki13/react-foundation-lib";
+
+// Верно.
+import { cn } from "@ryuzaki13/react-foundation-lib/utils";
+```
+
+### Ожидание одинакового default clone массива
+
+```ts
+deepCopyWithoutFunctions([1, () => 2, 3]);
+// [1, 3]
+
+deepCloneWithoutFunctions([1, () => 2, 3]);
+// [1, undefined, 3]
+```
+
+Всегда выбирайте функцию по контракту данных, а не по похожему названию.
+
+### Использование clone как normalize
+
+```ts
+const copy = deepCopyWithoutFunctions(draft);
+
+// Ошибочное ожидание: clone не делает trim, dedupe и defaults.
+```
+
+Нормализация должна быть отдельной операцией на явно названной boundary.
+
+### Передача класса в строгий config clone
+
+```ts
+deepCopyWithoutFunctions(new URL("https://example.com"));
+// TypeError.
+```
+
+Сначала преобразуйте значение в поддерживаемую data-only форму.
+
+### Ожидание глубокого clone от tree helpers
+
+```ts
+const copy = deepCopyNodes(source);
+copy[0].metadata.value = 2;
+// Если metadata — произвольный object, исходный metadata тоже изменится.
+```
+
+Tree helpers копируют структуру узлов, а не всё содержимое каждого поля.
+
+### Использование Base64 как защиты
+
+```ts
+const visibleToAnyone = toBase64(accessToken);
+```
+
+Base64 легко декодируется. Не храните секрет только потому, что строка стала нечитаемой визуально.
+
+### `cn` с массивом
+
+```ts
+cn(["button", "active"] as never); // Пустая строка.
+```
+
+Передавайте строки отдельными аргументами или conditional object.
+
+### Кастомная keyboard-активация на `<button>`
+
+Нативная кнопка уже умеет Enter/Space. Дополнительный handler может вызвать действие дважды.
+
+### Lazy component внутри render
+
+```tsx
+function Page() {
+	const LazyCard = createLazyComponent(() => import("./Card"), "Card");
+	return <LazyCard />;
+}
+```
+
+Importer-функция создаётся заново при каждом render, поэтому WeakMap cache не помогает. Объявляйте `LazyCard` на уровне модуля.
+
+### Коллизия `cacheKey`
+
+Один `cacheKey + componentName` для разных модулей возвращает первый закешированный компонент. Включайте в ключ стабильное имя модуля/сценария.
+
+### `stableStringify` для `Map`, cycles или `bigint`
+
+`Map` обычно превращается в `{}`, cycle и `bigint` выбрасывают ошибку. Сначала создайте явное JSON-compatible representation.
+
+### Путаница `null` и `-1`
+
+- `getRovingFocusTargetIndex` возвращает `null`, если клавиша не относится к navigation или элементов нет.
+- Select-navigation helpers возвращают `-1`, если подходящего индекса нет.
+
+Проверяйте именно тот sentinel, который заявлен функцией.
+
+## Вопросы и ответы
+
+### Можно ли импортировать только `cn`, не устанавливая React?
+
+Entrypoint `/utils` публично реэкспортирует также React-зависимые modules. Для надёжного ESM resolution host должен предоставить совместимый React peer, даже если конкретный bundler затем tree-shake неиспользуемый код.
+
+### Какая clone-функция подходит для Zustand draft/config?
+
+Обычно `deepCopyWithoutFunctions`: она принимает только предсказуемую data-only структуру и явно ошибается на специальных объектах. Она клонирует буквально и не нормализует draft.
+
+### Почему не `structuredClone`?
+
+Эти функции имеют отдельный контракт удаления функций и контролируемое поведение массивов. `deepCopyWithoutFunctions` дополнительно запрещает неподходящие для config объекты. `structuredClone` решает другую общую задачу и имеет другой набор поддерживаемых/ошибочных значений.
+
+### Можно ли клонировать DOM node, `File` или `Blob`?
+
+Нет, это не поддерживаемый контракт clone-функций модуля. Используйте API соответствующего типа или храните в конфигурации только serializable metadata/reference.
+
+### Удаляет ли clone дубликаты и пробелы?
+
+Нет. Clone сохраняет literal data. Для canonical save snapshot нужна отдельная normalize-функция на границе сохранения.
+
+### Можно ли сравнить любые два объекта через `stableStringify`?
+
+Нет. Подходят небольшие JSON-compatible data structures без cycles, functions, symbols, `bigint`, getters с эффектами и специальных collections. JSON-семантика может скрыть различия.
+
+### `stableStringify` создаёт hash?
+
+Нет, результат содержит весь JSON-текст. Для hash/id используйте публичный модуль `crypto`, учитывая назначение конкретной hash-функции.
+
+### Как сделать Base64URL?
+
+`toBase64` и `encodeBase64` возвращают стандартный Base64. Если protocol требует Base64URL, следуйте его точным правилам замены `+`/`/`, удаления/сохранения padding и декодирования. Не называйте ad hoc-преобразование криптографической защитой.
+
+### Почему `handleKeyboardActivation` не вызывает click?
+
+Helper принимает явный `action`, чтобы не зависеть от DOM. Host сам решает, какое действие соответствует активации и какие `role`, ARIA и focus rules нужны control.
+
+### Чем roving focus отличается от select navigation?
+
+`getRovingFocusTargetIndex` знает orientation, Arrow/Home/End и границы, но не знает disabled items. Select-navigation helpers знают disabled items и направление `1/-1`, но не интерпретируют `KeyboardEvent.key` и не перемещают DOM-фокус.
+
+### Нужно ли передавать `cacheKey` в `createLazyComponent`?
+
+Нет. Стабильной importer-функции и component name достаточно. Строковый ключ нужен только когда разные importer references намеренно должны делить один lazy component; его уникальность становится ответственностью host.
+
+### `childrenCount` считает DOM-элементы после рендера?
+
+Нет. Функция считает переданную React-структуру до DOM и раскрывает fragments. Один обычный component/element считается одним child, даже если позже отрендерит много DOM nodes.

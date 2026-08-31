@@ -2,7 +2,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/Interaction/Context Menu State" />
 
-# Состояние и anchors контекстного меню через `@ryuzaki13/react-foundation-lib/context-menu`
+# Состояние и anchors контекстного меню
 
 Модуль описывает открытое/закрытое состояние контекстного меню, источник открытия и два вида anchor: DOM element или экранная точка. Также он создаёт virtual anchor для Floating UI.
 
@@ -11,7 +11,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 ## Содержание
 
 - [Назначение и границы](#назначение-и-границы)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [Модель данных](#модель-данных)
 - [Получение точки](#получение-точки)
 - [`createVirtualAnchor`](#createvirtualanchor)
@@ -48,7 +48,7 @@ host React/Floating UI/menu component
 
 Готовый visual primitive находится в `@ryuzaki13/react-foundation-ui/context-menu`.
 
-## Установка и импорт
+## Импорт
 
 ```ts
 import {
@@ -61,14 +61,14 @@ import {
 	toggleMenu
 } from "@ryuzaki13/react-foundation-lib/context-menu";
 
-import type {
-	ElementMenuAnchor,
-	MenuAnchor,
-	MenuOpenSource,
-	MenuPoint,
-	MenuState,
-	OpenMenuPayload,
-	PointMenuAnchor
+import {
+	type ElementMenuAnchor,
+	type MenuAnchor,
+	type MenuOpenSource,
+	type MenuPoint,
+	type MenuState,
+	type OpenMenuPayload,
+	type PointMenuAnchor
 } from "@ryuzaki13/react-foundation-lib/context-menu";
 ```
 

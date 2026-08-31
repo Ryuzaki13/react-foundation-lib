@@ -2,14 +2,14 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/Data/Range Output" />
 
-# Подстановка открытых границ через `@ryuzaki13/react-foundation-lib/range-output`
+# Подстановка открытых границ
 
 Модуль хранит в UI открытые границы диапазона как `null`, но позволяет подставить конкретные значения при внешнем выводе или сохранении.
 
 ## Содержание
 
 - [Назначение](#назначение)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [Контракты](#контракты)
 - [`readRangeOutputValueFallback`](#readrangeoutputvaluefallback)
 - [`resolveRangeOutputValue`](#resolverangeoutputvalue)
@@ -28,7 +28,7 @@ external output [0, 6]
 
 Исходное UI-значение не изменяется. `null` заменяется только при построении отдельного output tuple.
 
-## Установка и импорт
+## Импорт
 
 ```ts
 import { readRangeOutputValueFallback, resolveRangeOutputValue } from "@ryuzaki13/react-foundation-lib/range-output";

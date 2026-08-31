@@ -2,16 +2,14 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/Data/Bounded Copy Stack" />
 
-# Ограниченный стек копий через `@ryuzaki13/react-foundation-lib/bounded-copy-stack`
+# Ограниченный стек копий
 
 Модуль хранит небольшой список последних скопированных сущностей. Новый элемент помещается в начало, повтор по `fingerprint` обновляет существующую запись, а старые записи удаляются при превышении лимита.
-
-Документ рассчитан на разработчика без доступа к исходникам пакета. Ниже объясняются структура элемента, различие `id` и `fingerprint`, порядок записей, ссылки на payload и все граничные случаи.
 
 ## Содержание
 
 - [Назначение и границы](#назначение-и-границы)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [Основные понятия](#основные-понятия)
 - [Быстрый старт](#быстрый-старт)
 - [`pushBoundedCopyStackItem`](#pushboundedcopystackitem)
@@ -44,11 +42,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 Clipboard helpers находятся в `@ryuzaki13/react-foundation-lib/copy`. Владелец state/storage находится в host-приложении.
 
-## Установка и импорт
-
-```bash
-npm install @ryuzaki13/react-foundation-lib
-```
+## Импорт
 
 ```ts
 import {
@@ -57,11 +51,11 @@ import {
 	pushBoundedCopyStackItem
 } from "@ryuzaki13/react-foundation-lib/bounded-copy-stack";
 
-import type {
-	BoundedCopyStackItem,
-	BoundedCopyStackOptions,
-	BoundedCopyStackPushInput,
-	BoundedCopyStackPushResult
+import {
+	type BoundedCopyStackItem,
+	type BoundedCopyStackOptions,
+	type BoundedCopyStackPushInput,
+	type BoundedCopyStackPushResult
 } from "@ryuzaki13/react-foundation-lib/bounded-copy-stack";
 ```
 

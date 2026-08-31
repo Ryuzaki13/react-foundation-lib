@@ -14,14 +14,14 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - синхронизирует cache data и invalidation между вкладками;
 - предоставляет низкоуровневые helpers для optimistic update и rollback.
 
-README рассчитан на разработчика без доступа к исходному коду и с минимальным знанием JavaScript, TypeScript и TanStack Query. Здесь описаны установка, инициализация, жизненный цикл данных, точное поведение функций, ограничения browser API и полный публичный API.
+Здесь описаны жизненный цикл данных, точное поведение функций, ограничения browser API и полный публичный API.
 
 > Ранее optimistic update был описан отдельным документом. Теперь весь смысл, примеры, ограничения и API находятся только на этой странице.
 
 ## Содержание
 
 - [Назначение и границы](#назначение-и-границы)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [Обязательные build-time constants](#обязательные-build-time-constants)
 - [Основные понятия TanStack Query](#основные-понятия-tanstack-query)
 - [Как выбрать cache strategy](#как-выбрать-cache-strategy)
@@ -92,15 +92,12 @@ queryOptions/useQuery/useMutation
 
 Broadcast не является четвёртым хранилищем. Он только передаёт изменения между уже работающими вкладками.
 
-## Установка и импорт
+## Импорт
 
-Установите foundation-пакет и совместимые peer dependencies:
+Установите совместимые peer dependencies:
 
 ```bash
-npm install @ryuzaki13/react-foundation-lib
-npm install react @tanstack/react-query \
-  @tanstack/query-persist-client-core \
-  @tanstack/query-broadcast-client-experimental
+npm install react @tanstack/react-query @tanstack/query-persist-client-core @tanstack/query-broadcast-client-experimental
 ```
 
 Публичный импорт:

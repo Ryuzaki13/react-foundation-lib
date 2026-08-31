@@ -2,7 +2,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/API/DOM" />
 
-# Browser DOM и focus helpers через `@ryuzaki13/react-foundation-lib/dom`
+# Browser DOM и focus helpers
 
 Модуль `dom` содержит небольшие browser helpers и React hooks для типовых инфраструктурных задач:
 
@@ -17,12 +17,10 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 Модуль является низкоуровневым browser foundation-слоем. Он не создаёт готовые кнопки, dialog, modal, popover, tooltip или download UI. Визуальный компонент по-прежнему отвечает за семантический HTML, ARIA, стили, анимацию, стек overlay, сообщения об ошибках и пользовательский сценарий.
 
-README рассчитан на разработчика, который использует опубликованный пакет без прямого доступа к исходному коду. Здесь объясняются базовые понятия DOM и React, все публичные функции, точный lifecycle, defaults, cleanup, ограничения доступности, тестирование и частые ошибки.
-
 ## Содержание
 
 - [Назначение и границы модуля](#назначение-и-границы-модуля)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [Runtime и browser boundary](#runtime-и-browser-boundary)
 - [Минимальные понятия](#минимальные-понятия)
 - [Как выбрать API](#как-выбрать-api)
@@ -91,13 +89,7 @@ README рассчитан на разработчика, который испо
 
 Если приложению нужен готовый UI primitive, сначала ищите его в `@ryuzaki13/react-foundation-ui`. Модуль `dom` нужен авторам primitives и для специальных browser-сценариев, а не для повторной сборки локальных modal/dialog в каждом feature.
 
-## Установка и импорт
-
-Установите пакет:
-
-```bash
-npm install @ryuzaki13/react-foundation-lib
-```
+## Импорт
 
 Entrypoint экспортирует React hooks, поэтому host-приложение должно предоставить совместимые peer-зависимости:
 

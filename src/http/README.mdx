@@ -2,14 +2,14 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/HTTP/Headers and Text Response" />
 
-# HTTP headers и текстовые ответы через `@ryuzaki13/react-foundation-lib/http`
+# HTTP headers и текстовые ответы
 
 Модуль создаёт стандартный набор HTTP-заголовков запрета кеширования и обычный `Response` с UTF-8 plain text.
 
 ## Содержание
 
 - [Назначение и границы](#назначение-и-границы)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [`createNoStoreHeaders`](#createnostoreheaders)
 - [`createTextHttpResponse`](#createtexthttpresponse)
 - [Runtime и безопасность](#runtime-и-безопасность)
@@ -26,7 +26,7 @@ Headers с no-store + Response(text/plain; charset=UTF-8)
 
 Модуль не выполняет `fetch`, не сериализует JSON, не задаёт CORS, CSP, cookies или authorization и не превращает ошибки transport в response автоматически.
 
-## Установка и импорт
+## Импорт
 
 ```ts
 import { createNoStoreHeaders, createTextHttpResponse } from "@ryuzaki13/react-foundation-lib/http";

@@ -2,7 +2,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/API/Formatters/Boolean" />
 
-# Boolean и ABAP boolean через `@ryuzaki13/react-foundation-lib/formatters`
+# Boolean и ABAP boolean
 
 Подмодуль `boolean` преобразует значения между JavaScript `boolean` и двухсимвольным ABAP-контрактом:
 
@@ -11,12 +11,10 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 Также он предоставляет более широкий parser `parseBoolean` для простых пользовательских или transport-значений.
 
-README рассчитан на разработчика без доступа к исходному коду. Ниже описано точное, местами неочевидное поведение всех трёх публичных функций. Особенно важно не путать строгий `parseAbapBoolean`, расширенный `parseBoolean` и truthy-семантику `toAbapBoolean`.
-
 ## Содержание
 
 - [Назначение и границы](#назначение-и-границы)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [Минимальные понятия](#минимальные-понятия)
 - [Как выбрать функцию](#как-выбрать-функцию)
 - [`parseAbapBoolean`](#parseabapboolean)
@@ -47,13 +45,7 @@ README рассчитан на разработчика без доступа к
 - не сериализует JSON, URL или OData query;
 - не гарантирует, что широкий `toAbapBoolean(unknown)` подходит конкретному backend-контракту.
 
-## Установка и импорт
-
-Установите пакет:
-
-```bash
-npm install @ryuzaki13/react-foundation-lib
-```
+## Импорт
 
 Все boolean helpers импортируются из единственного опубликованного subpath `/formatters`:
 

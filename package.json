@@ -57,10 +57,6 @@
 			"types": "./dist/crypto/index.d.ts",
 			"import": "./dist/crypto/index.js"
 		},
-		"./currency": {
-			"types": "./dist/currency/index.d.ts",
-			"import": "./dist/currency/index.js"
-		},
 		"./date-segments": {
 			"types": "./dist/date-segments/index.d.ts",
 			"import": "./dist/date-segments/index.js"

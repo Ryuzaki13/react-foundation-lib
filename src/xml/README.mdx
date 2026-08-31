@@ -2,14 +2,14 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/Data/XML" />
 
-# Простые XML helpers через `@ryuzaki13/react-foundation-lib/xml`
+# Простые XML helpers
 
 Модуль экранирует XML-текст, строит последовательность простых полей и читает текст первого тега через `DOMParser`.
 
 ## Содержание
 
 - [Назначение и границы](#назначение-и-границы)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [`escapeXmlValue`](#escapexmlvalue)
 - [`buildXmlFields`](#buildxmlfields)
 - [`getXmlTagText`](#getxmltagtext)
@@ -33,7 +33,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - не проверяет parser errors;
 - не выполняет network request.
 
-## Установка и импорт
+## Импорт
 
 ```ts
 import { buildXmlFields, escapeXmlValue, getXmlTagText } from "@ryuzaki13/react-foundation-lib/xml";

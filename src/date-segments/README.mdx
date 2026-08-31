@@ -2,7 +2,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/Date/Segments" />
 
-# Сегменты даты и времени через `@ryuzaki13/react-foundation-lib/date-segments`
+# Сегменты даты и времени
 
 Модуль разбирает строковую маску на редактируемые сегменты и литералы, преобразует `Date` в значения полей и строго собирает `Date` обратно. Он предназначен для segment-based date/time inputs.
 
@@ -11,7 +11,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 ## Содержание
 
 - [Назначение и границы](#назначение-и-границы)
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [Базовые понятия](#базовые-понятия)
 - [Поддерживаемые tokens](#поддерживаемые-tokens)
 - [`parseDateSegmentMask`](#parsedatesegmentmask)
@@ -40,7 +40,7 @@ new Date(2026, 2, 3, 18, 3)
 
 Модуль не рендерит input, не управляет focus/caret, не форматирует итоговую дату для UI/backend и не парсит ISO/OData строку. Для общего парсинга/форматирования используйте `/formatters`.
 
-## Установка и импорт
+## Импорт
 
 ```ts
 import {

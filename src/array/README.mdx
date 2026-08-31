@@ -2,7 +2,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/API/Array" />
 
-# Работа с массивами через `@ryuzaki13/react-foundation-lib/array`
+# Работа с массивами
 
 Модуль `array` содержит небольшие типизированные функции для типовых операций с массивами:
 
@@ -16,11 +16,9 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 Функции не зависят от React, браузерного DOM, TanStack или других внешних runtime-библиотек. Их можно использовать в обычном TypeScript/JavaScript-коде, React-компонентах, store, mapper, validator и на границах сохранения или восстановления конфигурации.
 
-README рассчитан на разработчика, который использует опубликованный пакет и не читает его исходный код. Здесь отдельно объясняются базовые понятия JavaScript/TypeScript, точное поведение каждой функции, ограничения и типовые ошибки.
-
 ## Содержание
 
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [Минимальные понятия JavaScript и TypeScript](#минимальные-понятия-javascript-и-typescript)
 - [Как выбрать функцию](#как-выбрать-функцию)
 - [Быстрый старт](#быстрый-старт)
@@ -37,20 +35,14 @@ README рассчитан на разработчика, который испо
 - [Краткий справочник API](#краткий-справочник-api)
 - [Вопросы и ответы](#вопросы-и-ответы)
 
-## Установка и импорт
-
-Установите пакет в приложении:
-
-```bash
-npm install @ryuzaki13/react-foundation-lib
-```
+## Импорт
 
 Импортируйте функции только из точечного entrypoint `/array`:
 
 ```ts
 import { arrayGroupBy, arrayToMap, arrayUniqueBy, moveArrayItem } from "@ryuzaki13/react-foundation-lib/array";
 
-import type { ReorderAction } from "@ryuzaki13/react-foundation-lib/array";
+import { type ReorderAction } from "@ryuzaki13/react-foundation-lib/array";
 ```
 
 Корневой импорт пакета не поддерживается:

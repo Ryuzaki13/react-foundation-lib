@@ -2,13 +2,13 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 <Meta title="Foundation Lib/Contracts/Common Types" />
 
-# Общие технические типы `@ryuzaki13/react-foundation-lib/types`
+# Общие технические типы
 
 Модуль содержит небольшие общие TypeScript-контракты для value state, ABAP boolean, базовых значений, диапазонов и строк таблицы. Единственная runtime-функция — `isBaseType`.
 
 ## Содержание
 
-- [Установка и импорт](#установка-и-импорт)
+- [Импорт](#импорт)
 - [`State`](#state)
 - [`AbapBoolean`](#abapboolean)
 - [`Primitive` и `BaseType`](#primitive-и-basetype)
@@ -18,21 +18,21 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - [`RowRecord`](#rowrecord)
 - [Ошибки проектирования](#ошибки-проектирования)
 
-## Установка и импорт
+## Импорт
 
 ```ts
 import { isBaseType } from "@ryuzaki13/react-foundation-lib/types";
 
-import type {
-	AbapBoolean,
-	ArrayType,
-	BaseType,
-	InputType,
-	ObjectType,
-	Primitive,
-	RangeType,
-	RowRecord,
-	State
+import {
+	type AbapBoolean,
+	type ArrayType,
+	type BaseType,
+	type InputType,
+	type ObjectType,
+	type Primitive,
+	type RangeType,
+	type RowRecord,
+	type State
 } from "@ryuzaki13/react-foundation-lib/types";
 ```
 

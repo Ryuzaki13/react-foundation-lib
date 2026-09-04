@@ -16,6 +16,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 ```ts
 import {
 	formatDateAsDate,
+	formatInstantDateTime,
 	getCalendarPeriod,
 	normalizeDateRange,
 	parseDate,
@@ -54,6 +55,15 @@ date?.toISOString(); // "2026-03-03T13:03:50.000Z"
 ```
 
 Локальные getters такого `Date` зависят от timezone среды. Используйте TZ-вариант, когда значение означает настоящий момент события: timestamp аудита, время серверного события, instant для сортировки между часовыми поясами.
+
+Для одинакового отображения абсолютной метки времени на SSR-сервере и в браузере
+используйте явный часовой пояс IANA:
+
+```ts
+formatInstantDateTime("2026-09-04T10:22:28Z", {
+	timeZone: "Asia/Yekaterinburg"
+}); // "4 сент. 2026 г., 15:22:28"
+```
 
 ### Простое правило выбора
 
@@ -697,7 +707,7 @@ Intl-форматы локализованы. Для API используйте 
 | Семейство        | Публичный API                                                                                                                                                                                                                                                                                                                                                                     |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Parsing          | `parseDateValue`, `parseDateValueTZ`, `parseDate`, `parseDateTZ`, `parseDateByPattern`, `parseDateByFormat`                                                                                                                                                                                                                                                                       |
-| Universal format | `formatDate`, `formatDateRange`                                                                                                                                                                                                                                                                                                                                                   |
+| Universal format | `formatDate`, `formatDateRange`, `formatInstantDateTime`                                                                                                                                                                                                                                                                                                                          |
 | UI wrappers      | все `formatDateAsDate*`, `formatDateAsMonth*`, `formatDateAsTime*`, `formatDateAsDatetime*`                                                                                                                                                                                                                                                                                       |
 | Machine wrappers | `formatDateAsAbapYear`, `formatDateAsAbapMonth`, `formatDateAsAbapDate`, `formatDateAsAbapDatetime`, `formatDateAsODataDate`, `formatDateAsODataDatetime`, `formatDateAsODataTime`                                                                                                                                                                                                |
 | Presets          | `DATE_FORMAT_DEFAULTS`, `DEFAULT_DATE_PRESET_NAMES`, `DATE_FORMAT_STYLE_PRESET_NAMES`, `getDatePreset`, `getDatePresetNames`, `registerDatePreset`, `resetDatePresets`, `resolveDateFormatName`, `resolveDateFormatPreset`, type guards                                                                                                                                           |

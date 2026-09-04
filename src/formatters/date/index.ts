@@ -22,6 +22,7 @@ export {
 } from "./calendarPeriod";
 export * from "./dateRange";
 export * from "./educationDate";
+export { formatInstantDateTime, type FormatInstantDateTimeOptions } from "./formatInstantDateTime";
 export {
 	formatDate,
 	formatDateAsAbapDate,

@@ -14,6 +14,28 @@ type IndexedDbQueryStorageOptions = {
 	indexedDB?: IDBFactory;
 };
 
+/**
+ * Описывает итог синхронного преобразования записи внутри одной IndexedDB-транзакции.
+ * Отдельный result позволяет вернуть вызывающему коду вычисленный снимок только после commit.
+ */
+export type IndexedDbAtomicUpdateDecision<TStorageValue, TResult> =
+	| { readonly action: "keep"; readonly result: TResult }
+	| { readonly action: "set"; readonly value: TStorageValue; readonly result: TResult }
+	| { readonly action: "remove"; readonly result: TResult };
+
+export type IndexedDbQueryStorage<TStorageValue> = AsyncStorage<TStorageValue> & {
+	/**
+	 * Читает и изменяет одну запись в общей readwrite-транзакции, поэтому параллельные
+	 * вкладки не могут потерять уже зафиксированное изменение между get и set.
+	 * Callback должен быть синхронным: IndexedDB закрывает неактивную транзакцию до
+	 * завершения произвольной асинхронной работы.
+	 */
+	readonly updateItem: <TResult>(
+		key: string,
+		update: (value: TStorageValue | undefined) => IndexedDbAtomicUpdateDecision<TStorageValue, TResult>
+	) => Promise<TResult>;
+};
+
 function resolveIndexedDbFactory(factory?: IDBFactory) {
 	if (factory) return factory;
 	if (typeof globalThis.indexedDB === "undefined") return undefined;
@@ -50,7 +72,7 @@ export function shouldPersistQuery(query: Pick<Query, "meta">) {
 
 export function createIndexedDbQueryStorage<TStorageValue = unknown>(
 	options: IndexedDbQueryStorageOptions = {}
-): AsyncStorage<TStorageValue> | undefined {
+): IndexedDbQueryStorage<TStorageValue> | undefined {
 	const factory = resolveIndexedDbFactory(options.indexedDB);
 	if (!factory) return undefined;
 
@@ -108,10 +130,48 @@ export function createIndexedDbQueryStorage<TStorageValue = unknown>(
 		});
 	}
 
+	async function updateItem<TResult>(
+		key: string,
+		update: (value: TStorageValue | undefined) => IndexedDbAtomicUpdateDecision<TStorageValue, TResult>
+	) {
+		const db = await openDb();
+		return new Promise<TResult>((resolve, reject) => {
+			const tx = db.transaction(storeName, "readwrite");
+			const store = tx.objectStore(storeName);
+			const request = store.get(key);
+			let result: TResult;
+			let hasResult = false;
+
+			tx.oncomplete = () => {
+				if (hasResult) resolve(result);
+				else reject(new Error("IndexedDB-транзакция завершилась без результата обновления"));
+			};
+			tx.onerror = () => reject(tx.error);
+			tx.onabort = () => reject(tx.error);
+			request.onerror = () => {
+				tx.abort();
+				reject(request.error);
+			};
+			request.onsuccess = () => {
+				try {
+					const decision = update(request.result as TStorageValue | undefined);
+					result = decision.result;
+					hasResult = true;
+					if (decision.action === "set") store.put(decision.value, key);
+					else if (decision.action === "remove") store.delete(key);
+				} catch (error) {
+					tx.abort();
+					reject(error);
+				}
+			};
+		});
+	}
+
 	return {
 		getItem: (key) => runTransaction<TStorageValue | undefined>("readonly", (store) => store.get(key)),
 		setItem: (key, value) => runWrite("readwrite", (store) => store.put(value, key)),
 		removeItem: (key) => runWrite("readwrite", (store) => store.delete(key)),
+		updateItem,
 		entries: async () => {
 			const db = await openDb();
 

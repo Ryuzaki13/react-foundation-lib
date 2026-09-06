@@ -59,6 +59,23 @@ describe("query-client/persistence", () => {
 		await expect(storage!.entries!()).resolves.toEqual([["second", "два"]]);
 	});
 
+	it("атомарно обновляет одну запись без Web Locks и не теряет параллельные изменения", async () => {
+		const options = { indexedDB, dbName: `arm-query-atomic-${crypto.randomUUID()}`, storeName: "records" };
+		const first = createIndexedDbQueryStorage<number>(options);
+		const second = createIndexedDbQueryStorage<number>(options);
+		if (!first || !second) throw new Error("IndexedDB storage не создан");
+		await first.setItem("counter", 0);
+		const increment = (storage: typeof first) =>
+			storage.updateItem("counter", (value) => ({ action: "set", value: (value ?? 0) + 1, result: (value ?? 0) + 1 }));
+
+		await Promise.all([increment(first), increment(second)]);
+
+		await expect(first.getItem("counter")).resolves.toBe(2);
+		await expect(first.updateItem("counter", (value) => ({ action: "keep", result: value }))).resolves.toBe(2);
+		await first.updateItem("counter", () => ({ action: "remove", result: undefined }));
+		await expect(first.getItem("counter")).resolves.toBeUndefined();
+	});
+
 	it("выбирает для сохранения только query с meta.persist = true", async () => {
 		expect(shouldPersistQuery(createQueryMock("enabled", persistedQueryMeta))).toBe(true);
 		expect(shouldPersistQuery(createQueryMock("disabled", undefined))).toBe(false);

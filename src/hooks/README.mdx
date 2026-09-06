@@ -147,7 +147,7 @@ function Toolbar() {
 | Значение после паузы во вводе                     | `useDebounce`           |
 | Callback после паузы от последнего события        | `useDebouncedCallback`  |
 | Ограничение частоты с leading и trailing вызовами | `useThrottledCallback`  |
-| Pointer и Keyboard sensors DnD Kit                | `useDndSortableSensors` |
+| Pointer/Mouse, Touch и Keyboard sensors DnD Kit   | `useDndSortableSensors` |
 | Собственный доступный floating listbox            | `useFloatingListbox`    |
 | Чтение и replace-navigation search state          | `useSearchParams`       |
 | Построение `href` без navigation                  | `useSearchLink`         |
@@ -397,9 +397,17 @@ Hook создаёт стандартный набор DnD Kit sensors:
 - `PointerSensor` с activation distance;
 - `KeyboardSensor` с `sortableKeyboardCoordinates`.
 
+Опциональная `touchActivation` заменяет общий pointer-путь на отдельные
+`MouseSensor` и `TouchSensor`: mouse сохраняет distance, а touch ждёт long press
+и отменяет DnD при движении больше tolerance, оставляя нативную прокрутку доступной.
+Предметная матрица также может передать собственные keyboard coordinates/codes.
+
 ```ts
 interface UseDndSortableSensorsOptions {
 	activationDistance?: number;
+	touchActivation?: { delay: number; tolerance?: number };
+	keyboardCoordinateGetter?: KeyboardCoordinateGetter;
+	keyboardCodes?: KeyboardCodes;
 }
 
 function useDndSortableSensors(distanceOrOptions?: number | UseDndSortableSensorsOptions): SensorDescriptor<SensorOptions>[];
@@ -414,7 +422,8 @@ import { useDndSortableSensors } from "@ryuzaki13/react-foundation-lib/hooks";
 
 function SortableArea({ children }: { children: React.ReactNode }) {
 	const sensors = useDndSortableSensors({
-		activationDistance: 8
+		activationDistance: 10,
+		touchActivation: { delay: 250, tolerance: 10 }
 	});
 
 	return <DndContext sensors={sensors}>{children}</DndContext>;
@@ -952,24 +961,24 @@ Repository test покрывает auto placement, update после измен�
 
 ## API-справочник
 
-| Экспорт                            | Contract                            |
-| ---------------------------------- | ----------------------------------- |
-| `useBlockBrowserZoom`              | Global `Ctrl + wheel` prevention.   |
-| `useDebounce`                      | Debounced value.                    |
-| `useDebouncedCallback`             | Trailing debounce.                  |
-| `useDndSortableSensors`            | Pointer/Keyboard sensors.           |
-| `useFloatingListbox`               | Headless listbox.                   |
-| `useLazyComponent`                 | Memoized lazy factory.              |
-| `useReferenceTrace`                | Reference diagnostics.              |
-| `useSearchLink`                    | Link builder.                       |
-| `useSearchParams`                  | Search read/replace navigation.     |
-| `useThrottledCallback`             | Leading/trailing throttle.          |
-| `FloatingListboxPlacementStrategy` | `"flip" \| "auto"`.                 |
-| `FloatingListboxSizeContext`       | Геометрия popup/reference/viewport. |
-| `FloatingListboxSizeResolver`      | Context → style.                    |
-| `FloatingListboxSizeStyle`         | Size fields и CSS properties.       |
-| `ThrottledCallback`                | `call/flush/cancel`.                |
-| `UseDndSortableSensorsOptions`     | `activationDistance`.               |
+| Экспорт                            | Contract                              |
+| ---------------------------------- | ------------------------------------- |
+| `useBlockBrowserZoom`              | Global `Ctrl + wheel` prevention.     |
+| `useDebounce`                      | Debounced value.                      |
+| `useDebouncedCallback`             | Trailing debounce.                    |
+| `useDndSortableSensors`            | Pointer/Mouse/Touch/Keyboard sensors. |
+| `useFloatingListbox`               | Headless listbox.                     |
+| `useLazyComponent`                 | Memoized lazy factory.                |
+| `useReferenceTrace`                | Reference diagnostics.                |
+| `useSearchLink`                    | Link builder.                         |
+| `useSearchParams`                  | Search read/replace navigation.       |
+| `useThrottledCallback`             | Leading/trailing throttle.            |
+| `FloatingListboxPlacementStrategy` | `"flip" \| "auto"`.                   |
+| `FloatingListboxSizeContext`       | Геометрия popup/reference/viewport.   |
+| `FloatingListboxSizeResolver`      | Context → style.                      |
+| `FloatingListboxSizeStyle`         | Size fields и CSS properties.         |
+| `ThrottledCallback`                | `call/flush/cancel`.                  |
+| `UseDndSortableSensorsOptions`     | `activationDistance`.                 |
 
 ## Что модуль не делает
 

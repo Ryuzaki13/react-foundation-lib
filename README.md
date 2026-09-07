@@ -655,6 +655,7 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 | `persistedQueryMeta`, `shouldPersistQuery`, `createReactQueryPersister`, `createIndexedDbQueryStorage` | Opt-in persistence справочников в IndexedDB.                            |
 | `configureQueryPersistenceProjectAdapter`, `getQueryPersistenceProjectAdapter`                         | Host namespace и buster для persistent cache.                           |
 | `installReactQueryBroadcast`, `broadcastCacheEvent`, `setBroadcastFn`                                  | Sync query cache и cache events между вкладками.                        |
+| `installQueryInvalidationBroadcast`                                                                    | Scoped invalidation между вкладками без передачи Query data.            |
 | `sessionScopedQueryMeta`, `resetSessionScopedQueries`, `installSessionScopedQueryReset`                | Очистка auth/session-dependent query локально и между вкладками.        |
 | `onMutateOptimistic`, `onErrorOptimistic`, `onSuccessOptimistic`, `onSettledOptimistic`                | Helpers для точечного optimistic update.                                |
 

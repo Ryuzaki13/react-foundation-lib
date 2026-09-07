@@ -1,4 +1,5 @@
 export * from "./broadcast";
+export * from "./invalidationBroadcast";
 export * from "./persistence";
 export * from "./queryMeta";
 export * from "./queryPersistenceAdapter";

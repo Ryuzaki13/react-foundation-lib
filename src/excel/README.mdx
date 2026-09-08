@@ -241,6 +241,48 @@ await downloadExcelWorkbook({
 
 `fileName` передаётся browser writer. Рекомендуется явно добавлять расширение `.xlsx` и заранее очищать пользовательский ввод от нежелательных символов имени файла.
 
+## Произвольная матрица и параметры печати
+
+Для расписаний, печатных форм и других документов без обычной строки колонок
+используйте `createExcelMatrixWorkbookBlob` или `downloadExcelMatrixWorkbook`.
+Доменный consumer передаёт уже готовые строки и стили ячеек, а foundation API
+отвечает за имена листов, объединения, OpenXML print area, повтор заголовков и
+ручные разрывы страниц.
+
+```ts
+import { downloadExcelMatrixWorkbook } from "@ryuzaki13/react-foundation-lib/excel";
+
+await downloadExcelMatrixWorkbook("Расписание.xlsx", {
+	sheets: [
+		{
+			name: "Неделя",
+			rows: [[{ value: "Расписание", type: String, columnSpan: 2 }, null]],
+			columns: [{ width: 8 }, { width: 24 }],
+			showGridLines: false,
+			print: {
+				orientation: "portrait",
+				paperSize: "a4",
+				fitToHeightPages: 1,
+				repeatRows: [1, 1],
+				columnBreaksAfter: [12],
+				printArea: { firstRow: 1, lastRow: 20, firstColumn: 1, lastColumn: 24 },
+				footer: { left: "Отчёт 7c9134", includePageNumber: true }
+			}
+		}
+	]
+});
+```
+
+`columnBreaksAfter` и `rowBreaksAfter` используют one-based номер последней
+колонки или строки страницы. Например, `columnBreaksAfter: [12]` переносит
+колонку `M` на следующую страницу. `fitToHeightPages` и `fitToWidthPages` должны
+быть положительными: отсутствие свойства означает автоматическое число страниц
+по этой оси.
+
+`createExcelMatrixWorkbookBlob` не инициирует скачивание и подходит для preview
+и проверки сформированного файла. `downloadExcelMatrixWorkbook` делегирует
+browser download общему `downloadFileFromBlob`.
+
 ## Имена листов
 
 ### `resolveExcelSheetNames(names)`

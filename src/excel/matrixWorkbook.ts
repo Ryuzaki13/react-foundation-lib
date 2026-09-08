@@ -69,8 +69,20 @@ export type ExcelMatrixWorkbookSheet = {
 	readonly print?: ExcelPrintSetup;
 };
 
+/**
+ * Базовый шрифт стиля Normal задаёт метрику символьной ширины столбцов Excel.
+ *
+ * Шрифт отдельных ячеек может отличаться: эта настройка нужна прежде всего
+ * для воспроизводимого преобразования `columns[].width` в экранные пиксели.
+ */
+export type ExcelMatrixWorkbookDefaultFont = {
+	readonly fontFamily: string;
+	readonly fontSize: number;
+};
+
 /** Аргументы generic-книги, пригодной как для скачивания, так и для file validation. */
 export type ExcelMatrixWorkbookArgs = {
+	readonly defaultFont?: ExcelMatrixWorkbookDefaultFont;
 	readonly sheets: readonly ExcelMatrixWorkbookSheet[];
 };
 
@@ -268,6 +280,12 @@ function createMatrixPrintFeature(
  */
 export async function createExcelMatrixWorkbookBlob(args: ExcelMatrixWorkbookArgs): Promise<Blob> {
 	if (args.sheets.length === 0) throw new Error("Для формирования Excel-книги нужен минимум один лист");
+	if (args.defaultFont) {
+		if (!args.defaultFont.fontFamily.trim()) throw new Error("Имя базового шрифта Excel-книги не может быть пустым");
+		if (!Number.isFinite(args.defaultFont.fontSize) || args.defaultFont.fontSize <= 0) {
+			throw new Error("Размер базового шрифта Excel-книги должен быть положительным числом");
+		}
+	}
 	for (const sheet of args.sheets) {
 		if (sheet.rows.length === 0) throw new Error(`Лист «${sheet.name}» не содержит строк`);
 		if (sheet.print) validatePrintSetup(sheet.print);
@@ -282,7 +300,11 @@ export async function createExcelMatrixWorkbookBlob(args: ExcelMatrixWorkbookArg
 		zoomScale: sheet.zoomScale
 	}));
 	const printFeature = createMatrixPrintFeature(sheetNames, args.sheets);
-	return writeXlsxFile(sheets, { features: printFeature ? [printFeature] : undefined }).toBlob();
+	return writeXlsxFile(sheets, {
+		fontFamily: args.defaultFont?.fontFamily,
+		fontSize: args.defaultFont?.fontSize,
+		features: printFeature ? [printFeature] : undefined
+	}).toBlob();
 }
 
 /** Скачивает готовую матричную книгу из явного пользовательского действия. */

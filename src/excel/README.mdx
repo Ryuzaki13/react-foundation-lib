@@ -253,6 +253,9 @@ await downloadExcelWorkbook({
 import { downloadExcelMatrixWorkbook } from "@ryuzaki13/react-foundation-lib/excel";
 
 await downloadExcelMatrixWorkbook("Расписание.xlsx", {
+	// Базовый шрифт Normal определяет, сколько пикселей занимает символьная
+	// ширина из `columns[].width`, даже если ячейки используют другой шрифт.
+	defaultFont: { fontFamily: "Verdana", fontSize: 12 },
 	sheets: [
 		{
 			name: "Неделя",
@@ -279,6 +282,11 @@ await downloadExcelMatrixWorkbook("Расписание.xlsx", {
 колонку `M` на следующую страницу. `fitToHeightPages` и `fitToWidthPages` должны
 быть целыми неотрицательными: ноль означает автоматическое число страниц по
 этой оси.
+
+`defaultFont` задаёт шрифт стиля Normal всей книги. Excel измеряет символьную
+ширину столбца относительно этого шрифта, поэтому одинаковое значение
+`columns[].width` при разных базовых шрифтах может давать разную ширину в
+пикселях. Стили отдельных ячеек при этом остаются независимыми.
 
 `createExcelMatrixWorkbookBlob` не инициирует скачивание и подходит для preview
 и проверки сформированного файла. `downloadExcelMatrixWorkbook` делегирует

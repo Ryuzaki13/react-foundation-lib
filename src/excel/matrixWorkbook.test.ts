@@ -43,7 +43,27 @@ describe("матричная Excel-книга", () => {
 					zoomScale: undefined
 				}
 			],
-			{ features: undefined }
+			{ fontFamily: undefined, fontSize: undefined, features: undefined }
+		);
+	});
+
+	it("передаёт базовый шрифт для воспроизводимой ширины столбцов", async () => {
+		await createExcelMatrixWorkbookBlob({
+			defaultFont: { fontFamily: "Verdana", fontSize: 12 },
+			sheets: [{ name: "Неделя", rows: [["Заголовок"]], columns: [{ width: 5.5 }] }]
+		});
+
+		expect(writeXlsxFileMock).toHaveBeenCalledWith(
+			[
+				{
+					data: [["Заголовок"]],
+					sheet: "Неделя",
+					columns: [{ width: 5.5 }],
+					showGridLines: undefined,
+					zoomScale: undefined
+				}
+			],
+			{ fontFamily: "Verdana", fontSize: 12, features: undefined }
 		);
 	});
 
@@ -120,5 +140,17 @@ describe("матричная Excel-книга", () => {
 				]
 			})
 		).rejects.toThrow("положительным целым числом");
+	});
+
+	it("отклоняет некорректный базовый шрифт", async () => {
+		await expect(
+			createExcelMatrixWorkbookBlob({ defaultFont: { fontFamily: " ", fontSize: 12 }, sheets: [{ name: "Неделя", rows: [["1"]] }] })
+		).rejects.toThrow("не может быть пустым");
+		await expect(
+			createExcelMatrixWorkbookBlob({
+				defaultFont: { fontFamily: "Verdana", fontSize: 0 },
+				sheets: [{ name: "Неделя", rows: [["1"]] }]
+			})
+		).rejects.toThrow("положительным числом");
 	});
 });

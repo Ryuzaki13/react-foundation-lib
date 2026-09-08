@@ -13,6 +13,9 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 Используйте точный subpath. Внутренний файл `serviceWorker` не является самостоятельным публичным export, даже если отдельные функции используются самим hook.
 
+`useBrowserOnlineStatus()` возвращает browser hint `navigator.onLine` через `useSyncExternalStore` и подписывается на события
+`online`/`offline`. Это сигнал для UX и запуска revalidation, а не доказательство доступности конкретного backend.
+
 ## Часть 1. Обновление Service Worker
 
 ### Задача hook
@@ -378,6 +381,7 @@ Waiting worker остаётся установленным. Следующая �
 | Экспорт                             | Публичный path | Назначение                                         |
 | ----------------------------------- | -------------- | -------------------------------------------------- |
 | `useServiceWorkerUpdate()`          | `/pwa`         | Регистрация, проверка и UI-состояние обновления SW |
+| `useBrowserOnlineStatus()`          | `/pwa`         | Реактивный browser online/offline hint             |
 | `parseSwCachePolicy()`              | оба            | Разобрать текстовую политику                       |
 | `buildSwCachePolicyValue()`         | оба            | Собрать каноническую строку из draft               |
 | `normalizeSwCacheName()`            | оба            | Подготовить безопасную часть cache name            |

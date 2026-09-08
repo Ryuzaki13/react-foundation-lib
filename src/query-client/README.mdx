@@ -274,12 +274,14 @@ Stale не означает «удалена». Data может продолжа
 | Нужны данные только пока открыта вкладка?                   | Обычная query без `persistedQueryMeta`.               |
 | Данные публичные, тяжёлые и могут пережить reload?          | Рассмотреть `persistedQueryMeta`.                     |
 | Данные зависят от пользователя, роли или server session?    | `sessionScopedQueryMeta`.                             |
+| Session snapshot явно разрешено читать offline?             | `createSessionQueryPersistenceMeta` + active scope.   |
 | Нужно передать обновление другой открытой вкладке?          | Broadcast installation и подходящее cache event.      |
 | UI должен измениться до ответа mutation?                    | Optimistic update с обязательным rollback policy.     |
 | Server response авторитетен и уже содержит новое состояние? | `setQueryData`/`onSuccessOptimistic`.                 |
 | После mutation нужен свежий server snapshot?                | Scoped `invalidateQueries` с выбранным `refetchType`. |
 
-`persistedQueryMeta` и `sessionScopedQueryMeta` взаимоисключающие. Session data не должна переживать смену пользователя.
+`persistedQueryMeta` и `sessionScopedQueryMeta` взаимоисключающие. Для узкого offline allowlist session data используется
+отдельный `sessionPersistence` contract: он требует активную server-session identity и абсолютный `expiresAt`.
 
 ## Быстрый старт
 
@@ -489,7 +491,8 @@ queryOptions({
 });
 ```
 
-`Record<string, unknown>` разрешает consumer-проекту добавлять собственную metadata. Infrastructure этого модуля читает только `persist` и `sessionScoped`.
+`Record<string, unknown>` разрешает consumer-проекту добавлять собственную metadata. Infrastructure этого модуля читает
+`persist`, `sessionScoped` и явный `sessionPersistence` contract.
 
 ### `persistedQueryMeta`
 
@@ -533,6 +536,36 @@ queryOptions({
 
 При смене сессии host обязан вызвать `resetSessionScopedQueries`.
 
+### Session-scoped offline persistence
+
+Только для явно согласованного offline allowlist создайте bounded metadata:
+
+```ts
+import {
+	createSessionQueryPersistenceMeta,
+	setSessionQueryPersistenceScope
+} from "@ryuzaki13/react-foundation-lib/query-client";
+
+await setSessionQueryPersistenceScope({
+	id: session.id,
+	expiresAt: session.expiresAt
+});
+
+queryOptions({
+	queryKey: ["opened-week", weekStart],
+	queryFn: fetchWeek,
+	meta: createSessionQueryPersistenceMeta({
+		cacheName: "opened-weeks",
+		maxEntries: 24
+	}),
+	networkMode: "offlineFirst"
+});
+```
+
+Scope устанавливается отдельно от query contract, не содержит cookie secret/access token и меняет in-memory границу до очистки IndexedDB.
+При `null`, истёкшем `expiresAt` или смене `id` старые session snapshots удаляются. `networkMode: "offlineFirst"` нужен, чтобы
+TanStack вызвал persister до network pause. Cached data остаётся неавторитетным: write после reconnect обязан повторно получить серверный state.
+
 ### Meta нельзя совмещать
 
 Неверно:
@@ -550,13 +583,14 @@ meta: {
 
 - публичный/безопасный долгоживущий справочник → `persistedQueryMeta`;
 - auth/session dependent data → `sessionScopedQueryMeta`;
+- разрешённый bounded offline snapshot → `createSessionQueryPersistenceMeta`;
 - обычные transient data → meta не нужна.
 
 ## Настройка project adapter
 
 ### Зачем нужен adapter
 
-Foundation-пакет не знает имя SAP system, client, tenant или окружение конкретного приложения. `QueryPersistenceProjectAdapter` позволяет host передать устойчивый namespace и собственный buster:
+Foundation-пакет не знает имя SAP system, client, tenant или окружение конкретного приложения. `QueryPersistenceProjectAdapter` позволяет host передать устойчивый namespace и собственный buster. Текущая session identity задаётся отдельным runtime API и не входит в adapter:
 
 ```ts
 type QueryPersistenceProjectAdapter = {
@@ -778,7 +812,8 @@ Storage не скрывает ошибки. Promise отклоняется, ес
 const persister = createReactQueryPersister();
 ```
 
-Возвращает результат `experimental_createQueryPersister` либо `undefined`, если IndexedDB недоступен.
+Возвращает routing-обёртку над `experimental_createQueryPersister` либо `undefined`, если IndexedDB недоступен. Обычные public query
+идут в прежний persister, а query с `sessionPersistence` — в отдельный cache активной сессии с независимым `maxEntries`.
 
 Настройки foundation wrapper:
 
@@ -2356,9 +2391,11 @@ Profile tests подтверждают:
 
 | Symbol                   | Вид   | Назначение                                      |
 | ------------------------ | ----- | ----------------------------------------------- |
-| `AppQueryMeta`           | type  | `persist`, `sessionScoped` и consumer metadata. |
-| `persistedQueryMeta`     | const | Opt-in public persistence marker.               |
-| `sessionScopedQueryMeta` | const | Session reset marker.                           |
+| `AppQueryMeta`                      | type     | Public/session persistence и consumer metadata.       |
+| `SessionQueryPersistencePolicy`     | type     | Имя и bounded limit session cache.                    |
+| `persistedQueryMeta`                | const    | Opt-in public persistence marker.                     |
+| `sessionScopedQueryMeta`            | const    | Session reset marker без browser persistence.         |
+| `createSessionQueryPersistenceMeta` | function | Явный opt-in bounded persistence текущей server session. |
 
 ### Persistence project adapter
 
@@ -2377,6 +2414,10 @@ Profile tests подтверждают:
 | `shouldPersistQuery`              | function | Opt-in predicate с session safety.        |
 | `createIndexedDbQueryStorage`     | function | AsyncStorage поверх IndexedDB.            |
 | `createReactQueryPersister`       | function | Настроенный per-query TanStack persister. |
+| `SessionQueryPersistenceScope`    | type     | Public session id и абсолютный expiresAt. |
+| `getSessionQueryPersistenceScope` | function | Читает валидный активный browser scope.   |
+| `setSessionQueryPersistenceScope` | function | Меняет scope и очищает чужие snapshots.   |
+| `clearSessionQueryPersistence`    | function | Удаляет один или все session snapshots.   |
 
 Options type `createIndexedDbQueryStorage` не экспортируется отдельным symbol; используйте структурный object или `Parameters<typeof createIndexedDbQueryStorage>[0]`.
 

@@ -1,9 +1,10 @@
 import { experimental_createQueryPersister, type AsyncStorage, type PersistedQuery } from "@tanstack/query-persist-client-core";
-import { type Query } from "@tanstack/react-query";
+import { type Query, type QueryFunction, type QueryFunctionContext, type QueryKey } from "@tanstack/react-query";
 
 import { getQueryPersistenceProjectAdapter } from "./queryPersistenceAdapter";
 
 const STORE_NAME = "queries";
+const SESSION_PERSISTENCE_MARKER = "session";
 
 export const REACT_QUERY_PERSISTENCE_BUSTER = __REACT_QUERY_PERSISTENCE_BUSTER__;
 export const REACT_QUERY_PERSISTENCE_MAX_AGE = 90 * 24 * 60 * 60 * 1000;
@@ -13,6 +14,15 @@ type IndexedDbQueryStorageOptions = {
 	storeName?: string;
 	indexedDB?: IDBFactory;
 };
+
+export type SessionQueryPersistenceScope = {
+	/** Публичная identity серверной сессии; cookie secret или access token здесь недопустимы. */
+	readonly id: string;
+	/** Абсолютная граница, после которой snapshots этой сессии нельзя читать или записывать. */
+	readonly expiresAt: string;
+};
+
+let activeSessionPersistenceScope: SessionQueryPersistenceScope | null = null;
 
 /**
  * Описывает итог синхронного преобразования записи внутри одной IndexedDB-транзакции.
@@ -24,6 +34,8 @@ export type IndexedDbAtomicUpdateDecision<TStorageValue, TResult> =
 	| { readonly action: "remove"; readonly result: TResult };
 
 export type IndexedDbQueryStorage<TStorageValue> = AsyncStorage<TStorageValue> & {
+	/** Перечисляет записи object store для garbage collection и bounded persistence. */
+	readonly entries: () => Promise<Array<[key: string, value: TStorageValue]>>;
 	/**
 	 * Читает и изменяет одну запись в общей readwrite-транзакции, поэтому параллельные
 	 * вкладки не могут потерять уже зафиксированное изменение между get и set.
@@ -66,8 +78,76 @@ function getPersistencePrefix() {
 	return `${system}`;
 }
 
+function encodePersistenceSegment(value: string) {
+	return encodeURIComponent(value);
+}
+
+function getSessionPersistenceRootPrefix() {
+	return `${getPersistencePrefix()}-${SESSION_PERSISTENCE_MARKER}-`;
+}
+
+function getSessionPersistenceScopePrefix(scopeId: string) {
+	return `${getSessionPersistenceRootPrefix()}${encodePersistenceSegment(scopeId)}-`;
+}
+
+function getSessionPersistenceCachePrefix(scopeId: string, cacheName: string) {
+	return `${getSessionPersistenceScopePrefix(scopeId)}${encodePersistenceSegment(cacheName)}`;
+}
+
+function isSessionPersistenceScopeValid(scope: SessionQueryPersistenceScope | null): scope is SessionQueryPersistenceScope {
+	return (
+		Boolean(scope?.id.trim()) && Number.isFinite(Date.parse(scope?.expiresAt ?? "")) && Date.parse(scope?.expiresAt ?? "") > Date.now()
+	);
+}
+
+/** Возвращает текущую browser-session identity, которой разрешено читать приватные persisted query. */
+export function getSessionQueryPersistenceScope(): SessionQueryPersistenceScope | null {
+	return isSessionPersistenceScopeValid(activeSessionPersistenceScope) ? activeSessionPersistenceScope : null;
+}
+
+async function removeSessionPersistenceEntries(predicate: (key: string) => boolean) {
+	const storage = createIndexedDbQueryStorage<PersistedQuery>();
+	if (!storage?.entries) return;
+
+	const entries = await storage.entries();
+	await Promise.all(entries.filter(([key]) => predicate(key)).map(([key]) => storage.removeItem(key)));
+}
+
+/** Удаляет persisted query одной сессии или всех сессий текущего приложения. */
+export async function clearSessionQueryPersistence(scopeId?: string): Promise<void> {
+	const prefix = scopeId === undefined ? getSessionPersistenceRootPrefix() : getSessionPersistenceScopePrefix(scopeId);
+	await removeSessionPersistenceEntries((key) => key.startsWith(prefix));
+}
+
+/**
+ * Устанавливает единственную активную server-session identity и сразу исключает
+ * чтение старого scope. Browser storage очищается асинхронно уже после смены
+ * in-memory границы, поэтому параллельный query не может записаться старому пользователю.
+ */
+export async function setSessionQueryPersistenceScope(scope: SessionQueryPersistenceScope | null): Promise<void> {
+	const normalized = scope && isSessionPersistenceScopeValid(scope) ? { id: scope.id.trim(), expiresAt: scope.expiresAt } : null;
+	activeSessionPersistenceScope = normalized;
+
+	if (!normalized) {
+		await clearSessionQueryPersistence();
+		return;
+	}
+
+	const activePrefix = getSessionPersistenceScopePrefix(normalized.id);
+	await removeSessionPersistenceEntries((key) => key.startsWith(getSessionPersistenceRootPrefix()) && !key.startsWith(activePrefix));
+}
+
 export function shouldPersistQuery(query: Pick<Query, "meta">) {
 	return query.meta?.persist === true && query.meta.sessionScoped !== true;
+}
+
+function readSessionQueryPersistencePolicy(query: Pick<Query, "meta">) {
+	const policy = query.meta?.sessionPersistence;
+	if (query.meta?.sessionScoped !== true || !policy || typeof policy !== "object") return null;
+	if (!("cacheName" in policy) || !("maxEntries" in policy)) return null;
+	if (typeof policy.cacheName !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(policy.cacheName)) return null;
+	if (!Number.isSafeInteger(policy.maxEntries) || policy.maxEntries < 1 || policy.maxEntries > 5_000) return null;
+	return { cacheName: policy.cacheName, maxEntries: policy.maxEntries } as const;
 }
 
 export function createIndexedDbQueryStorage<TStorageValue = unknown>(
@@ -201,9 +281,10 @@ export function createIndexedDbQueryStorage<TStorageValue = unknown>(
 export function createReactQueryPersister() {
 	const storage = createIndexedDbQueryStorage<PersistedQuery>();
 	if (!storage) return undefined;
+	const indexedDbStorage = storage;
 
-	return experimental_createQueryPersister<PersistedQuery>({
-		storage,
+	const publicPersister = experimental_createQueryPersister<PersistedQuery>({
+		storage: indexedDbStorage,
 		serialize: (query) => query,
 		deserialize: (query) => query,
 		prefix: getPersistencePrefix(),
@@ -212,4 +293,65 @@ export function createReactQueryPersister() {
 		refetchOnRestore: true,
 		filters: { predicate: shouldPersistQuery }
 	});
+	const sessionPersisters = new Map<string, ReturnType<typeof experimental_createQueryPersister<PersistedQuery>>>();
+
+	function getSessionPersister(scope: SessionQueryPersistenceScope, cacheName: string, maxEntries: number) {
+		const prefix = getSessionPersistenceCachePrefix(scope.id, cacheName);
+		const identity = `${prefix}:${maxEntries}:${scope.expiresAt}`;
+		const existing = sessionPersisters.get(identity);
+		if (existing) return existing;
+
+		let pruneQueue = Promise.resolve();
+		const boundedStorage: AsyncStorage<PersistedQuery> = {
+			getItem: (key) => {
+				const activeScope = getSessionQueryPersistenceScope();
+				return activeScope?.id === scope.id ? indexedDbStorage.getItem(key) : undefined;
+			},
+			removeItem: (key) => indexedDbStorage.removeItem(key),
+			entries: () => indexedDbStorage.entries(),
+			setItem: async (key, value) => {
+				const activeScope = getSessionQueryPersistenceScope();
+				if (activeScope?.id !== scope.id) return;
+
+				await indexedDbStorage.setItem(key, value);
+				pruneQueue = pruneQueue.then(async () => {
+					const entries = (await indexedDbStorage.entries()).filter(([entryKey]) => entryKey.startsWith(`${prefix}-`));
+					entries.sort((left, right) => (right[1].state.dataUpdatedAt ?? 0) - (left[1].state.dataUpdatedAt ?? 0));
+					await Promise.all(entries.slice(maxEntries).map(([entryKey]) => indexedDbStorage.removeItem(entryKey)));
+				});
+				await pruneQueue;
+			}
+		};
+		const persister = experimental_createQueryPersister<PersistedQuery>({
+			storage: boundedStorage,
+			serialize: (query) => query,
+			deserialize: (query) => query,
+			prefix,
+			buster: getQueryPersistenceProjectAdapter().persistenceBuster ?? REACT_QUERY_PERSISTENCE_BUSTER,
+			maxAge: REACT_QUERY_PERSISTENCE_MAX_AGE,
+			refetchOnRestore: true,
+			filters: {
+				predicate: (query) => readSessionQueryPersistencePolicy(query)?.cacheName === cacheName
+			}
+		});
+		sessionPersisters.set(identity, persister);
+		return persister;
+	}
+
+	return {
+		...publicPersister,
+		async persisterFn<T, TQueryKey extends QueryKey>(
+			queryFn: QueryFunction<T, TQueryKey>,
+			context: QueryFunctionContext<TQueryKey>,
+			query: Query
+		): Promise<T> {
+			const policy = readSessionQueryPersistencePolicy(query);
+			if (!policy) return publicPersister.persisterFn(queryFn, context, query);
+
+			const scope = getSessionQueryPersistenceScope();
+			if (!scope) return Promise.resolve(queryFn(context));
+
+			return getSessionPersister(scope, policy.cacheName, policy.maxEntries).persisterFn(queryFn, context, query);
+		}
+	};
 }

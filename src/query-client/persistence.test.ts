@@ -3,9 +3,16 @@ import { QueryClient, type Query, type QueryFunctionContext, type QueryState } f
 import { indexedDB } from "fake-indexeddb";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createIndexedDbQueryStorage, REACT_QUERY_PERSISTENCE_BUSTER, shouldPersistQuery } from "./persistence";
+import {
+	clearSessionQueryPersistence,
+	createIndexedDbQueryStorage,
+	getSessionQueryPersistenceScope,
+	REACT_QUERY_PERSISTENCE_BUSTER,
+	setSessionQueryPersistenceScope,
+	shouldPersistQuery
+} from "./persistence";
 import { createQueryClient } from "./queryClient";
-import { persistedQueryMeta, sessionScopedQueryMeta } from "./queryMeta";
+import { createSessionQueryPersistenceMeta, persistedQueryMeta, sessionScopedQueryMeta } from "./queryMeta";
 
 function createQueryMock(hash: string, meta: Query["meta"]): Query {
 	return {
@@ -32,7 +39,8 @@ async function waitForScheduledPersistence() {
 	await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
-afterEach(() => {
+afterEach(async () => {
+	await setSessionQueryPersistenceScope(null);
 	Reflect.deleteProperty(globalThis, "indexedDB");
 });
 
@@ -84,6 +92,11 @@ describe("query-client/persistence", () => {
 		expect(shouldPersistQuery(createQueryMock("conflicting", { persist: true, sessionScoped: true }))).toBe(false);
 	});
 
+	it("отклоняет неустойчивое имя и небезопасный лимит session cache", () => {
+		expect(() => createSessionQueryPersistenceMeta({ cacheName: "Opened Weeks", maxEntries: 24 })).toThrow();
+		expect(() => createSessionQueryPersistenceMeta({ cacheName: "opened-weeks", maxEntries: 0 })).toThrow();
+	});
+
 	it("per-query persister записывает в IndexedDB только opt-in query", async () => {
 		const storage = createIndexedDbQueryStorage<PersistedQuery>({
 			indexedDB,
@@ -123,5 +136,59 @@ describe("query-client/persistence", () => {
 
 		const withIndexedDb = createQueryClient({});
 		expect(withIndexedDb.getDefaultOptions().queries?.persister).toEqual(expect.any(Function));
+	});
+
+	it("изолирует persisted query текущей server session и восстанавливает только разрешённый snapshot", async () => {
+		Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: indexedDB });
+		await setSessionQueryPersistenceScope({ id: "session-a", expiresAt: "2099-01-01T00:00:00.000Z" });
+		const meta = createSessionQueryPersistenceMeta({ cacheName: "opened-weeks", maxEntries: 24 });
+		const firstClient = createQueryClient({});
+
+		await firstClient.fetchQuery({ queryKey: ["week", 1], queryFn: async () => "cached", meta });
+		await waitForScheduledPersistence();
+
+		const secondClient = createQueryClient({});
+		let networkCalls = 0;
+		await expect(
+			secondClient.fetchQuery({
+				queryKey: ["week", 1],
+				queryFn: async () => {
+					networkCalls += 1;
+					return "network";
+				},
+				meta
+			})
+		).resolves.toBe("cached");
+		expect(networkCalls).toBe(0);
+
+		await setSessionQueryPersistenceScope({ id: "session-b", expiresAt: "2099-01-01T00:00:00.000Z" });
+		const thirdClient = createQueryClient({});
+		await expect(thirdClient.fetchQuery({ queryKey: ["week", 1], queryFn: async () => "other", meta })).resolves.toBe("other");
+	});
+
+	it("оставляет в session cache только последние успешно обновлённые query", async () => {
+		Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: indexedDB });
+		await setSessionQueryPersistenceScope({ id: "bounded-session", expiresAt: "2099-01-01T00:00:00.000Z" });
+		const meta = createSessionQueryPersistenceMeta({ cacheName: "bounded", maxEntries: 2 });
+		const client = createQueryClient({});
+
+		for (const key of ["first", "second", "third"]) {
+			await client.fetchQuery({ queryKey: [key], queryFn: async () => key, meta });
+			await new Promise((resolve) => setTimeout(resolve, 2));
+		}
+		await waitForScheduledPersistence();
+
+		const storage = createIndexedDbQueryStorage<PersistedQuery>();
+		const sessionEntries = (await storage!.entries()).filter(([key]) => key.includes("-session-bounded-session-bounded-"));
+		expect(sessionEntries.map(([, value]) => value.queryKey)).toHaveLength(2);
+		expect(sessionEntries.map(([, value]) => value.queryKey)).toEqual(expect.arrayContaining([["second"], ["third"]]));
+	});
+
+	it("не активирует истёкший scope и очищает его browser storage", async () => {
+		Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: indexedDB });
+		await setSessionQueryPersistenceScope({ id: "expired", expiresAt: "2000-01-01T00:00:00.000Z" });
+
+		expect(getSessionQueryPersistenceScope()).toBeNull();
+		await expect(clearSessionQueryPersistence("expired")).resolves.toBeUndefined();
 	});
 });

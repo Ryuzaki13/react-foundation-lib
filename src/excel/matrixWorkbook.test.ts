@@ -56,6 +56,7 @@ describe("матричная Excel-книга", () => {
 					print: {
 						orientation: "portrait",
 						paperSize: "a4",
+						fitToWidthPages: 0,
 						fitToHeightPages: 1,
 						pageOrder: "overThenDown",
 						repeatRows: [1, 6],
@@ -90,6 +91,7 @@ describe("матричная Excel-книга", () => {
 
 		expect(sheetXml).toContain('<pageSetUpPr fitToPage="1" autoPageBreaks="0"/>');
 		expect(sheetXml).toContain('orientation="portrait"');
+		expect(sheetXml).toContain('fitToWidth="0"');
 		expect(sheetXml).toContain('fitToHeight="1"');
 		expect(sheetXml).toContain('<brk id="38"');
 		expect(sheetXml).toContain("Отчёт abc");

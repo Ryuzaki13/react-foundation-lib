@@ -262,6 +262,7 @@ await downloadExcelMatrixWorkbook("Расписание.xlsx", {
 			print: {
 				orientation: "portrait",
 				paperSize: "a4",
+				fitToWidthPages: 0,
 				fitToHeightPages: 1,
 				repeatRows: [1, 1],
 				columnBreaksAfter: [12],
@@ -276,8 +277,8 @@ await downloadExcelMatrixWorkbook("Расписание.xlsx", {
 `columnBreaksAfter` и `rowBreaksAfter` используют one-based номер последней
 колонки или строки страницы. Например, `columnBreaksAfter: [12]` переносит
 колонку `M` на следующую страницу. `fitToHeightPages` и `fitToWidthPages` должны
-быть положительными: отсутствие свойства означает автоматическое число страниц
-по этой оси.
+быть целыми неотрицательными: ноль означает автоматическое число страниц по
+этой оси.
 
 `createExcelMatrixWorkbookBlob` не инициирует скачивание и подходит для preview
 и проверки сформированного файла. `downloadExcelMatrixWorkbook` делегирует

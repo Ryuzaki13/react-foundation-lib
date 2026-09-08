@@ -104,6 +104,10 @@ function assertPositiveInteger(value: number, name: string): void {
 	if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} должен быть положительным целым числом`);
 }
 
+function assertNonnegativeInteger(value: number, name: string): void {
+	if (!Number.isInteger(value) || value < 0) throw new Error(`${name} должен быть целым неотрицательным числом`);
+}
+
 function validateRange(range: readonly [number, number], name: string): void {
 	assertPositiveInteger(range[0], `${name}: начало`);
 	assertPositiveInteger(range[1], `${name}: конец`);
@@ -111,8 +115,9 @@ function validateRange(range: readonly [number, number], name: string): void {
 }
 
 function validatePrintSetup(print: ExcelPrintSetup): void {
-	if (print.fitToWidthPages !== undefined) assertPositiveInteger(print.fitToWidthPages, "fitToWidthPages");
-	if (print.fitToHeightPages !== undefined) assertPositiveInteger(print.fitToHeightPages, "fitToHeightPages");
+	// В OpenXML ноль означает автоматическое число страниц по соответствующей оси.
+	if (print.fitToWidthPages !== undefined) assertNonnegativeInteger(print.fitToWidthPages, "fitToWidthPages");
+	if (print.fitToHeightPages !== undefined) assertNonnegativeInteger(print.fitToHeightPages, "fitToHeightPages");
 	if (print.repeatRows) validateRange(print.repeatRows, "repeatRows");
 	if (print.repeatColumns) validateRange(print.repeatColumns, "repeatColumns");
 	for (const value of print.columnBreaksAfter ?? []) assertPositiveInteger(value, "columnBreaksAfter");

@@ -221,6 +221,21 @@ function buildDefinedNames(sheetNames: readonly string[], sheets: readonly Excel
 	return definitions.join("");
 }
 
+/**
+ * Дополняет штатный контейнер definedNames, который write-excel-file уже
+ * создаёт в workbook.xml. Два одноимённых контейнера формально нарушают схему
+ * OOXML: Numbers читает такую книгу, а Microsoft Excel отклоняет её.
+ */
+function applyWorkbookDefinedNames(content: string, definedNames: string): string {
+	if (/<definedNames\s*\/>/.test(content)) {
+		return content.replace(/<definedNames\s*\/>/, `<definedNames>${definedNames}</definedNames>`);
+	}
+	if (content.includes("</definedNames>")) {
+		return content.replace("</definedNames>", `${definedNames}</definedNames>`);
+	}
+	return content.replace("</sheets>", `</sheets><definedNames>${definedNames}</definedNames>`);
+}
+
 /** Настройки печати требуют двух согласованных OpenXML-частей: worksheet и workbook defined names. */
 function createMatrixPrintFeature(
 	sheetNames: readonly string[],
@@ -238,8 +253,7 @@ function createMatrixPrintFeature(
 					}
 				},
 				"xl/workbook.xml": {
-					transform: (content) =>
-						definedNames ? content.replace("</sheets>", `</sheets><definedNames>${definedNames}</definedNames>`) : content
+					transform: (content) => (definedNames ? applyWorkbookDefinedNames(content, definedNames) : content)
 				}
 			}
 		}

@@ -87,7 +87,11 @@ describe("матричная Excel-книга", () => {
 			{},
 			{ sheetIndex: 0 }
 		);
-		const workbookXml = feature?.["xl/workbook.xml"]?.transform?.("<workbook><sheets></sheets></workbook>", {}, { sheetIndex: 0 });
+		const workbookXml = feature?.["xl/workbook.xml"]?.transform?.(
+			"<workbook><sheets></sheets><definedNames/><calcPr/></workbook>",
+			{},
+			{ sheetIndex: 0 }
+		);
 
 		expect(sheetXml).toContain('<pageSetUpPr fitToPage="1" autoPageBreaks="0"/>');
 		expect(sheetXml).toContain('orientation="portrait"');
@@ -100,6 +104,8 @@ describe("матричная Excel-книга", () => {
 		expect(workbookXml).toContain("$A:$B");
 		expect(workbookXml).toContain("_xlnm.Print_Area");
 		expect(workbookXml).toContain("$A$1:$EX$114");
+		expect(workbookXml?.match(/<definedNames(?=[\s/>])/g)).toHaveLength(1);
+		expect(workbookXml).toContain("</definedNames><calcPr/>");
 	});
 
 	it("отклоняет zero-based и обратные печатные диапазоны", async () => {

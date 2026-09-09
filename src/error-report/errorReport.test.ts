@@ -25,7 +25,7 @@ describe("error-report", () => {
 		expect(isErrorReportingEnabled({ isDev: true })).toBe(false);
 	});
 
-	it("собирает query diagnostics с читаемым queryKey, включая значения его полей, но без query data", () => {
+	it("собирает query diagnostics без секретов и полных query data", () => {
 		const queryClient = new QueryClient();
 		queryClient.setQueryData(["orders", { customer: "1000", token: "token-is-not-used" }], {
 			password: "secret-password",
@@ -38,7 +38,8 @@ describe("error-report", () => {
 		expect(serialized).toContain("queryHash");
 		expect(serialized).toContain("1000");
 		expect(serialized).toContain("orders");
-		expect(serialized).toContain("token-is-not-used");
+		expect(serialized).toContain("[REDACTED]");
+		expect(serialized).not.toContain("token-is-not-used");
 		expect(serialized).toContain("dataShape");
 		expect(serialized).not.toContain("secret-password");
 		expect(serialized).not.toContain('amount":1000');
@@ -68,11 +69,12 @@ describe("error-report", () => {
 		const diagnostics = await collectPersistedQueryDiagnostics();
 		const serialized = JSON.stringify(diagnostics);
 
-		expect(serialized).toContain("query-hash");
-		expect(serialized).toContain("ktk:cache-query-hash");
+		expect(serialized).toContain("queryHash");
 		expect(serialized).toContain("TEXT_APP_SRV");
 		expect(serialized).toContain("authorization");
-		expect(serialized).toContain("secret");
+		expect(serialized).toContain("[REDACTED]");
+		expect(serialized).not.toContain('"authorization":"secret"');
+		expect(serialized).not.toContain("ktk:cache-query-hash");
 		expect(serialized).not.toContain("must-not-leak");
 	});
 

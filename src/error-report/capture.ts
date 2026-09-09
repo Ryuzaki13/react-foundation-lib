@@ -26,11 +26,13 @@ export async function captureQueryErrorReport(
 
 	addErrorReportBreadcrumb({
 		type: "query-error",
-		detail: sanitizeDetail({
-			queryHash: query.queryHash,
-			queryKey: context?.queryKey ?? query.queryKey,
-			...context?.detail
-		})
+		detail: sanitizeDetail(
+			{
+				queryKey: context?.queryKey ?? query.queryKey,
+				...context?.detail
+			},
+			{ scope: "breadcrumb-detail", source }
+		)
 	});
 
 	const [persistedQueries, queryClientDiagnostics] = await Promise.all([
@@ -45,7 +47,7 @@ export async function captureQueryErrorReport(
 		query: collectQueryDiagnostics(query),
 		queryClient: queryClientDiagnostics,
 		persistedQueries,
-		context: sanitizeDetail(context?.detail)
+		context: sanitizeDetail(context?.detail, { scope: "context", source })
 	});
 }
 
@@ -60,7 +62,7 @@ export async function captureMutationErrorReport(
 
 	addErrorReportBreadcrumb({
 		type: "mutation-error",
-		detail: sanitizeDetail({ mutationKey: mutation.options.mutationKey, ...context.detail })
+		detail: sanitizeDetail({ mutationKey: mutation.options.mutationKey, ...context.detail }, { scope: "breadcrumb-detail", source })
 	});
 
 	const [persistedQueries, queryClientDiagnostics] = await Promise.all([
@@ -74,7 +76,8 @@ export async function captureMutationErrorReport(
 		error: context.errorInfo ?? createErrorInfo(error),
 		mutation: collectMutationDiagnostics(mutation),
 		queryClient: queryClientDiagnostics,
-		persistedQueries
+		persistedQueries,
+		context: sanitizeDetail(context.detail, { scope: "context", source })
 	});
 }
 
@@ -82,12 +85,12 @@ export function captureRuntimeErrorReport(error: unknown, context: ErrorReportRu
 	const category = context.category ?? "runtime";
 	const source = context.source ?? context.category ?? "runtime";
 	const errorInfo = context.errorInfo ?? createErrorInfo(error);
-	const detail = sanitizeDetail(context.detail);
+	const detail = sanitizeDetail(context.detail, { scope: "context", source });
 
 	const captureDraft = async () => {
 		addErrorReportBreadcrumb({
 			type: "runtime-error",
-			detail: sanitizeDetail({ category, source, ...context.detail })
+			detail: sanitizeDetail({ category, source, ...context.detail }, { scope: "breadcrumb-detail", source })
 		});
 
 		const [persistedQueries, queryClientDiagnostics] = queryClient

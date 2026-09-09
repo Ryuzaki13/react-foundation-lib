@@ -2,7 +2,12 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { clearErrorReportBreadcrumbs, getErrorReportBreadcrumbs, installErrorReportBrowserBreadcrumbs } from "./breadcrumbs";
+import {
+	addErrorReportBreadcrumb,
+	clearErrorReportBreadcrumbs,
+	getErrorReportBreadcrumbs,
+	installErrorReportBrowserBreadcrumbs
+} from "./breadcrumbs";
 
 describe("error-report breadcrumbs", () => {
 	beforeEach(() => {
@@ -15,7 +20,7 @@ describe("error-report breadcrumbs", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("сохраняет читаемую HTML-цепочку без CSS classes для клика", () => {
+	it("сохраняет только техническую HTML-цепочку и явный безопасный target", () => {
 		const dispose = installErrorReportBrowserBreadcrumbs();
 		const container = document.createElement("section");
 		container.id = "toolbar";
@@ -23,9 +28,12 @@ describe("error-report breadcrumbs", () => {
 		container.innerHTML = `
 			<button
 				type="button"
-				aria-label="Отправить отчет"
+				id="user@example.com"
+				aria-label="Отправить отчет пользователя user@example.com"
+				title="Телефон +7 900 000-00-00"
 				data-ui="error-report-send-button"
 				data-action="send-error-report"
+				data-error-report-target="send-error-report"
 				class="_sendButton_x9y8z globalAction"
 			>
 				<span class="_label_qwert">Отправить</span>
@@ -40,7 +48,7 @@ describe("error-report breadcrumbs", () => {
 
 		const [breadcrumb] = getErrorReportBreadcrumbs();
 		expect(breadcrumb?.type).toBe("click");
-		expect(breadcrumb?.target).toContain('button[type="button"][data-ui="error-report-send-button"][data-action="send-error-report"]');
+		expect(breadcrumb?.target).toContain('button[type="button"][data-error-report-target="send-error-report"]');
 
 		const detail = breadcrumb?.detail as Record<string, unknown>;
 		const target = detail.target as Record<string, unknown>;
@@ -50,23 +58,39 @@ describe("error-report breadcrumbs", () => {
 		expect(detail.clientY).toBe(34);
 		expect(target).toMatchObject({
 			tag: "button",
-			ariaLabel: "Отправить отчет",
-			dataUi: "error-report-send-button",
-			dataAction: "send-error-report",
-			text: "Отправить"
+			type: "button",
+			errorReportTarget: "send-error-report"
 		});
-		expect(target.classes).toBeUndefined();
-		expect(target.stableClasses).toBeUndefined();
+		expect(JSON.stringify(breadcrumb)).not.toContain("user@example.com");
+		expect(JSON.stringify(breadcrumb)).not.toContain("Отправить отчет пользователя");
+		expect(JSON.stringify(breadcrumb)).not.toContain("+7 900 000-00-00");
+		expect(JSON.stringify(breadcrumb)).not.toContain("data-ui");
+		expect(JSON.stringify(breadcrumb)).not.toContain("data-action");
 		expect(chain[0]).toMatchObject({
 			tag: "button"
 		});
 		expect(chain[0]?.classes).toBeUndefined();
 		expect(chain[0]?.stableClasses).toBeUndefined();
-		expect(chain[1]).toMatchObject({
-			tag: "section",
-			id: "toolbar"
-		});
+		expect(chain[1]).toMatchObject({ tag: "section" });
 		expect(chain[1]?.classes).toBeUndefined();
 		expect(chain[1]?.stableClasses).toBeUndefined();
+	});
+
+	it("очищает route search/hash и не отдаёт наружу сам массив breadcrumbs", () => {
+		addErrorReportBreadcrumb({
+			type: "route",
+			routeId: "/workspace/students?token=secret#profile",
+			detail: { password: "secret-password" }
+		});
+
+		const snapshot = getErrorReportBreadcrumbs();
+		snapshot.pop();
+
+		expect(getErrorReportBreadcrumbs()).toMatchObject([
+			{
+				routeId: "/workspace/students",
+				detail: { password: "[REDACTED]" }
+			}
+		]);
 	});
 });

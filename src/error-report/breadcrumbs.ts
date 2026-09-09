@@ -1,25 +1,14 @@
 import { truncateText } from "../formatters";
 
-import { sanitizeDetail } from "./safeValue";
+import { sanitizeDetail, sanitizeDiagnosticText } from "./safeValue";
 
 import type { ErrorReportBreadcrumb } from "./types";
 
 const MAX_BREADCRUMBS = 80;
 const MAX_ELEMENT_CHAIN = 20;
-const MAX_TEXT_LENGTH = 80;
 const MAX_ATTRIBUTE_LENGTH = 120;
-const CLICK_TARGET_SELECTOR = [
-	"button",
-	"a",
-	"input",
-	"select",
-	"textarea",
-	"[role]",
-	"[aria-label]",
-	"[title]",
-	"[data-ui]",
-	"[data-action]"
-].join(",");
+const CLICK_TARGET_SELECTOR = ["button", "a", "input", "select", "textarea", "[role]", "[data-error-report-target]"].join(",");
+const SAFE_TARGET_VALUE = /^[a-z0-9][a-z0-9._:/-]*$/i;
 
 let breadcrumbs: ErrorReportBreadcrumb[] = [];
 
@@ -28,11 +17,27 @@ function nowUtc() {
 }
 
 export function addErrorReportBreadcrumb(breadcrumb: Omit<ErrorReportBreadcrumb, "utc"> & { utc?: string }) {
-	breadcrumbs = [...breadcrumbs, { ...breadcrumb, utc: breadcrumb.utc ?? nowUtc() }].slice(-MAX_BREADCRUMBS);
+	breadcrumbs = [
+		...breadcrumbs,
+		{
+			...breadcrumb,
+			utc: sanitizeDiagnosticText(breadcrumb.utc ?? nowUtc(), 64),
+			routeId: breadcrumb.routeId
+				? sanitizeDiagnosticText(breadcrumb.routeId.split(/[?#]/, 1)[0] ?? breadcrumb.routeId, 512)
+				: undefined,
+			appId: breadcrumb.appId ? sanitizeDiagnosticText(breadcrumb.appId, 128) : undefined,
+			viewId: breadcrumb.viewId ? sanitizeDiagnosticText(breadcrumb.viewId, 128) : undefined,
+			target: breadcrumb.target ? sanitizeDiagnosticText(breadcrumb.target, 2_048) : undefined,
+			detail: sanitizeDetail(breadcrumb.detail, {
+				scope: "breadcrumb-detail",
+				source: breadcrumb.type
+			})
+		}
+	].slice(-MAX_BREADCRUMBS);
 }
 
 export function getErrorReportBreadcrumbs() {
-	return breadcrumbs;
+	return breadcrumbs.slice();
 }
 
 export function clearErrorReportBreadcrumbs() {
@@ -43,26 +48,22 @@ function truncateAttributeText(value: string | null | undefined) {
 	return truncateText(value, MAX_ATTRIBUTE_LENGTH);
 }
 
-function readStableAttributes(element: Element) {
-	return {
-		id: truncateAttributeText(element.id),
-		role: truncateAttributeText(element.getAttribute("role")),
-		type: truncateAttributeText(element.getAttribute("type")),
-		title: truncateAttributeText(element.getAttribute("title")),
-		ariaLabel: truncateAttributeText(element.getAttribute("aria-label")),
-		dataUi: truncateAttributeText(element.getAttribute("data-ui")),
-		dataAction: truncateAttributeText(element.getAttribute("data-action"))
-	};
+function readSafeTargetValue(element: Element) {
+	const value = truncateAttributeText(element.getAttribute("data-error-report-target"));
+	return value && SAFE_TARGET_VALUE.test(value) ? value : undefined;
 }
 
-function readClickText(element: Element) {
-	if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
-		return undefined;
-	}
+function readTechnicalAttribute(element: Element, name: string) {
+	const value = truncateAttributeText(element.getAttribute(name));
+	return value && SAFE_TARGET_VALUE.test(value) ? value : undefined;
+}
 
-	if (!element.matches("button,a,[role],[aria-label],[title]")) return undefined;
-
-	return truncateText(element.textContent, MAX_TEXT_LENGTH);
+function readTechnicalAttributes(element: Element) {
+	return {
+		role: readTechnicalAttribute(element, "role"),
+		type: readTechnicalAttribute(element, "type"),
+		errorReportTarget: readSafeTargetValue(element)
+	};
 }
 
 function escapeSelectorPart(value: string) {
@@ -74,25 +75,24 @@ function escapeSelectorPart(value: string) {
 }
 
 function buildElementSelector(element: Element) {
-	const attrs = readStableAttributes(element);
+	const attrs = readTechnicalAttributes(element);
 	const parts = [element.tagName.toLowerCase()];
 
-	if (attrs.id) parts.push(`#${escapeSelectorPart(attrs.id)}`);
 	if (attrs.role) parts.push(`[role="${attrs.role}"]`);
 	if (attrs.type) parts.push(`[type="${attrs.type}"]`);
-	if (attrs.dataUi) parts.push(`[data-ui="${attrs.dataUi}"]`);
-	if (attrs.dataAction) parts.push(`[data-action="${attrs.dataAction}"]`);
+	if (attrs.errorReportTarget) {
+		parts.push(`[data-error-report-target="${escapeSelectorPart(attrs.errorReportTarget)}"]`);
+	}
 
 	return parts.join("");
 }
 
 function describeElement(element: Element) {
-	const attrs = readStableAttributes(element);
+	const attrs = readTechnicalAttributes(element);
 
 	return {
 		tag: element.tagName.toLowerCase(),
 		selector: buildElementSelector(element),
-		text: readClickText(element),
 		...attrs
 	};
 }
@@ -136,16 +136,19 @@ function describeClickDetail(event: MouseEvent) {
 		? getClickElementChain(meaningfulTarget).map((element) => compactElementDescription(describeElement(element)))
 		: [];
 
-	return sanitizeDetail({
-		button: event.button,
-		ctrlKey: event.ctrlKey,
-		shiftKey: event.shiftKey,
-		altKey: event.altKey,
-		clientX: event.clientX,
-		clientY: event.clientY,
-		target: meaningfulTarget ? compactElementDescription(describeElement(meaningfulTarget)) : undefined,
-		chain
-	});
+	return sanitizeDetail(
+		{
+			button: event.button,
+			ctrlKey: event.ctrlKey,
+			shiftKey: event.shiftKey,
+			altKey: event.altKey,
+			clientX: event.clientX,
+			clientY: event.clientY,
+			target: meaningfulTarget ? compactElementDescription(describeElement(meaningfulTarget)) : undefined,
+			chain
+		},
+		{ scope: "breadcrumb-detail", source: "click" }
+	);
 }
 
 /**
@@ -165,7 +168,7 @@ export function installErrorReportBrowserBreadcrumbs() {
 	const onVisibilityChange = () => {
 		addErrorReportBreadcrumb({
 			type: "visibility",
-			detail: sanitizeDetail({ visibilityState: document.visibilityState })
+			detail: sanitizeDetail({ visibilityState: document.visibilityState }, { scope: "breadcrumb-detail", source: "visibility" })
 		});
 	};
 

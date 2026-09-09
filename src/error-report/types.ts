@@ -4,6 +4,8 @@ export type ErrorReportCategory = "query" | "mutation" | "runtime" | "react";
 
 export type ErrorReportStatus = "pending" | "sending" | "sent" | "failed";
 
+export type ErrorReportPayloadVersion = 1;
+
 export type ErrorReportSafeValue = string | number | boolean | null | ErrorReportSafeValue[] | { [key: string]: ErrorReportSafeValue };
 
 export type ErrorReportErrorInfo = {
@@ -49,7 +51,6 @@ export type ErrorReportMutationDiagnostics = {
 };
 
 export type ErrorReportPersistedQueryDiagnostics = {
-	storageKey: string;
 	buster?: string;
 	queryHash?: string;
 	queryKey?: ErrorReportSafeValue;
@@ -62,6 +63,8 @@ export type ErrorReportPersistedQueryDiagnostics = {
 };
 
 export type ErrorReportPayload = {
+	payloadVersion: ErrorReportPayloadVersion;
+	application: string;
 	reportId: string;
 	sessionId: string;
 	createdUtc: string;
@@ -98,6 +101,12 @@ export type ErrorReportPayload = {
 	persistedQueries?: ErrorReportPersistedQueryDiagnostics[];
 	breadcrumbs: ErrorReportBreadcrumb[];
 	context?: Record<string, ErrorReportSafeValue>;
+	truncation?: {
+		reason: "payload-size";
+		limitBytes: number;
+		originalBytes: number;
+		droppedSections: string[];
+	};
 };
 
 export type ErrorReportDraft = {
@@ -109,6 +118,13 @@ export type ErrorReportDraft = {
 	sentUtc?: string;
 	failedReason?: string;
 	payload: ErrorReportPayload;
+};
+
+/** Единственные поля draft, которые delivery lifecycle вправе изменять. */
+export type ErrorReportDraftLifecyclePatch = {
+	status?: ErrorReportStatus;
+	sentUtc?: string;
+	failedReason?: string;
 };
 
 export type ErrorReportRuntimeContext = {
@@ -131,3 +147,31 @@ export type ErrorReportMutationContext = {
 	errorInfo?: ErrorReportErrorInfo;
 	detail?: Record<string, unknown>;
 };
+
+export type ErrorReportSanitizationScope =
+	| "breadcrumb-detail"
+	| "context"
+	| "draft-failed-reason"
+	| "error-message"
+	| "mutation-key"
+	| "mutation-meta"
+	| "persisted-query-key"
+	| "query-data-shape"
+	| "query-key"
+	| "query-meta"
+	| "stack-trace";
+
+export type ErrorReportSanitizationContext = {
+	scope: ErrorReportSanitizationScope;
+	source?: string;
+};
+
+/**
+ * App-level callback получает уже bounded JSON-совместимое значение и может
+ * применить предметный allow-list. Foundation повторно нормализует результат,
+ * поэтому callback не может обойти ограничения глубины, размера строк и циклов.
+ */
+export type ErrorReportSanitizer = (
+	value: ErrorReportSafeValue,
+	context: ErrorReportSanitizationContext
+) => ErrorReportSafeValue | undefined;

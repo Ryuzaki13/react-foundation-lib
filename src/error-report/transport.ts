@@ -1,9 +1,7 @@
 export type ErrorReportTransportHtmlSummary = {
 	length: number;
-	title?: string;
 	formCount?: number;
 	inputNames?: string[];
-	textPreview?: string;
 };
 
 export type ErrorReportTransportErrorContext = {

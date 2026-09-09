@@ -4,7 +4,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 # Error Report
 
-Модуль `@ryuzaki13/react-foundation-lib/error-report` собирает клиентскую диагностику ошибки в структурированный draft и временно хранит последние drafts в `sessionStorage`.
+Модуль `@ryuzaki13/react-foundation-lib/error-report` собирает клиентскую диагностику ошибки в versioned bounded draft, временно хранит последние drafts в `sessionStorage` и предоставляет durable IndexedDB queue для отложенной доставки.
 
 Он умеет объединить:
 
@@ -15,9 +15,10 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - состояние TanStack Query без полного query data;
 - технические сведения о persisted queries;
 - контекст React/runtime/transport;
-- lifecycle доставки: `pending`, `sending`, `sent`, `failed`.
+- локальный draft lifecycle: `pending`, `sending`, `sent`, `failed`;
+- durable queue с TTL, bounded capacity и атомарным межвкладочным lease.
 
-Важная граница: **lib-пакет не отправляет отчёт на сервер**. Он формирует draft и предоставляет точки подключения. Авторизация, HTTP/API delivery, retry, пользовательское согласие и UI принадлежат приложению либо API-пакету.
+Важная граница: **lib-пакет не отправляет отчёт на сервер**. Он формирует draft, хранит queue и предоставляет атомарные переходы. Авторизация, HTTP/API delivery, retry, пользовательское согласие и UI принадлежат приложению либо API-пакету.
 
 ## Установка
 
@@ -26,15 +27,18 @@ import { Meta } from "@storybook/addon-docs/blocks";
 ```bash
 npm install @ryuzaki13/react-foundation-lib \
   @tanstack/react-query \
-  @tanstack/query-persist-client-core
+  @tanstack/query-persist-client-core \
+  zod
 ```
 
 ```ts
 import {
 	captureRuntimeErrorReport,
+	createErrorReportQueue,
 	createErrorInfo,
 	installErrorReportBrowserBreadcrumbs,
 	setErrorReportRuntimeErrorReporter,
+	setErrorReportSanitizer,
 	type ErrorReportDraft
 } from "@ryuzaki13/react-foundation-lib/error-report";
 ```
@@ -47,7 +51,8 @@ import {
   → нормализация + diagnostics + breadcrumbs
   → ErrorReportDraft(status = pending)
   → sessionStorage, максимум 10 drafts
-  → app/API delivery
+  → enqueue payload в IndexedDB, максимум 50 записей / 7 суток
+  → app/API delivery через lease
   → updateErrorReportDraft(status = sending/sent/failed)
 ```
 
@@ -80,15 +85,15 @@ declare const __APP_ID__: string;
 declare const __APP_BUILD_ID__: string;
 ```
 
-`__APP_ID__` входит в ключи `sessionStorage`, а `__APP_BUILD_ID__` помогает связать ошибку с деплоем.
+`__APP_ID__` входит в payload как `application` и в ключи `sessionStorage`, а `__APP_BUILD_ID__` помогает связать ошибку с деплоем. Приложение обязано использовать устойчивый deployment identifier, а не display name. Например, KTK-приложения используют `ru.education-system` и `ru.ktk-website`.
 
 Пример Vite:
 
 ```ts
 define: {
   __DEV__: JSON.stringify(mode !== "production"),
-  __APP_ID__: JSON.stringify("education-arm"),
-  __APP_BUILD_ID__: JSON.stringify(process.env.BUILD_ID ?? "local"),
+  __APP_ID__: JSON.stringify("ru.education-system"),
+  __APP_BUILD_ID__: JSON.stringify(process.env.GIT_COMMIT_SHA ?? "local"),
 }
 ```
 
@@ -165,7 +170,7 @@ type ErrorReportErrorInfo = {
 };
 ```
 
-Для обычного `Error` сохраняются `name`, непустой `message` и полный `stack`.
+Для обычного `Error` сохраняются `name`, непустой `message` и `stack` до 64 KiB.
 
 ```ts
 createErrorInfo(new Error("Не удалось сохранить"));
@@ -189,16 +194,34 @@ createErrorInfo(new Error("Не удалось сохранить"));
 - максимальная глубина — 4;
 - максимум 20 элементов массива;
 - максимум 40 ключей объекта;
+- строка — не более 4096 символов;
 - `undefined`, function, symbol и усечённая ветка получают специальные объекты `{ type: ... }`;
+- циклическая ссылка получает `{ type: "circular" }`;
 - `bigint` превращается в строку;
 - `Date` — в ISO-строку.
+- известные secret-like keys (`authorization`, `cookie`, `password`, `token`, `secret`, CSRF/API keys) получают `[REDACTED]`;
+- email в свободной строке заменяется на `[REDACTED_EMAIL]`;
+- значения полей с именем `*Url` сохраняются без search/hash.
 
 ```ts
 createDiagnosticValue({ retry: 2, handler: () => undefined });
 // { retry: 2, handler: { type: "function" } }
 ```
 
-Критически важно: функция **не скрывает значения по имени ключа**. Поля `token`, `password`, `authorization`, email и другие секреты сохранятся, если их передать. Это ограничитель размера и типа, а не security sanitizer.
+Built-in redaction является страховочной сеткой и не распознаёт ФИО, телефоны и все предметные идентификаторы. Он не заменяет app-level allow-list.
+
+### `setErrorReportSanitizer(sanitizer?)`
+
+Регистрирует единственный sanitizer приложения для error message/stack, delivery failure reason, query/mutation keys, meta, context, data shape и breadcrumb detail. Callback получает уже bounded `ErrorReportSafeValue` и scope, возвращает разрешённое значение либо `undefined`, чтобы удалить секцию. Результат повторно нормализуется foundation-ограничителями.
+
+```ts
+setErrorReportSanitizer((value, context) => {
+	if (context.scope !== "context" || !value || Array.isArray(value) || typeof value !== "object") return value;
+	return "operation" in value ? { operation: value.operation } : undefined;
+});
+```
+
+Callback должен быть чистым и идемпотентным: capture может повторно применить его к уже подготовленной секции перед storage write. Если callback бросает исключение, рискованная секция удаляется. При teardown/hot reload вызовите `setErrorReportSanitizer(undefined)`.
 
 ### `sanitizeDetail(detail)`
 
@@ -260,7 +283,7 @@ getErrorReportBreadcrumbs();
 clearErrorReportBreadcrumbs();
 ```
 
-Возвращаемый массив является текущим внутренним массивом, а не глубокой копией. Считайте его readonly и не меняйте элементы вручную.
+Возвращаемый массив является shallow copy. Вложенные элементы считайте readonly и не меняйте вручную.
 
 ### Автоматические browser breadcrumbs
 
@@ -276,9 +299,9 @@ uninstallBreadcrumbs();
 - click в capture phase;
 - `document.visibilitychange`.
 
-Для click сохраняются координаты/модификаторы и ограниченное описание meaningful target: tag, стабильные атрибуты, короткий текст и цепочка родителей. Глубина DOM-цепочки ограничена 20, текст — 80 символами, атрибут — 120.
+Для click сохраняются координаты/модификаторы и ограниченное техническое описание meaningful target: tag, role, input type и цепочка родителей. Приложение может явно добавить slug-like `data-error-report-target`, например `student-save`. Глубина DOM-цепочки ограничена 20, атрибут — 120 символами.
 
-Код не читает `input.value` и не копирует CSS class list, но текст/ARIA/title/data-атрибуты тоже могут содержать чувствительные данные. Не помещайте секреты в DOM-атрибуты и UI-текст.
+Код не читает `input.value`, DOM text, `id`, `title`, `aria-*`, CSS classes, `data-ui`, `data-action` и произвольные `data-*`. Значение `data-error-report-target` принимается только из латинских букв, цифр и символов `._:/-`; свободный текст в него помещать нельзя.
 
 На сервере установщик возвращает пустую cleanup-функцию.
 
@@ -288,7 +311,7 @@ uninstallBreadcrumbs();
 
 Собирает:
 
-- `queryHash` и диагностическое представление `queryKey`;
+- безопасный hash уже очищенного query key и его диагностическое представление;
 - status/fetchStatus;
 - timestamps обновления data/error;
 - failure count, invalidation и observer count;
@@ -296,7 +319,7 @@ uninstallBreadcrumbs();
 - `dataShape` вместо data;
 - нормализованную query error.
 
-Значения `queryKey` и `meta` сохраняются. Если туда попал token или персональный идентификатор, он попадёт в отчёт. Проектируйте query keys как диагностически безопасный контракт.
+Значения `queryKey` и `meta` проходят built-in redaction и app sanitizer. Предметные персональные идентификаторы всё равно должны удаляться policy приложения.
 
 ### `collectMutationDiagnostics(mutation)`
 
@@ -310,7 +333,7 @@ uninstallBreadcrumbs();
 
 Асинхронно читает IndexedDB persistence из `/query-client` и возвращает максимум 40 записей.
 
-Сохраняются storage key, buster, query hash/key, statuses, timestamps, failure count и error. `state.data` намеренно исключён полностью.
+Сохраняются buster, безопасный hash/key, statuses, timestamps, failure count и error. IndexedDB storage key и `state.data` намеренно исключены полностью.
 
 Если IndexedDB/persistence недоступны или чтение бросает ошибку, возвращается пустой массив — сбор отчёта не падает.
 
@@ -349,7 +372,7 @@ const draft = await captureQueryErrorReport(error, query, queryClient, {
 const draft = await captureMutationErrorReport(error, mutation, queryClient, { source: "save-order", detail: { form: "order-edit" } });
 ```
 
-Текущая реализация включает `detail` в breadcrumb, но не переносит его в `payload.context` mutation draft. Если этот контекст критичен для доставки, добавьте безопасные данные в app-level envelope либо используйте явную согласованную модель до capture.
+Текущая реализация включает очищенный `detail` и в breadcrumb, и в `payload.context` mutation draft.
 
 ## Capture runtime/React-ошибки
 
@@ -395,13 +418,95 @@ type ErrorReportDraft = {
 
 Payload содержит category/source/error, build environment, client, location, viewport, breadcrumbs и optional секции query/mutation/react/context.
 
+`ErrorReportPayload` содержит обязательные `payloadVersion: 1` и `application`. Runtime parser принимает только текущую версию; unversioned и будущие формы не интерпретируются эвристически.
+
+### Runtime parsing
+
+```ts
+parseErrorReportPayload(value);
+parseErrorReportDraft(value);
+parseErrorReportDrafts(value);
+```
+
+Первые две функции возвращают текущий typed contract либо `undefined`. Parser массива независимо отбрасывает повреждённые элементы, сохраняя соседние валидные drafts. Дополнительно проверяется совпадение identity полей draft и payload и фактический размер payload.
+
+### Bounded payload
+
+`limitErrorReportPayload(payload)` сначала повторно применяет sanitization, затем проверяет UTF-8 размер `JSON.stringify`. Предел — `ERROR_REPORT_PAYLOAD_MAX_BYTES` (256 KiB). При превышении optional diagnostics удаляются в фиксированном порядке, а `payload.truncation` фиксирует исходный размер, limit и список удалённых секций. `getErrorReportPayloadSize(payload)` возвращает фактический сериализованный размер в байтах.
+
 ### Хранение
 
-Drafts сохраняются под ключом `${__APP_ID__}.errorReport.drafts.v1`. В одной вкладке остаются последние 10 элементов. Старые удаляются с начала массива.
+Versioned drafts сохраняются под ключом `${__APP_ID__}.errorReport.drafts.v2`. В одной вкладке остаются последние 10 элементов. Старые удаляются с начала массива. Предыдущая unversioned storage-форма не загружается.
 
 Storage errors и некорректный JSON подавляются. При переполнении sessionStorage текущее in-memory состояние обновится, но запись на диск может не сохраниться.
 
 Модуль загружает drafts при первом импорте. Это модульное состояние, общее для всех consumers одного bundle.
+
+## Durable IndexedDB queue
+
+`sessionStorage` draft остаётся кратким диагностическим lifecycle текущей вкладки. Надёжную отложенную доставку обеспечивает отдельная queue:
+
+```ts
+const queue = createErrorReportQueue();
+if (!queue) {
+	// IndexedDB отсутствует: app фиксирует безопасную деградацию без рекурсии report flow.
+	return;
+}
+
+const draft = await captureRuntimeErrorReport(error, context, queryClient);
+if (draft) {
+	await queue.enqueue(draft.payload);
+}
+```
+
+Создание возвращает `undefined`, когда IndexedDB недоступен. Ошибки открывания, quota и транзакций не поглощаются: coordinator обязан отделить storage failure от исходной пользовательской ошибки и применить безопасную recovery policy.
+
+### Storage schema и limits
+
+- база: `${__APP_ID__}.error-report.queue.v1`;
+- object store: `records`;
+- атомарная envelope-запись: `queue.v1`;
+- queue schema: `queueVersion: 1`;
+- максимум: 50 записей;
+- TTL каждой записи: 7 суток от `enqueue`, независимо от client `createdUtc`;
+- lease по умолчанию: 30 секунд.
+
+Одна bounded envelope используется намеренно: `createIndexedDbQueryStorage.updateItem` изменяет её в одной `readwrite` транзакции, поэтому две вкладки не могут одновременно получить один report. Payload уже ограничен 256 KiB, а число записей — 50; отдельная база не смешивается с persisted Query cache.
+
+При заполнении удаляется самый старый отчёт без активного lease, чтобы сохранить более свежую диагностику. Активные leases не вытесняются; если все 50 записей leased, `enqueue` возвращает `capacity-exceeded`. Повторный `reportId` возвращает `duplicate` и не заменяет сохранённый payload.
+
+### Lease flow
+
+```ts
+const lease = await queue.leaseNext({ ownerId: tabId });
+if (!lease) return;
+
+try {
+	await deliver(lease.payload);
+	await queue.acknowledge(lease.reportId, tabId);
+} catch {
+	await queue.reschedule(lease.reportId, tabId, {
+		nextAttemptUtc,
+		failure: { utc: new Date().toISOString(), kind: "network" }
+	});
+}
+```
+
+`acknowledge`, `reschedule` и `discard` изменяют запись только при совпадении `ownerId`. После crash/закрытия вкладки lease автоматически снова становится доступным по `expiresUtc`. Если server принял отчёт, а acknowledgement потерялся, клиент повторит тот же `reportId`; backend обязан быть идемпотентным.
+
+`lastFailure` хранит только технический класс, UTC и optional HTTP status. Текст transport error не попадает в durable storage.
+
+### Queue API
+
+- `enqueue(payload, now?)` — runtime-валидирует payload, удаляет expired и добавляет запись;
+- `leaseNext({ ownerId, now?, leaseDurationMs? })` — атомарно выбирает ближайшую due-запись;
+- `acknowledge(reportId, ownerId)` — удаляет подтверждённую запись;
+- `reschedule(reportId, ownerId, retry)` — снимает lease и задаёт следующую попытку;
+- `discard(reportId, ownerId)` — удаляет terminal-запись;
+- `getRecords(now?)` — bounded диагностический snapshot;
+- `getNextWakeUtc(now?)` — ближайшее due/lease-expiry время для scheduler-а.
+
+Queue не использует `navigator.onLine` как источник истины и не владеет timer/event lifecycle. Этим занимается delivery coordinator из `@ryuzaki13/react-foundation-api/error-report`.
 
 ## Низкоуровневый `captureErrorReportDraft(args)`
 
@@ -445,7 +550,7 @@ try {
 }
 ```
 
-Для неизвестного ID update возвращает `undefined`. Обновление поверхностное и принимает `Partial<ErrorReportDraft>`: библиотека не проверяет разрешённые переходы статусов. App delivery обязан не менять `reportId`, payload и другие identity-поля без необходимости.
+Для неизвестного ID update возвращает `undefined`. Функция принимает только lifecycle-поля `status`, `sentUtc`, `failedReason`; identity и payload изменить через неё нельзя. Runtime parser повторно проверяет draft, а свободный текст причины ограничивается и очищается перед storage write. Семантику разрешённых переходов статусов задаст delivery coordinator.
 
 ## Environment API
 
@@ -486,7 +591,7 @@ setErrorReportTransportErrorReporter(async (error, context) => {
 
 ### `reportTransportError(error, context)`
 
-Context имеет source `fetch.parseResponse` или `fetch.buildHttpError` и может содержать URL, method, SAP client, status/content type, redirect/response type и безопасное summary HTML-response.
+Context имеет source `fetch.parseResponse` или `fetch.buildHttpError` и может содержать URL, method, SAP client, status/content type, redirect/response type и только техническое summary HTML-response. HTML title и text preview больше не входят в контракт, потому что являются содержимым response body.
 
 Вызов планирует reporter через 250 мс. Задержка позволяет TanStack Query перехватить тот же `Error` и создать более полезный query/mutation report.
 
@@ -550,11 +655,10 @@ export function installErrorReporting(queryClient: QueryClient) {
 - queryKey и mutationKey;
 - query/mutation meta;
 - `context.detail`;
-- URL и pathname;
+- pathname без search/hash;
 - error message/stack;
-- UI text, ARIA/title/data attributes breadcrumbs;
+- app-provided context, если policy ошибочно разрешила предметные данные;
 - user agent, language, timezone;
-- имена persisted storage keys.
 
 Поэтому:
 
@@ -570,11 +674,11 @@ export function installErrorReporting(queryClient: QueryClient) {
 
 ### Ожидать автоматическую отправку
 
-Capture только создаёт draft. Delivery нужно явно подключить.
+Capture только создаёт draft. Приложение должно enqueue-ить его payload и один раз запустить API coordinator в client lifecycle.
 
-### Использовать `createDiagnosticValue` как redactor
+### Считать built-in redaction полной privacy policy
 
-Он ограничивает размер, но сохраняет значения независимо от имени поля.
+Foundation удаляет известные secret-like keys и email, но не умеет надёжно распознавать ФИО, телефоны и предметные IDs. Настройте app sanitizer по allow-list.
 
 ### Вызывать production capture в development и ждать draft
 
@@ -602,7 +706,9 @@ Capture только создаёт draft. Delivery нужно явно подк
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Capture          | `captureQueryErrorReport`, `captureMutationErrorReport`, `captureRuntimeErrorReport`, `captureErrorReportDraft`                   |
 | Errors           | `createErrorInfo`                                                                                                                 |
-| Safe values      | `createDiagnosticValue`, `createDataShape`, `sanitizeDetail`                                                                      |
+| Safe values      | `createDiagnosticValue`, `createDataShape`, `sanitizeDetail`, `sanitizeErrorReportValue`, `setErrorReportSanitizer`               |
+| Payload contract | `ERROR_REPORT_PAYLOAD_VERSION`, `ERROR_REPORT_PAYLOAD_MAX_BYTES`, `limitErrorReportPayload`, `getErrorReportPayloadSize`, parsers |
+| Durable queue    | `createErrorReportQueue`, queue limits, record/parser и atomic lease transitions                                                  |
 | Breadcrumbs      | `addErrorReportBreadcrumb`, `getErrorReportBreadcrumbs`, `clearErrorReportBreadcrumbs`, `installErrorReportBrowserBreadcrumbs`    |
 | Diagnostics      | `collectQueryDiagnostics`, `collectMutationDiagnostics`, `collectQueryClientDiagnostics`, `collectPersistedQueryDiagnostics`      |
 | Drafts           | `getErrorReportDraft`, `getErrorReportDrafts`, `updateErrorReportDraft`                                                           |

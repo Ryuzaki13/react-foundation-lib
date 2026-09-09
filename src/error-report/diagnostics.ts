@@ -1,10 +1,12 @@
 import { type PersistedQuery } from "@tanstack/query-persist-client-core";
 import { type MutationKey, type MutationState, type QueryClient, type QueryKey, type QueryState } from "@tanstack/react-query";
 
+import { hashString128 } from "../crypto";
 import { createIndexedDbQueryStorage } from "../query-client";
+import { stableStringify } from "../utils";
 
 import { createErrorInfo } from "./errorInfo";
-import { createDataShape, createDiagnosticValue, sanitizeDetail } from "./safeValue";
+import { createDataShape, sanitizeDetail, sanitizeDiagnosticText, sanitizeErrorReportValue } from "./safeValue";
 import {
 	type ErrorReportMutationDiagnostics,
 	type ErrorReportPersistedQueryDiagnostics,
@@ -32,14 +34,21 @@ const MAX_QUERY_DIAGNOSTICS = 40;
 const MAX_MUTATION_DIAGNOSTICS = 40;
 const MAX_PERSISTED_QUERY_DIAGNOSTICS = 40;
 
-function sanitizeMeta(meta: Record<string, unknown> | undefined): Record<string, ErrorReportSafeValue> | undefined {
-	return sanitizeDetail(meta);
+function sanitizeMeta(
+	meta: Record<string, unknown> | undefined,
+	scope: "mutation-meta" | "query-meta",
+	source?: string
+): Record<string, ErrorReportSafeValue> | undefined {
+	return sanitizeDetail(meta, { scope, source });
 }
 
 export function collectQueryDiagnostics(query: QueryDiagnosticSource): ErrorReportQueryDiagnostics {
+	const queryKey = sanitizeErrorReportValue(query.queryKey, { scope: "query-key" }) ?? { type: "redacted" };
+	const queryHash = hashString128(stableStringify(queryKey));
+
 	return {
-		queryHash: query.queryHash,
-		queryKey: createDiagnosticValue(query.queryKey),
+		queryHash,
+		queryKey,
 		status: query.state.status,
 		fetchStatus: query.state.fetchStatus,
 		dataUpdatedAt: query.state.dataUpdatedAt,
@@ -47,19 +56,24 @@ export function collectQueryDiagnostics(query: QueryDiagnosticSource): ErrorRepo
 		failureCount: query.state.fetchFailureCount,
 		isInvalidated: query.state.isInvalidated,
 		observersCount: query.getObserversCount(),
-		meta: sanitizeMeta(query.meta),
-		dataShape: createDataShape(query.state.data),
+		meta: sanitizeMeta(query.meta, "query-meta", queryHash),
+		dataShape: sanitizeErrorReportValue(createDataShape(query.state.data), {
+			scope: "query-data-shape",
+			source: queryHash
+		}),
 		error: query.state.error ? createErrorInfo(query.state.error) : undefined
 	};
 }
 
 export function collectMutationDiagnostics(mutation: MutationDiagnosticSource): ErrorReportMutationDiagnostics {
 	return {
-		mutationKey: mutation.options.mutationKey ? createDiagnosticValue(mutation.options.mutationKey) : undefined,
+		mutationKey: mutation.options.mutationKey
+			? sanitizeErrorReportValue(mutation.options.mutationKey, { scope: "mutation-key" })
+			: undefined,
 		status: mutation.state.status,
 		failureCount: mutation.state.failureCount,
 		submittedAt: mutation.state.submittedAt,
-		meta: sanitizeMeta(mutation.meta),
+		meta: sanitizeMeta(mutation.meta, "mutation-meta"),
 		error: mutation.state.error ? createErrorInfo(mutation.state.error) : undefined
 	};
 }
@@ -71,14 +85,15 @@ export function collectQueryClientDiagnostics(queryClient: QueryClient) {
 	};
 }
 
-function collectPersistedStateDiagnostics(storageKey: string, persistedQuery: PersistedQuery): ErrorReportPersistedQueryDiagnostics {
+function collectPersistedStateDiagnostics(persistedQuery: PersistedQuery): ErrorReportPersistedQueryDiagnostics {
 	const state = persistedQuery.state;
+	const queryKey = sanitizeErrorReportValue(persistedQuery.queryKey, { scope: "persisted-query-key" });
+	const queryHash = queryKey ? hashString128(stableStringify(queryKey)) : undefined;
 
 	return {
-		storageKey,
-		buster: persistedQuery.buster,
-		queryHash: persistedQuery.queryHash,
-		queryKey: createDiagnosticValue(persistedQuery.queryKey),
+		buster: persistedQuery.buster ? sanitizeDiagnosticText(persistedQuery.buster, 512) : undefined,
+		queryHash,
+		queryKey,
 		status: state.status,
 		fetchStatus: state.fetchStatus,
 		dataUpdatedAt: state.dataUpdatedAt,
@@ -100,7 +115,7 @@ export async function collectPersistedQueryDiagnostics(): Promise<ErrorReportPer
 		const entries = await storage.entries();
 		return entries
 			.slice(-MAX_PERSISTED_QUERY_DIAGNOSTICS)
-			.map(([storageKey, persistedQuery]) => collectPersistedStateDiagnostics(storageKey, persistedQuery));
+			.map(([, persistedQuery]) => collectPersistedStateDiagnostics(persistedQuery));
 	} catch {
 		return [];
 	}

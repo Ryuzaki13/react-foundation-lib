@@ -4,10 +4,20 @@ import { getSessionStorageId } from "../session-storage";
 
 import { getErrorReportBreadcrumbs } from "./breadcrumbs";
 import { getErrorReportClientEnvironment, getErrorReportEnvironment, isErrorReportingEnabled } from "./environment";
+import { ERROR_REPORT_PAYLOAD_VERSION, limitErrorReportPayload } from "./payload";
+import { sanitizeDetail, sanitizeDiagnosticText, sanitizeErrorReportValue } from "./safeValue";
+import { parseErrorReportDraft, parseErrorReportDrafts } from "./schema";
 
-import type { ErrorReportCategory, ErrorReportDraft, ErrorReportErrorInfo, ErrorReportPayload, ErrorReportSafeValue } from "./types";
+import type {
+	ErrorReportCategory,
+	ErrorReportDraft,
+	ErrorReportDraftLifecyclePatch,
+	ErrorReportErrorInfo,
+	ErrorReportPayload,
+	ErrorReportSafeValue
+} from "./types";
 
-const STORAGE_KEY = `${__APP_ID__}.errorReport.drafts.v1`;
+const STORAGE_KEY = `${__APP_ID__}.errorReport.drafts.v2`;
 const SESSION_STORAGE_KEY = `${__APP_ID__}.errorReport.sessionId.v1`;
 const MAX_DRAFTS = 10;
 
@@ -22,8 +32,7 @@ function loadDrafts(): ErrorReportDraft[] {
 
 	try {
 		const raw = sessionStorage.getItem(STORAGE_KEY);
-		const parsed = raw ? JSON.parse(raw) : [];
-		return Array.isArray(parsed) ? (parsed as ErrorReportDraft[]) : [];
+		return parseErrorReportDrafts(raw ? JSON.parse(raw) : []);
 	} catch {
 		return [];
 	}
@@ -59,17 +68,31 @@ function getViewportSnapshot() {
 	};
 }
 
+function sanitizeFailedReason(value: string | undefined) {
+	if (!value) return undefined;
+	const sanitizedValue = sanitizeErrorReportValue(value, { scope: "draft-failed-reason", source: "delivery" });
+	return typeof sanitizedValue === "string" ? sanitizedValue : undefined;
+}
+
 export function getErrorReportDraft(reportId: string) {
 	return drafts.find((draft) => draft.reportId === reportId);
 }
 
-export function updateErrorReportDraft(reportId: string, patch: Partial<ErrorReportDraft>) {
+export function updateErrorReportDraft(reportId: string, patch: ErrorReportDraftLifecyclePatch) {
 	const current = getErrorReportDraft(reportId);
 	if (!current) return undefined;
 
-	const next = { ...current, ...patch };
-	saveDrafts(drafts.map((draft) => (draft.reportId === reportId ? next : draft)));
-	return next;
+	const next = {
+		...current,
+		...patch,
+		sentUtc: "sentUtc" in patch ? (patch.sentUtc ? sanitizeDiagnosticText(patch.sentUtc, 64) : undefined) : current.sentUtc,
+		failedReason: "failedReason" in patch ? sanitizeFailedReason(patch.failedReason) : current.failedReason
+	};
+	const parsed = parseErrorReportDraft(next);
+	if (!parsed) return undefined;
+
+	saveDrafts(drafts.map((draft) => (draft.reportId === reportId ? parsed : draft)));
+	return parsed;
 }
 
 export function getErrorReportDrafts() {
@@ -92,12 +115,14 @@ export function captureErrorReportDraft(args: {
 	const reportId = uuidv4();
 	const sessionId = getSessionStorageId(SESSION_STORAGE_KEY);
 	const createdUtc = nowUtc();
-	const payload: ErrorReportPayload = {
+	const payload = limitErrorReportPayload({
+		payloadVersion: ERROR_REPORT_PAYLOAD_VERSION,
+		application: __APP_ID__,
 		reportId,
 		sessionId,
 		createdUtc,
 		category: args.category,
-		source: args.source,
+		source: sanitizeDiagnosticText(args.source, 256),
 		error: args.error,
 		environment: getErrorReportEnvironment(),
 		client: getErrorReportClientEnvironment(),
@@ -109,8 +134,8 @@ export function captureErrorReportDraft(args: {
 		queryClient: args.queryClient,
 		persistedQueries: args.persistedQueries,
 		breadcrumbs: getErrorReportBreadcrumbs(),
-		context: args.context
-	};
+		context: sanitizeDetail(args.context, { scope: "context", source: args.source })
+	} satisfies ErrorReportPayload);
 	const draft: ErrorReportDraft = {
 		reportId,
 		sessionId,
@@ -119,7 +144,9 @@ export function captureErrorReportDraft(args: {
 		status: "pending",
 		payload
 	};
+	const parsed = parseErrorReportDraft(draft);
+	if (!parsed) return undefined;
 
-	saveDrafts([...drafts, draft]);
-	return draft;
+	saveDrafts([...drafts, parsed]);
+	return parsed;
 }

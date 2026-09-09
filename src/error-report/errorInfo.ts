@@ -1,5 +1,8 @@
 import { normalizeText } from "../formatters";
 
+import { ERROR_REPORT_STACK_TRACE_MAX_BYTES } from "./payload";
+import { sanitizeDiagnosticText, sanitizeDiagnosticTextBytes } from "./safeValue";
+
 import type { ErrorReportErrorInfo } from "./types";
 
 const DEFAULT_ERROR_MESSAGE = "Неизвестная ошибка";
@@ -9,7 +12,7 @@ const DEFAULT_ERROR_MESSAGE = "Неизвестная ошибка";
  * Fallback нужен для Error без message и для брошенных пустых строк.
  */
 function resolveErrorMessage(message: string) {
-	return normalizeText(message) ? message : DEFAULT_ERROR_MESSAGE;
+	return normalizeText(message) ? sanitizeDiagnosticText(message) : DEFAULT_ERROR_MESSAGE;
 }
 
 function readStatus(value: Record<string, unknown>) {
@@ -36,8 +39,8 @@ function readServerFnTransportErrorInfo(error: unknown): ErrorReportErrorInfo | 
 
 	return {
 		name: "AppError",
-		message,
-		code: normalizeText(payload.code),
+		message: sanitizeDiagnosticText(message),
+		code: normalizeText(payload.code) ? sanitizeDiagnosticText(String(payload.code), 128) : undefined,
 		httpStatus: readStatus(payload)
 	};
 }
@@ -54,18 +57,21 @@ export function createErrorInfo(error: unknown): ErrorReportErrorInfo {
 
 	if (error instanceof Error) {
 		return {
-			name: error.name || "Error",
+			name: sanitizeDiagnosticText(error.name || "Error", 256),
 			message: resolveErrorMessage(error.message),
-			stackTrace: error.stack
+			stackTrace: error.stack ? sanitizeDiagnosticTextBytes(error.stack, ERROR_REPORT_STACK_TRACE_MAX_BYTES) : undefined
 		};
 	}
 
 	if (error && typeof error === "object") {
 		const record = error as Record<string, unknown>;
 		return {
-			name: typeof record.name === "string" ? record.name : "Error",
+			name: sanitizeDiagnosticText(typeof record.name === "string" ? record.name : "Error", 256),
 			message: resolveErrorMessage(typeof record.message === "string" ? record.message : String(error)),
-			stackTrace: typeof record.stack === "string" ? record.stack : undefined,
+			stackTrace:
+				typeof record.stack === "string"
+					? sanitizeDiagnosticTextBytes(record.stack, ERROR_REPORT_STACK_TRACE_MAX_BYTES)
+					: undefined,
 			httpStatus: readStatus(record)
 		};
 	}

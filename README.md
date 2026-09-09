@@ -680,13 +680,15 @@ Service worker runtime helpers живут в [`pwa/serviceWorker.ts`](./src/pwa/
 | `addErrorReportBreadcrumb`, `getErrorReportBreadcrumbs`, `clearErrorReportBreadcrumbs`, `installErrorReportBrowserBreadcrumbs`                                                                | Breadcrumb trail.                                             |
 | `captureQueryErrorReport`, `captureMutationErrorReport`, `captureRuntimeErrorReport`                                                                                                          | Создание report payload.                                      |
 | `collectQueryDiagnostics`, `collectMutationDiagnostics`, `collectQueryClientDiagnostics`, `collectPersistedQueryDiagnostics`                                                                  | Диагностика без тяжелых query data.                           |
-| `createDiagnosticValue`, `createDataShape`, `sanitizeDetail`                                                                                                                                  | Safe JSON-compatible формы с отсечением секретов и глубины.   |
+| `createDiagnosticValue`, `createDataShape`, `sanitizeDetail`, `sanitizeErrorReportValue`, `setErrorReportSanitizer`                                                                           | Bounded JSON-формы, built-in redaction и app privacy policy.  |
+| `ERROR_REPORT_PAYLOAD_VERSION`, `ERROR_REPORT_PAYLOAD_MAX_BYTES`, `limitErrorReportPayload`, `getErrorReportPayloadSize`, runtime parsers                                                     | Versioned payload contract и deterministic size limit.        |
+| `createErrorReportQueue`, queue limits, record parser и lease transitions                                                                                                                     | Durable IndexedDB queue с атомарным межвкладочным lease.      |
 | `getErrorReportDraft`, `updateErrorReportDraft`, `getErrorReportDrafts`, `captureErrorReportDraft`                                                                                            | Draft-хранилище отчетов.                                      |
-| `setErrorReportingDeliveryMode`, `getErrorReportingDeliveryMode`, `isErrorReportingEnabled`, `getErrorReportEnvironment`                                                                      | Environment/delivery config.                                  |
+| `isErrorReportingEnabled`, `getErrorReportEnvironment`, `getErrorReportClientEnvironment`                                                                                                     | Browser/build environment contract.                           |
 | `createErrorInfo`                                                                                                                                                                             | Нормализация unknown error в безопасный `message/name/stack`. |
 | `setErrorReportRuntimeErrorReporter`, `reportRuntimeError`, `setErrorReportTransportErrorReporter`, `isTransportErrorReportScheduled`, `suppressTransportErrorReport`, `reportTransportError` | Интеграционные точки runtime/transport reporting.             |
 
-Тесты: [`missingContextError.test.ts`](./src/error/missingContextError.test.ts), [`errorReport.test.ts`](./src/error-report/errorReport.test.ts), [`breadcrumbs.test.ts`](./src/error-report/breadcrumbs.test.ts).
+Тесты: [`missingContextError.test.ts`](./src/error/missingContextError.test.ts), [`errorReport.test.ts`](./src/error-report/errorReport.test.ts), [`breadcrumbs.test.ts`](./src/error-report/breadcrumbs.test.ts), [`queue.test.ts`](./src/error-report/queue.test.ts).
 
 ## Низкоуровневые helpers
 

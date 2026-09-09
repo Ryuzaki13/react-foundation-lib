@@ -20,7 +20,7 @@ describe("error-report breadcrumbs", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("сохраняет только техническую HTML-цепочку и явный безопасный target", () => {
+	it("предпочитает явный безопасный target прежним техническим атрибутам", () => {
 		const dispose = installErrorReportBrowserBreadcrumbs();
 		const container = document.createElement("section");
 		container.id = "toolbar";
@@ -36,7 +36,7 @@ describe("error-report breadcrumbs", () => {
 				data-error-report-target="send-error-report"
 				class="_sendButton_x9y8z globalAction"
 			>
-				<span class="_label_qwert">Отправить</span>
+				<span data-ui="nested-label" data-action="nested-action" class="_label_qwert">Отправить</span>
 			</button>
 		`;
 		document.body.append(container);
@@ -74,6 +74,51 @@ describe("error-report breadcrumbs", () => {
 		expect(chain[1]).toMatchObject({ tag: "section" });
 		expect(chain[1]?.classes).toBeUndefined();
 		expect(chain[1]?.stableClasses).toBeUndefined();
+	});
+
+	it("использует data-ui и data-action как fallback без явного target", () => {
+		const dispose = installErrorReportBrowserBreadcrumbs();
+		const container = document.createElement("section");
+		container.innerHTML = `
+			<div data-ui="filter-panel-apply" data-action="apply-filters">
+				<span>Применить фильтры пользователя user@example.com</span>
+			</div>
+		`;
+		document.body.append(container);
+
+		container.querySelector("span")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+		dispose();
+
+		const [breadcrumb] = getErrorReportBreadcrumbs();
+		expect(breadcrumb?.target).toContain('div[data-ui="filter-panel-apply"][data-action="apply-filters"]');
+		expect(breadcrumb?.detail).toMatchObject({
+			target: {
+				tag: "div",
+				dataUi: "filter-panel-apply",
+				dataAction: "apply-filters"
+			}
+		});
+		expect(JSON.stringify(breadcrumb)).not.toContain("user@example.com");
+		expect(JSON.stringify(breadcrumb)).not.toContain("Применить фильтры пользователя");
+	});
+
+	it("отбрасывает свободные fallback-значения и сохраняет только slug-like атрибуты", () => {
+		const dispose = installErrorReportBrowserBreadcrumbs();
+		const button = document.createElement("button");
+		button.dataset.errorReportTarget = "Профиль пользователя 123456";
+		button.dataset.ui = "Профиль пользователя 123456";
+		button.dataset.action = "open-profile";
+		document.body.append(button);
+
+		button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+		dispose();
+
+		const [breadcrumb] = getErrorReportBreadcrumbs();
+		expect(breadcrumb?.target).toContain('button[data-action="open-profile"]');
+		expect(breadcrumb?.target).not.toContain("data-ui");
+		expect(JSON.stringify(breadcrumb)).not.toContain("123456");
 	});
 
 	it("очищает route search/hash и не отдаёт наружу сам массив breadcrumbs", () => {

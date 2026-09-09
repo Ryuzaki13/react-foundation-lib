@@ -7,7 +7,7 @@ import type { ErrorReportBreadcrumb } from "./types";
 const MAX_BREADCRUMBS = 80;
 const MAX_ELEMENT_CHAIN = 20;
 const MAX_ATTRIBUTE_LENGTH = 120;
-const CLICK_TARGET_SELECTOR = ["button", "a", "input", "select", "textarea", "[role]", "[data-error-report-target]"].join(",");
+const INTERACTIVE_CLICK_TARGET_SELECTOR = ["button", "a", "input", "select", "textarea", "[role]"].join(",");
 const SAFE_TARGET_VALUE = /^[a-z0-9][a-z0-9._:/-]*$/i;
 
 let breadcrumbs: ErrorReportBreadcrumb[] = [];
@@ -59,10 +59,16 @@ function readTechnicalAttribute(element: Element, name: string) {
 }
 
 function readTechnicalAttributes(element: Element) {
+	const errorReportTarget = readSafeTargetValue(element);
+
+	// Специализированный маркер однозначно переопределяет прежнюю host-разметку.
+	// Fallback сохраняет уже внедрённые data-ui/data-action без возврата к DOM text.
 	return {
 		role: readTechnicalAttribute(element, "role"),
 		type: readTechnicalAttribute(element, "type"),
-		errorReportTarget: readSafeTargetValue(element)
+		errorReportTarget,
+		dataUi: errorReportTarget ? undefined : readTechnicalAttribute(element, "data-ui"),
+		dataAction: errorReportTarget ? undefined : readTechnicalAttribute(element, "data-action")
 	};
 }
 
@@ -82,6 +88,9 @@ function buildElementSelector(element: Element) {
 	if (attrs.type) parts.push(`[type="${attrs.type}"]`);
 	if (attrs.errorReportTarget) {
 		parts.push(`[data-error-report-target="${escapeSelectorPart(attrs.errorReportTarget)}"]`);
+	} else {
+		if (attrs.dataUi) parts.push(`[data-ui="${escapeSelectorPart(attrs.dataUi)}"]`);
+		if (attrs.dataAction) parts.push(`[data-action="${escapeSelectorPart(attrs.dataAction)}"]`);
 	}
 
 	return parts.join("");
@@ -117,7 +126,18 @@ function getClickElementChain(target: Element) {
 }
 
 function findMeaningfulClickTarget(target: Element) {
-	return target.closest(CLICK_TARGET_SELECTOR) ?? target;
+	const chain = getClickElementChain(target);
+	const explicitTarget = chain.find((element) => readSafeTargetValue(element));
+	if (explicitTarget) return explicitTarget;
+
+	return (
+		chain.find(
+			(element) =>
+				element.matches(INTERACTIVE_CLICK_TARGET_SELECTOR) ||
+				readTechnicalAttribute(element, "data-action") !== undefined ||
+				readTechnicalAttribute(element, "data-ui") !== undefined
+		) ?? target
+	);
 }
 
 function describeClickTarget(target: EventTarget | null) {

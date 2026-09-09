@@ -299,9 +299,9 @@ uninstallBreadcrumbs();
 - click в capture phase;
 - `document.visibilitychange`.
 
-Для click сохраняются координаты/модификаторы и ограниченное техническое описание meaningful target: tag, role, input type и цепочка родителей. Приложение может явно добавить slug-like `data-error-report-target`, например `student-save`. Глубина DOM-цепочки ограничена 20, атрибут — 120 символами.
+Для click сохраняются координаты/модификаторы и ограниченное техническое описание meaningful target: tag, role, input type и цепочка родителей. Приложение может явно добавить slug-like `data-error-report-target`, например `student-save`. Если этот атрибут отсутствует или не проходит проверку, breadcrumbs используют уже распространённые в host-проектах `data-ui` и `data-action` как fallback. Глубина DOM-цепочки ограничена 20, каждый атрибут — 120 символами.
 
-Код не читает `input.value`, DOM text, `id`, `title`, `aria-*`, CSS classes, `data-ui`, `data-action` и произвольные `data-*`. Значение `data-error-report-target` принимается только из латинских букв, цифр и символов `._:/-`; свободный текст в него помещать нельзя.
+Код не читает `input.value`, DOM text, `id`, `title`, `aria-*`, CSS classes и произвольные `data-*`. Значения `data-error-report-target`, fallback `data-ui` и `data-action` принимаются только из латинских букв, цифр и символов `._:/-`; свободный текст в них помещать нельзя.
 
 На сервере установщик возвращает пустую cleanup-функцию.
 

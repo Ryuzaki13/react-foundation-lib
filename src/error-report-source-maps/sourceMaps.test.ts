@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { maintainPrivateSourceMapArchive } from "./archive";
 import { loadPrivateSourceMapArtifact, PrivateSourceMapArtifactError, readPrivateSourceMap } from "./artifact";
 import { parsePrivateSourceMapManifest } from "./manifest";
-import { packageErrorReportSourceMaps, stageClientSourceMapsForNitro } from "./package";
+import { packageErrorReportSourceMaps, STAGED_CLIENT_SOURCE_MAP_DIRECTORY, stageClientSourceMapsForNitro } from "./package";
 import { symbolicateErrorReportStack } from "./symbolicate";
 
 import { createHash, randomUUID } from "node:crypto";
@@ -96,6 +96,22 @@ describe("private source-map build и runtime", () => {
 		expect(manifest.entries.map((entry) => entry.bundle)).toEqual(["/static/app.js", "server/index.mjs"]);
 		expect(await readFile(path.join(outputRoot, "public/static/app.js"), "utf8")).not.toContain("sourceMappingURL");
 		await expect(readFile(path.join(outputRoot, "public/static/app.js.map"))).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	it("переносит client maps из отдельного Nitro v2 output в общий staging", async () => {
+		const base = path.join(tmpdir(), `error-report-staging-${randomUUID()}`);
+		const outputRoot = path.join(base, ".output");
+		const publicRoot = path.join(base, "dist/client");
+		temporaryDirectories.push(base);
+		await mkdir(path.join(publicRoot, "static"), { recursive: true });
+		await writeFile(path.join(publicRoot, "static/app.js"), "globalThis.app=true;\n//# sourceMappingURL=app.js.map\n", "utf8");
+		await writeFile(path.join(publicRoot, "static/app.js.map"), SOURCE_MAP, "utf8");
+
+		await expect(stageClientSourceMapsForNitro(outputRoot, { publicRoot })).resolves.toBe(1);
+		await expect(readFile(path.join(publicRoot, "static/app.js.map"))).rejects.toMatchObject({ code: "ENOENT" });
+		await expect(readFile(path.join(outputRoot, STAGED_CLIENT_SOURCE_MAP_DIRECTORY, "static/app.js.map"), "utf8")).resolves.toBe(
+			SOURCE_MAP
+		);
 	});
 
 	it("символизирует Chromium, Safari и server frames без host path", async () => {

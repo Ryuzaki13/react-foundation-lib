@@ -79,9 +79,9 @@ async function stripSourceMapReferences(filePath: string): Promise<void> {
 }
 
 /** Извлекает клиентские карты до формирования Nitro static asset manifest. */
-export async function stageClientSourceMapsForNitro(outputRoot: string): Promise<number> {
+export async function stageClientSourceMapsForNitro(outputRoot: string, options: { readonly publicRoot?: string } = {}): Promise<number> {
 	const resolvedOutputRoot = path.resolve(outputRoot);
-	const publicRoot = path.join(resolvedOutputRoot, "public");
+	const publicRoot = path.resolve(options.publicRoot ?? path.join(resolvedOutputRoot, "public"));
 	const stagingRoot = path.join(resolvedOutputRoot, STAGED_CLIENT_SOURCE_MAP_DIRECTORY);
 	const publicFiles = await listFiles(publicRoot);
 	const sourceMapFiles = publicFiles.filter((filePath) => filePath.endsWith(".map"));

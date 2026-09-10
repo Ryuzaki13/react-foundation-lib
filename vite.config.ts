@@ -21,7 +21,7 @@ if (missingPeerDevDependencies.length > 0) {
 }
 
 function isExternalPackage(id: string): boolean {
-	return externalPackages.some((packageName) => id === packageName || id.startsWith(`${packageName}/`));
+	return id.startsWith("node:") || externalPackages.some((packageName) => id === packageName || id.startsWith(`${packageName}/`));
 }
 
 function collectEntries(): Record<string, string> {

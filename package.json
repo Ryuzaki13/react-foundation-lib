@@ -73,6 +73,10 @@
 			"types": "./dist/error-report/index.d.ts",
 			"import": "./dist/error-report/index.js"
 		},
+		"./error-report-source-maps": {
+			"types": "./dist/error-report-source-maps/index.d.ts",
+			"import": "./dist/error-report-source-maps/index.js"
+		},
 		"./excel": {
 			"types": "./dist/excel/index.d.ts",
 			"import": "./dist/excel/index.js"
@@ -200,6 +204,9 @@
 	"publishConfig": {
 		"access": "public",
 		"registry": "https://registry.npmjs.org/"
+	},
+	"dependencies": {
+		"@jridgewell/trace-mapping": "^0.3.31"
 	},
 	"peerDependencies": {
 		"@dnd-kit/core": ">=6.3.0 <7.0.0",

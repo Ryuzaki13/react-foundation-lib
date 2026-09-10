@@ -55,16 +55,19 @@ function validateSourceMap(content: Buffer, filePath: string): void {
 	}
 }
 
-function resolveArtifactPaths(outputRoot: string, mapPath: string): Pick<PrivateSourceMapManifestEntry, "kind" | "bundle" | "map"> {
+function resolveArtifactPaths(
+	outputRoot: string,
+	clientSourceMapStagingRoot: string,
+	mapPath: string
+): Pick<PrivateSourceMapManifestEntry, "kind" | "bundle" | "map"> {
 	const publicRoot = path.join(outputRoot, "public");
 	const serverRoot = path.join(outputRoot, "server");
-	const stagedClientRoot = path.join(outputRoot, STAGED_CLIENT_SOURCE_MAP_DIRECTORY);
 	const relativeToPublic = path.relative(publicRoot, mapPath);
 	if (relativeToPublic && !relativeToPublic.startsWith("..") && !path.isAbsolute(relativeToPublic)) {
 		const normalizedMap = relativeToPublic.split(path.sep).join("/");
 		return { kind: "client", bundle: `/${normalizedMap.slice(0, -".map".length)}`, map: `client/${normalizedMap}` };
 	}
-	const relativeToStagedClient = path.relative(stagedClientRoot, mapPath);
+	const relativeToStagedClient = path.relative(clientSourceMapStagingRoot, mapPath);
 	if (relativeToStagedClient && !relativeToStagedClient.startsWith("..") && !path.isAbsolute(relativeToStagedClient)) {
 		const normalizedMap = relativeToStagedClient.split(path.sep).join("/");
 		return { kind: "client", bundle: `/${normalizedMap.slice(0, -".map".length)}`, map: `client/${normalizedMap}` };
@@ -84,10 +87,15 @@ async function stripSourceMapReferences(filePath: string): Promise<void> {
 }
 
 /** Извлекает клиентские карты до формирования Nitro static asset manifest. */
-export async function stageClientSourceMapsForNitro(outputRoot: string, options: { readonly publicRoot?: string } = {}): Promise<number> {
+export async function stageClientSourceMapsForNitro(
+	outputRoot: string,
+	options: { readonly publicRoot?: string; readonly clientSourceMapStagingRoot?: string } = {}
+): Promise<number> {
 	const resolvedOutputRoot = path.resolve(outputRoot);
 	const publicRoot = path.resolve(options.publicRoot ?? path.join(resolvedOutputRoot, "public"));
-	const stagingRoot = path.join(resolvedOutputRoot, STAGED_CLIENT_SOURCE_MAP_DIRECTORY);
+	const stagingRoot = path.resolve(
+		options.clientSourceMapStagingRoot ?? path.join(resolvedOutputRoot, STAGED_CLIENT_SOURCE_MAP_DIRECTORY)
+	);
 	const publicFiles = await listFiles(publicRoot);
 	const sourceMapFiles = publicFiles.filter((filePath) => filePath.endsWith(".map"));
 	for (const mapFile of sourceMapFiles) {
@@ -126,12 +134,20 @@ export async function packageErrorReportSourceMaps(options: PackageErrorReportSo
 	}
 	const outputRoot = path.resolve(options.outputRoot);
 	const artifactRoot = path.resolve(options.artifactRoot);
+	const clientSourceMapStagingRoot = path.resolve(
+		options.clientSourceMapStagingRoot ?? path.join(outputRoot, STAGED_CLIENT_SOURCE_MAP_DIRECTORY)
+	);
 	const buildDirectory = path.join(artifactRoot, options.application, options.buildId);
 	const temporaryBuildDirectory = `${buildDirectory}.tmp-${process.pid}`;
 	// Nitro v2 создаёт служебное dependency tree с допустимыми package-manager
 	// symlink. Оно не является исполняемым bundle output и не участвует в maps.
 	const outputFiles = await listFiles(outputRoot, new Set([path.resolve(outputRoot, "server/node_modules")]));
-	const mapFiles = outputFiles.filter((filePath) => filePath.endsWith(".map"));
+	const stagingIsInsideOutput = (() => {
+		const relative = path.relative(outputRoot, clientSourceMapStagingRoot);
+		return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+	})();
+	const stagedClientFiles = stagingIsInsideOutput ? [] : await listFiles(clientSourceMapStagingRoot);
+	const mapFiles = [...outputFiles, ...stagedClientFiles].filter((filePath) => filePath.endsWith(".map"));
 	if (mapFiles.length === 0) throw new Error("Production build не создал private source maps.");
 
 	await rm(temporaryBuildDirectory, { force: true, recursive: true });
@@ -146,7 +162,7 @@ export async function packageErrorReportSourceMaps(options: PackageErrorReportSo
 			if (totalBytes > PRIVATE_SOURCE_MAP_ARTIFACT_MAX_BYTES) {
 				throw new Error(`Private source-map artifact превышает ${PRIVATE_SOURCE_MAP_ARTIFACT_MAX_BYTES} bytes.`);
 			}
-			const artifactPaths = resolveArtifactPaths(outputRoot, mapFile);
+			const artifactPaths = resolveArtifactPaths(outputRoot, clientSourceMapStagingRoot, mapFile);
 			const targetPath = path.join(temporaryBuildDirectory, artifactPaths.map);
 			await mkdir(path.dirname(targetPath), { recursive: true });
 			await writeFile(targetPath, content, { flag: "wx" });

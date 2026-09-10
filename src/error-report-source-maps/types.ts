@@ -66,6 +66,8 @@ export type ErrorReportSymbolicationResult = {
 export type PackageErrorReportSourceMapsOptions = {
 	readonly outputRoot: string;
 	readonly artifactRoot: string;
+	/** Staging вне outputRoot нужен, когда Nitro очищает свой output после client build. */
+	readonly clientSourceMapStagingRoot?: string;
 	readonly application: string;
 	readonly buildId: string;
 	readonly createdUtc?: string;

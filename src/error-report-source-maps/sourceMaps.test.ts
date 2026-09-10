@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { maintainPrivateSourceMapArchive } from "./archive";
 import { loadPrivateSourceMapArtifact, PrivateSourceMapArtifactError, readPrivateSourceMap } from "./artifact";
 import { parsePrivateSourceMapManifest } from "./manifest";
-import { packageErrorReportSourceMaps, STAGED_CLIENT_SOURCE_MAP_DIRECTORY, stageClientSourceMapsForNitro } from "./package";
+import { packageErrorReportSourceMaps, stageClientSourceMapsForNitro } from "./package";
 import { symbolicateErrorReportStack } from "./symbolicate";
 
 import { createHash, randomUUID } from "node:crypto";
@@ -112,16 +112,28 @@ describe("private source-map build и runtime", () => {
 		const base = path.join(tmpdir(), `error-report-staging-${randomUUID()}`);
 		const outputRoot = path.join(base, ".output");
 		const publicRoot = path.join(base, "dist/client");
+		const stagingRoot = path.join(base, ".source-map-staging/client");
+		const artifactRoot = path.join(base, "private");
 		temporaryDirectories.push(base);
 		await mkdir(path.join(publicRoot, "static"), { recursive: true });
 		await writeFile(path.join(publicRoot, "static/app.js"), "globalThis.app=true;\n//# sourceMappingURL=app.js.map\n", "utf8");
 		await writeFile(path.join(publicRoot, "static/app.js.map"), SOURCE_MAP, "utf8");
+		await mkdir(path.join(outputRoot, "public"), { recursive: true });
+		await mkdir(path.join(outputRoot, "server"), { recursive: true });
+		await writeFile(path.join(outputRoot, "server/index.mjs"), "globalThis.server=true;", "utf8");
+		await writeFile(path.join(outputRoot, "server/index.mjs.map"), SOURCE_MAP_WITHOUT_SOURCES_CONTENT, "utf8");
 
-		await expect(stageClientSourceMapsForNitro(outputRoot, { publicRoot })).resolves.toBe(1);
+		await expect(stageClientSourceMapsForNitro(outputRoot, { publicRoot, clientSourceMapStagingRoot: stagingRoot })).resolves.toBe(1);
 		await expect(readFile(path.join(publicRoot, "static/app.js.map"))).rejects.toMatchObject({ code: "ENOENT" });
-		await expect(readFile(path.join(outputRoot, STAGED_CLIENT_SOURCE_MAP_DIRECTORY, "static/app.js.map"), "utf8")).resolves.toBe(
-			SOURCE_MAP
-		);
+		await expect(readFile(path.join(stagingRoot, "static/app.js.map"), "utf8")).resolves.toBe(SOURCE_MAP);
+		const manifest = await packageErrorReportSourceMaps({
+			outputRoot,
+			artifactRoot,
+			clientSourceMapStagingRoot: stagingRoot,
+			application: APPLICATION,
+			buildId: BUILD_ID
+		});
+		expect(manifest.entries.map((entry) => entry.bundle)).toEqual(["/static/app.js", "server/index.mjs"]);
 	});
 
 	it("символизирует Chromium, Safari и server frames без host path", async () => {

@@ -1,4 +1,5 @@
 export * from "./breadcrumbs";
+export * from "./buildIdentity";
 export * from "./capture";
 export * from "./diagnostics";
 export * from "./drafts";

@@ -1,9 +1,6 @@
 /** Версия immutable manifest, общего для build packager и server reader. */
 export const PRIVATE_SOURCE_MAP_MANIFEST_VERSION = 1 as const;
 
-/** Полный lowercase Git commit SHA является identity одной сборки. */
-export const ERROR_REPORT_BUILD_ID_PATTERN = /^[0-9a-f]{40}$/;
-
 /**
  * Лимиты едины для build и runtime: packager не должен создавать artifact,
  * который server reader затем не сможет безопасно прочитать.

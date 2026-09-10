@@ -46,8 +46,12 @@ function validateSourceMap(content: Buffer, filePath: string): void {
 	}
 	const sources = "sources" in sourceMap ? sourceMap.sources : undefined;
 	const sourcesContent = "sourcesContent" in sourceMap ? sourceMap.sourcesContent : undefined;
-	if (!Array.isArray(sources) || (sources.length > 0 && (!Array.isArray(sourcesContent) || sourcesContent.length !== sources.length))) {
-		throw new Error(`Source map не содержит полный sourcesContent: ${filePath}`);
+	if (!Array.isArray(sources)) throw new Error(`Source map не содержит список sources: ${filePath}`);
+	// Nitro вправе не встраивать исходный текст в server maps. Координаты и
+	// имена кадров при этом восстанавливаются, а source context просто остаётся
+	// недоступным. Если sourcesContent присутствует, проверяем его целостность.
+	if (sourcesContent !== undefined && (!Array.isArray(sourcesContent) || sourcesContent.length !== sources.length)) {
+		throw new Error(`Source map содержит неполный sourcesContent: ${filePath}`);
 	}
 }
 

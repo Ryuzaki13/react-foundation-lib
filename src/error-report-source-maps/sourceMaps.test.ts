@@ -22,6 +22,13 @@ const SOURCE_MAP = JSON.stringify({
 	names: ["explode"],
 	mappings: "AAAAA"
 });
+const SOURCE_MAP_WITHOUT_SOURCES_CONTENT = JSON.stringify({
+	version: 3,
+	file: "server.mjs",
+	sources: ["../../src/server.ts"],
+	names: ["serverFailure"],
+	mappings: "AAAAA"
+});
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -88,7 +95,7 @@ describe("private source-map build и runtime", () => {
 			const bundlePath = path.join(outputRoot, bundle);
 			await mkdir(path.dirname(bundlePath), { recursive: true });
 			await writeFile(bundlePath, "globalThis.app=true;\n//# sourceMappingURL=app.js.map\n", "utf8");
-			await writeFile(`${bundlePath}.map`, SOURCE_MAP, "utf8");
+			await writeFile(`${bundlePath}.map`, bundle.startsWith("server/") ? SOURCE_MAP_WITHOUT_SOURCES_CONTENT : SOURCE_MAP, "utf8");
 		}
 		const dependencyRoot = path.join(outputRoot, "server/node_modules");
 		await mkdir(dependencyRoot, { recursive: true });

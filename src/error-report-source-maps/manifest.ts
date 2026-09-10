@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ERROR_REPORT_BUILD_ID_PATTERN } from "../error-report/buildIdentity";
+import { ERROR_REPORT_BUILD_ID_PATTERN } from "../error-report-build";
 
 import {
 	PRIVATE_SOURCE_MAP_ARTIFACT_MAX_BYTES,

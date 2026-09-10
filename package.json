@@ -73,6 +73,10 @@
 			"types": "./dist/error-report/index.d.ts",
 			"import": "./dist/error-report/index.js"
 		},
+		"./error-report-build": {
+			"types": "./dist/error-report-build/index.d.ts",
+			"import": "./dist/error-report-build/index.js"
+		},
 		"./error-report-source-maps": {
 			"types": "./dist/error-report-source-maps/index.d.ts",
 			"import": "./dist/error-report-source-maps/index.js"

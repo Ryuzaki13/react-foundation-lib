@@ -1,5 +1,5 @@
 export * from "./breadcrumbs";
-export * from "./buildIdentity";
+export * from "../error-report-build";
 export * from "./capture";
 export * from "./diagnostics";
 export * from "./drafts";

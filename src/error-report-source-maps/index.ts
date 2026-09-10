@@ -1,4 +1,4 @@
-export { ERROR_REPORT_BUILD_ID_PATTERN } from "../error-report/buildIdentity";
+export { ERROR_REPORT_BUILD_ID_PATTERN } from "../error-report-build";
 export * from "./archive";
 export * from "./artifact";
 export * from "./manifest";

@@ -90,6 +90,9 @@ describe("private source-map build и runtime", () => {
 			await writeFile(bundlePath, "globalThis.app=true;\n//# sourceMappingURL=app.js.map\n", "utf8");
 			await writeFile(`${bundlePath}.map`, SOURCE_MAP, "utf8");
 		}
+		const dependencyRoot = path.join(outputRoot, "server/node_modules");
+		await mkdir(dependencyRoot, { recursive: true });
+		await symlink(path.join(base, "package-store"), path.join(dependencyRoot, "package"));
 		expect(await stageClientSourceMapsForNitro(outputRoot)).toBe(1);
 		const manifest = await packageErrorReportSourceMaps({ outputRoot, artifactRoot, application: APPLICATION, buildId: BUILD_ID });
 

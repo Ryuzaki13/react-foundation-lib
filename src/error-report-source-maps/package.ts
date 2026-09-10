@@ -19,12 +19,13 @@ const NITRO_PUBLIC_SOURCE_MAP_ENTRY_PATTERN = /"(\/[^"\n]+\.map)"\s*:\s*\{/;
 /** Временное расположение client maps между client и Nitro server build. */
 export const STAGED_CLIENT_SOURCE_MAP_DIRECTORY = ".private-source-maps-staging/client";
 
-async function listFiles(directory: string): Promise<string[]> {
+async function listFiles(directory: string, skippedPaths: ReadonlySet<string> = new Set()): Promise<string[]> {
 	const files: string[] = [];
 	for (const entry of await readdir(directory, { withFileTypes: true })) {
 		const entryPath = path.join(directory, entry.name);
+		if (skippedPaths.has(path.resolve(entryPath))) continue;
 		if (entry.isSymbolicLink()) throw new Error(`Build output содержит недопустимую symbolic link: ${entryPath}`);
-		if (entry.isDirectory()) files.push(...(await listFiles(entryPath)));
+		if (entry.isDirectory()) files.push(...(await listFiles(entryPath, skippedPaths)));
 		else if (entry.isFile()) files.push(entryPath);
 	}
 	return files.sort((left, right) => left.localeCompare(right));
@@ -123,7 +124,9 @@ export async function packageErrorReportSourceMaps(options: PackageErrorReportSo
 	const artifactRoot = path.resolve(options.artifactRoot);
 	const buildDirectory = path.join(artifactRoot, options.application, options.buildId);
 	const temporaryBuildDirectory = `${buildDirectory}.tmp-${process.pid}`;
-	const outputFiles = await listFiles(outputRoot);
+	// Nitro v2 создаёт служебное dependency tree с допустимыми package-manager
+	// symlink. Оно не является исполняемым bundle output и не участвует в maps.
+	const outputFiles = await listFiles(outputRoot, new Set([path.resolve(outputRoot, "server/node_modules")]));
 	const mapFiles = outputFiles.filter((filePath) => filePath.endsWith(".map"));
 	if (mapFiles.length === 0) throw new Error("Production build не создал private source maps.");
 

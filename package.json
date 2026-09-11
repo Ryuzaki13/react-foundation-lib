@@ -165,6 +165,10 @@
 			"types": "./dist/table/index.d.ts",
 			"import": "./dist/table/index.js"
 		},
+		"./table-document": {
+			"types": "./dist/table-document/index.d.ts",
+			"import": "./dist/table-document/index.js"
+		},
 		"./three-scene": {
 			"types": "./dist/three-scene/index.d.ts",
 			"import": "./dist/three-scene/index.js"

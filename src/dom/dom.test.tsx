@@ -153,6 +153,7 @@ describe("dom hooks", () => {
 	});
 
 	it("useOverlayFocus выставляет начальный фокус, зацикливает Tab и восстанавливает прежний фокус", async () => {
+		const focus = vi.spyOn(HTMLElement.prototype, "focus");
 		vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
 			callback(0);
 			return 1;
@@ -193,10 +194,13 @@ describe("dom hooks", () => {
 		const first = document.getElementById("first");
 		const last = document.getElementById("last");
 		expect(document.activeElement).toBe(first);
+		expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
 
 		last?.focus();
 		last?.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
 		expect(document.activeElement).toBe(first);
+		// Tab — явная навигация: скрытый элемент длинного overlay должен стать видимым.
+		expect(focus).toHaveBeenLastCalledWith();
 
 		first?.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
 		expect(document.activeElement).toBe(last);
@@ -206,6 +210,34 @@ describe("dom hooks", () => {
 		});
 
 		expect(document.activeElement).toBe(document.getElementById("trigger"));
+		expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+	});
+
+	it.each(["container", "custom"] as const)("useOverlayFocus сохраняет прокрутку для initialFocus=%s", async (mode) => {
+		const focus = vi.spyOn(HTMLElement.prototype, "focus");
+		const trigger = document.createElement("button");
+		document.body.append(trigger);
+		trigger.focus();
+
+		function Demo() {
+			const overlayRef = useOverlayFocus<HTMLDivElement>({
+				active: true,
+				initialFocus: mode === "container" ? "container" : (element) => element.querySelector("button")
+			});
+			return React.createElement(
+				"div",
+				{ ref: overlayRef, tabIndex: -1, id: "overlay" },
+				React.createElement("button", { type: "button", id: "custom" }, "Выбор")
+			);
+		}
+
+		await render(React.createElement(Demo));
+		expect(document.activeElement).toBe(document.getElementById(mode === "container" ? "overlay" : "custom"));
+		expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+		await act(async () => root?.unmount());
+		root = null;
+		expect(document.activeElement).toBe(trigger);
+		expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
 	});
 
 	it("useElementHeightObserver читает высоту из ResizeObserver", async () => {

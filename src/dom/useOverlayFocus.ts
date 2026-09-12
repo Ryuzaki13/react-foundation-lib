@@ -14,6 +14,9 @@ export interface UseOverlayFocusOptions<T extends HTMLElement> {
 
 /**
  * Возвращает ref overlay-контейнера и управляет начальными/возвратными переходами фокуса.
+ * Открытие и закрытие не прокручивают документ: портал может получить фокус
+ * до завершения позиционирования. Пользовательский Tab по-прежнему раскрывает
+ * выбранный элемент в прокручиваемом содержимом overlay.
  */
 export function useOverlayFocus<T extends HTMLElement>({
 	active,
@@ -82,7 +85,7 @@ export function useOverlayFocus<T extends HTMLElement>({
 
 			const focusTarget = resolveInitialFocus(overlayElement);
 			if (focusTarget instanceof HTMLElement && focusTarget.isConnected) {
-				focusTarget.focus();
+				focusTarget.focus({ preventScroll: true });
 			}
 
 			if (trapFocus) {
@@ -137,7 +140,7 @@ export function useOverlayFocus<T extends HTMLElement>({
 
 			const restoreTarget = resolveRestoreFocusTarget();
 			if (restoreTarget?.isConnected) {
-				restoreTarget.focus();
+				restoreTarget.focus({ preventScroll: true });
 			}
 		};
 	}, [active, trapFocus, restoreFocus, overlayRef]);

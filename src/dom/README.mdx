@@ -1279,7 +1279,7 @@ console.log(overlayRef === existingRef); // true.
 2. пытается прочитать `overlayRef.current`;
 3. если ref ещё пустой, повторяет попытку через `requestAnimationFrame`;
 4. когда container найден, вычисляет initial focus;
-5. вызывает `.focus()`, только если target — подключённый `HTMLElement`;
+5. вызывает `.focus({ preventScroll: true })`, только если target — подключённый `HTMLElement`;
 6. при `trapFocus: true` добавляет `keydown` listener на container.
 
 Если `active: true`, но container никогда не монтируется, requestAnimationFrame retry продолжается до cleanup. Всегда согласовывайте `active` с реальным mount overlay.
@@ -1421,7 +1421,10 @@ Container должен быть программно focusable.
 restoreFocusTarget?.() ?? previousActiveElement;
 ```
 
-Focus возвращается, только если выбранный element всё ещё `isConnected`.
+Focus возвращается, только если выбранный element всё ещё `isConnected`,
+через `.focus({ preventScroll: true })`. Открытие и закрытие overlay не меняют
+прокрутку документа, в том числе пока портал ещё позиционируется. Переходы
+по Tab сохраняют обычную прокрутку к выбранному элементу внутри длинного overlay.
 
 Типичный сценарий:
 

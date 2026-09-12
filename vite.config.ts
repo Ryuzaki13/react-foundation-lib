@@ -82,6 +82,7 @@ export default defineConfig((configEnv) => ({
 	},
 	test: {
 		environment: "node",
-		include: ["src/**/*.test.ts"]
+		// DOM hooks проверяются в jsdom через React harness, в том числе в CI.
+		include: ["src/**/*.test.ts", "src/dom/**/*.test.tsx"]
 	}
 }));

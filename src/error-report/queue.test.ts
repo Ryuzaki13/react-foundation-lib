@@ -1,5 +1,5 @@
 import { indexedDB } from "fake-indexeddb";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createErrorReportQueue } from "./queue";
 import { ERROR_REPORT_QUEUE_LEASE_MS, ERROR_REPORT_QUEUE_MAX_ITEMS, ERROR_REPORT_QUEUE_TTL_MS } from "./queueContract";
@@ -7,6 +7,10 @@ import { parseErrorReportQueueRecord } from "./queueRecord";
 import { type ErrorReportPayload } from "./types";
 
 const NOW = new Date("2026-09-09T06:00:00.000Z");
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 function reportId(index: number) {
 	return `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`;
@@ -71,6 +75,7 @@ describe("createErrorReportQueue", () => {
 	});
 
 	it("защищает acknowledge и retry от владельца устаревшего lease", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(NOW.getTime());
 		const queue = createQueue();
 		const payload = createPayload();
 		await queue.enqueue(payload, NOW);

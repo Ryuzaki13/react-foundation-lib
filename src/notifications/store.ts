@@ -1,6 +1,6 @@
-import { createStore, StoreApi } from "zustand";
+import { createStore, type StoreApi } from "zustand";
 
-import { Notification, NotificationAction, NotificationId, NotificationType } from "./types";
+import { type Notification, type NotificationAction, type NotificationId, type NotificationType } from "./types";
 
 export type NotificationPushInput = {
 	id?: NotificationId;
@@ -16,16 +16,20 @@ export type NotificationUpdatePatch = Partial<Omit<Notification, "id" | "created
 	// ttlMs можно менять; createdAt — нет
 };
 
-type NotificationsState = {
+export type NotificationsState = {
+	/** Активные toast-уведомления, которые должен отображать краткоживущий host. */
 	items: Notification[];
+	/** Полная история за время жизни store; TTL, dismiss и переполнение toast-стека её не сокращают. */
+	history: Notification[];
 };
 
-type NotificationsActions = {
+export type NotificationsActions = {
 	push: (input: NotificationPushInput) => NotificationId;
 	update: (id: NotificationId, patch: NotificationUpdatePatch) => boolean;
 	upsert: (input: NotificationPushInput & { id: NotificationId }) => NotificationId;
 	dismiss: (id: NotificationId) => void;
 	clear: () => void;
+	clearHistory: () => void;
 };
 
 export type NotificationsStore = NotificationsState & {
@@ -34,9 +38,9 @@ export type NotificationsStore = NotificationsState & {
 
 const genId = (): NotificationId => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 
-const MAX_ITEMS = 6;
+const MAX_VISIBLE_ITEMS = 6;
 
-export const createNotificationsStore = () => {
+export function createNotificationsStore() {
 	const timers = new Map<NotificationId, number>();
 
 	const clearTimer = (id: NotificationId) => {
@@ -60,6 +64,7 @@ export const createNotificationsStore = () => {
 
 	const store = createStore<NotificationsStore>()((set, get) => ({
 		items: [],
+		history: [],
 
 		actions: {
 			push: (input) => {
@@ -77,8 +82,18 @@ export const createNotificationsStore = () => {
 					actions: input.actions
 				};
 
-				set((s) => ({
-					items: [notif, ...s.items.filter((n) => n.id !== id)].slice(0, MAX_ITEMS)
+				const currentItems = get().items;
+				const nextItems = [notif, ...currentItems.filter((notification) => notification.id !== id)].slice(0, MAX_VISIBLE_ITEMS);
+				const visibleIds = new Set(nextItems.map((notification) => notification.id));
+
+				// Для вытесненного toast таймер больше не нужен: запись уже останется в history.
+				currentItems.forEach((notification) => {
+					if (!visibleIds.has(notification.id)) clearTimer(notification.id);
+				});
+
+				set((state) => ({
+					items: nextItems,
+					history: [notif, ...state.history.filter((notification) => notification.id !== id)]
 				}));
 
 				armTimer(store, id, notif.ttlMs);
@@ -86,20 +101,19 @@ export const createNotificationsStore = () => {
 			},
 
 			update: (id, patch) => {
-				const { items } = get();
-				const idx = items.findIndex((n) => n.id === id);
-				if (idx === -1) return false;
+				const previous = get().items.find((notification) => notification.id === id);
+				if (!previous) return false;
 
-				const prev = items[idx];
 				const next: Notification = {
-					...prev,
+					...previous,
 					...patch,
-					id: prev.id,
-					createdAt: prev.createdAt
+					id: previous.id,
+					createdAt: previous.createdAt
 				};
 
-				set((s) => ({
-					items: s.items.map((n) => (n.id === id ? next : n))
+				set((state) => ({
+					items: state.items.map((notification) => (notification.id === id ? next : notification)),
+					history: state.history.map((notification) => (notification.id === id ? next : notification))
 				}));
 
 				// если ttlMs изменили — пере-армим таймер
@@ -132,11 +146,15 @@ export const createNotificationsStore = () => {
 				timers.forEach((t) => window.clearTimeout(t));
 				timers.clear();
 				set({ items: [] });
+			},
+
+			clearHistory: () => {
+				set({ history: [] });
 			}
 		}
 	}));
 
 	return store;
-};
+}
 
 export type NotificationsStoreApi = StoreApi<NotificationsStore>;

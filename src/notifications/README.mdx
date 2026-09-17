@@ -4,7 +4,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 # Notifications
 
-Модуль `@ryuzaki13/react-foundation-lib/notifications` хранит очередь коротких уведомлений и предоставляет два способа управления ею:
+Модуль `@ryuzaki13/react-foundation-lib/notifications` хранит активный toast-стек и полную историю уведомлений, а также предоставляет два способа управления ими:
 
 - Zustand-store — для React-интерфейса, который отображает уведомления;
 - объект `notify` — для императивных вызовов из обработчиков, сервисов и `try/catch`.
@@ -88,6 +88,8 @@ export function NotificationsViewport() {
 }
 ```
 
+`items` содержит только активные toast-уведомления и ограничен шестью элементами. Для отдельного центра уведомлений, страницы или содержимого диалога подписывайтесь на `state.history`: эта коллекция не сокращается при TTL, ручном закрытии и переполнении toast-стека.
+
 ### 3. Показывайте уведомления
 
 ```ts
@@ -137,17 +139,21 @@ type Notification = {
 ```ts
 type NotificationsStore = {
 	items: Notification[];
+	history: Notification[];
 	actions: {
 		push(input): NotificationId;
 		update(id, patch): boolean;
 		upsert(inputWithId): NotificationId;
 		dismiss(id): void;
 		clear(): void;
+		clearHistory(): void;
 	};
 };
 ```
 
-Очередь ограничена шестью элементами. Новое уведомление помещается в начало. При добавлении с уже существующим `id` старый элемент удаляется, а новый получает новое `createdAt`.
+`items` — стек видимых toast-уведомлений, ограниченный шестью элементами. `history` — полная история за время жизни store. Новое уведомление помещается в начало обеих коллекций. При добавлении с уже существующим `id` старый элемент заменяется, а новый получает новое `createdAt`.
+
+История живёт в памяти и не является журналом аудита: она сбрасывается при пересоздании store или явном `clearHistory()`. Поскольку `actions` уведомлений содержат функции, модуль намеренно не сохраняет историю в `localStorage` и не сериализует её.
 
 ### `push(input)`
 
@@ -196,9 +202,11 @@ notificationsStore.getState().actions.upsert({
 
 Важная деталь: при обновлении существующего элемента `upsert` меняет `type`, `title`, `message`, `ttlMs` и `dismissible`, но не заменяет `actions`. Для явной смены действий используйте `update(id, { actions })`.
 
-### `dismiss(id)` и `clear()`
+### `dismiss(id)`, `clear()` и `clearHistory()`
 
-`dismiss(id)` удаляет один элемент и очищает его таймер. `clear()` удаляет всю очередь и все таймеры.
+`dismiss(id)` скрывает один toast и очищает его таймер. `clear()` скрывает весь toast-стек и очищает все таймеры. Обе операции сохраняют записи в `history`.
+
+`clearHistory()` явно очищает историю, не закрывая активные toast-уведомления. Чтобы полностью сбросить обе коллекции, последовательно вызовите `clear()` и `clearHistory()`.
 
 ## Императивный API `notify`
 
@@ -223,6 +231,7 @@ notify.upsert(inputWithId);
 notify.update(id, patch);
 notify.dismiss(id);
 notify.clear();
+notify.clearHistory();
 
 notify.success(message, options);
 notify.info(message, options);
@@ -258,7 +267,7 @@ async function importFile(file: File) {
 - `update(message)` — меняет текст, не перезапуская таймер;
 - `success(message, ttlMs = 2500)` — делает уведомление успешным и закрываемым;
 - `error(message, ttlMs = 5000)` — делает уведомление ошибкой и закрываемым;
-- `dismiss()` — удаляет уведомление.
+- `dismiss()` — скрывает toast, сохраняя уведомление в истории.
 
 При переданном стабильном `id` повторный `progress` продолжит существующий элемент. Это удобно для операции, которая может стартовать из нескольких мест.
 
@@ -307,17 +316,19 @@ function App() {
 
 ### Использование уведомления вместо состояния операции
 
-Очередь ограничена шестью элементами и живёт в памяти страницы. Не используйте её как журнал аудита, источник истины о фоновой задаче или долговременное хранилище ошибок.
+История живёт в памяти страницы. Не используйте её как журнал аудита, источник истины о фоновой задаче или долговременное хранилище ошибок.
 
 ## Краткая карта API
 
 | Экспорт                      | Назначение                                               |
 | ---------------------------- | -------------------------------------------------------- |
-| `createNotificationsStore()` | Создать независимый Zustand-store уведомлений            |
-| `bindNotifications(store)`   | Привязать store к глобальному фасаду `notify`            |
-| `notify`                     | Императивно добавлять, обновлять и закрывать уведомления |
-| `Notification`               | Полная модель сохранённого элемента                      |
-| `NotificationPushInput`      | Параметры добавления элемента                            |
-| `NotificationUpdatePatch`    | Допустимые поля частичного обновления                    |
-| `NotificationsStoreApi`      | Тип vanilla Zustand-store                                |
-| `NotificationAction`         | Кнопка-действие уведомления                              |
+| `createNotificationsStore()` | Создать независимый Zustand-store toast-стека и истории            |
+| `bindNotifications(store)`   | Привязать store к глобальному фасаду `notify`                      |
+| `notify`                     | Императивно добавлять, обновлять и закрывать уведомления           |
+| `Notification`               | Полная модель сохранённого элемента                                |
+| `NotificationPushInput`      | Параметры добавления элемента                                      |
+| `NotificationUpdatePatch`    | Допустимые поля частичного обновления                              |
+| `NotificationsState`         | Состояние с активными `items` и полной `history`                   |
+| `NotificationsActions`       | Действия toast-стека и явная очистка истории                       |
+| `NotificationsStoreApi`      | Тип vanilla Zustand-store                                          |
+| `NotificationAction`         | Кнопка-действие уведомления                                        |

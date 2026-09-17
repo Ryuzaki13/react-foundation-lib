@@ -27,7 +27,7 @@ describe("notifications store", () => {
 		expect(onClick).toHaveBeenCalledOnce();
 	});
 
-	it("добавляет новые уведомления в начало и ограничивает список шестью элементами", () => {
+	it("ограничивает toast-стек шестью элементами и сохраняет полную историю", () => {
 		const store = createNotificationsStore();
 
 		for (let index = 0; index < 7; index += 1) {
@@ -35,6 +35,7 @@ describe("notifications store", () => {
 		}
 
 		expect(store.getState().items.map((item) => item.id)).toEqual(["id-6", "id-5", "id-4", "id-3", "id-2", "id-1"]);
+		expect(store.getState().history.map((item) => item.id)).toEqual(["id-6", "id-5", "id-4", "id-3", "id-2", "id-1", "id-0"]);
 	});
 
 	it("обновляет существующее уведомление и не меняет id/createdAt", () => {
@@ -52,10 +53,17 @@ describe("notifications store", () => {
 			type: "success",
 			message: "Готово"
 		});
+		expect(store.getState().history[0]).toMatchObject({
+			id: "fixed",
+			createdAt,
+			type: "success",
+			message: "Готово"
+		});
 
 		vi.advanceTimersByTime(1000);
 
 		expect(store.getState().items).toEqual([]);
+		expect(store.getState().history).toHaveLength(1);
 		expect(store.getState().actions.update("missing", { message: "Нет" })).toBe(false);
 	});
 
@@ -66,17 +74,35 @@ describe("notifications store", () => {
 		expect(store.getState().actions.upsert({ id: "op", type: "success", message: "Готово", ttlMs: 0 })).toBe("op");
 		expect(store.getState().items).toHaveLength(1);
 		expect(store.getState().items[0]).toMatchObject({ id: "op", type: "success", message: "Готово" });
+		expect(store.getState().history).toHaveLength(1);
+		expect(store.getState().history[0]).toMatchObject({ id: "op", type: "success", message: "Готово" });
 	});
 
-	it("clear удаляет уведомления и отменяет таймеры", () => {
+	it("dismiss и clear скрывают toast-уведомления, но сохраняют историю", () => {
 		vi.useFakeTimers();
 		const store = createNotificationsStore();
 
-		store.getState().actions.push({ id: "ttl", type: "info", message: "Будет удалено", ttlMs: 1000 });
+		store.getState().actions.push({ id: "manual", type: "warning", message: "Закрыто вручную", ttlMs: 0 });
+		store.getState().actions.dismiss("manual");
+		expect(store.getState().items).toEqual([]);
+		expect(store.getState().history.map((item) => item.id)).toEqual(["manual"]);
+
+		store.getState().actions.push({ id: "ttl", type: "info", message: "Закрыто общим clear", ttlMs: 1000 });
 		store.getState().actions.clear();
 		vi.advanceTimersByTime(1000);
 
 		expect(store.getState().items).toEqual([]);
+		expect(store.getState().history.map((item) => item.id)).toEqual(["ttl", "manual"]);
+	});
+
+	it("clearHistory очищает историю независимо от активного toast-стека", () => {
+		const store = createNotificationsStore();
+
+		store.getState().actions.push({ id: "visible", type: "info", message: "Активное уведомление", ttlMs: 0 });
+		store.getState().actions.clearHistory();
+
+		expect(store.getState().history).toEqual([]);
+		expect(store.getState().items.map((item) => item.id)).toEqual(["visible"]);
 	});
 });
 
@@ -96,6 +122,10 @@ describe("notify facade", () => {
 
 		notify.warning("Проверьте", { id: "warning", ttlMs: 0 });
 		expect(store.getState().items[0]).toMatchObject({ id: "warning", type: "warning" });
+
+		notify.clearHistory();
+		expect(store.getState().history).toEqual([]);
+		expect(store.getState().items).toHaveLength(2);
 
 		unbind();
 		expect(() => notify.clear()).toThrow("Notifications store is not bound");

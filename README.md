@@ -618,9 +618,9 @@ Pipeline — runtime форматирования ячейки. Он прини�
 
 | API                        | Поведение                                                                                         |
 | -------------------------- | ------------------------------------------------------------------------------------------------- |
-| `createNotificationsStore` | Zustand vanilla store, максимум 6 уведомлений, TTL timers, `push/update/upsert/dismiss/clear`.    |
-| `bindNotifications`        | Привязка store к imperative `notify`.                                                             |
-| `notify`                   | `push/upsert/update/dismiss/clear`, short methods `success/info/warning/error`, progress pattern. |
+| `createNotificationsStore` | Zustand store: до 6 активных toast, полная session-history и TTL timers.                                     |
+| `bindNotifications`        | Привязка store к imperative `notify`.                                                                       |
+| `notify`                   | `push/upsert/update/dismiss/clear/clearHistory`, short methods и progress pattern.                           |
 
 `notify` требует bound store; без provider будет ошибка.
 

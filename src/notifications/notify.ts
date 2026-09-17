@@ -1,5 +1,5 @@
-import type { NotificationPushInput, NotificationsStoreApi, NotificationUpdatePatch } from "./store";
-import type { NotificationId } from "./types";
+import { type NotificationPushInput, type NotificationsStoreApi, type NotificationUpdatePatch } from "./store";
+import { type NotificationId } from "./types";
 
 let boundStore: NotificationsStoreApi | null = null;
 
@@ -25,6 +25,7 @@ export const notify = Object.freeze({
 
 	dismiss: (id: NotificationId) => requireStore().getState().actions.dismiss(id),
 	clear: () => requireStore().getState().actions.clear(),
+	clearHistory: () => requireStore().getState().actions.clearHistory(),
 
 	success: (message: string, opts?: Omit<NotificationPushInput, "type" | "message">) =>
 		requireStore()

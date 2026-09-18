@@ -95,6 +95,12 @@ describe("query-client/persistence", () => {
 	it("отклоняет неустойчивое имя и небезопасный лимит session cache", () => {
 		expect(() => createSessionQueryPersistenceMeta({ cacheName: "Opened Weeks", maxEntries: 24 })).toThrow();
 		expect(() => createSessionQueryPersistenceMeta({ cacheName: "opened-weeks", maxEntries: 0 })).toThrow();
+		expect(() =>
+			createSessionQueryPersistenceMeta({ cacheName: "opened-weeks", maxEntries: 24, monotonicRevisionField: "bad-field" })
+		).toThrow();
+		expect(() =>
+			createSessionQueryPersistenceMeta({ cacheName: "opened-weeks", maxEntries: 24, refetchOnRestore: "never" as never })
+		).toThrow();
 	});
 
 	it("per-query persister записывает в IndexedDB только opt-in query", async () => {
@@ -182,6 +188,53 @@ describe("query-client/persistence", () => {
 		const sessionEntries = (await storage!.entries()).filter(([key]) => key.includes("-session-bounded-session-bounded-"));
 		expect(sessionEntries.map(([, value]) => value.queryKey)).toHaveLength(2);
 		expect(sessionEntries.map(([, value]) => value.queryKey)).toEqual(expect.arrayContaining([["second"], ["third"]]));
+	});
+
+	it("не позволяет запоздавшей вкладке заменить сохранённый snapshot меньшей ревизией", async () => {
+		Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: indexedDB });
+		await setSessionQueryPersistenceScope({ id: "revision-session", expiresAt: "2099-01-01T00:00:00.000Z" });
+		const meta = createSessionQueryPersistenceMeta({
+			cacheName: "references",
+			maxEntries: 4,
+			refetchOnRestore: false,
+			monotonicRevisionField: "revision"
+		});
+		const newerClient = createQueryClient({});
+		const staleClient = createQueryClient({});
+		const queryKey = ["reference", "branches"] as const;
+		let releaseStaleRequest: (() => void) | undefined;
+		let markStaleRequestStarted: (() => void) | undefined;
+		const staleRequestStarted = new Promise<void>((resolve) => {
+			markStaleRequestStarted = resolve;
+		});
+		const staleRequestGate = new Promise<void>((resolve) => {
+			releaseStaleRequest = resolve;
+		});
+
+		const staleRequest = staleClient.fetchQuery({
+			queryKey,
+			queryFn: async () => {
+				markStaleRequestStarted?.();
+				await staleRequestGate;
+				return { revision: "90071992547409929", items: ["old"] };
+			},
+			meta
+		});
+		await staleRequestStarted;
+		await newerClient.fetchQuery({ queryKey, queryFn: async () => ({ revision: "90071992547409930", items: ["new"] }), meta });
+		await waitForScheduledPersistence();
+		releaseStaleRequest?.();
+		await staleRequest;
+		await waitForScheduledPersistence();
+
+		const restoredClient = createQueryClient({});
+		await expect(
+			restoredClient.fetchQuery({
+				queryKey,
+				queryFn: async () => ({ revision: "90071992547409931", items: ["network"] }),
+				meta
+			})
+		).resolves.toEqual({ revision: "90071992547409930", items: ["new"] });
 	});
 
 	it("не активирует истёкший scope и очищает его browser storage", async () => {

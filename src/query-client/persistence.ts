@@ -147,7 +147,30 @@ function readSessionQueryPersistencePolicy(query: Pick<Query, "meta">) {
 	if (!("cacheName" in policy) || !("maxEntries" in policy)) return null;
 	if (typeof policy.cacheName !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(policy.cacheName)) return null;
 	if (!Number.isSafeInteger(policy.maxEntries) || policy.maxEntries < 1 || policy.maxEntries > 5_000) return null;
-	return { cacheName: policy.cacheName, maxEntries: policy.maxEntries } as const;
+	const refetchOnRestore = "refetchOnRestore" in policy ? policy.refetchOnRestore : undefined;
+	if (refetchOnRestore !== undefined && typeof refetchOnRestore !== "boolean") return null;
+	const monotonicRevisionField = "monotonicRevisionField" in policy ? policy.monotonicRevisionField : undefined;
+	if (
+		monotonicRevisionField !== undefined &&
+		(typeof monotonicRevisionField !== "string" || !/^[A-Za-z][A-Za-z0-9_]{0,63}$/u.test(monotonicRevisionField))
+	) {
+		return null;
+	}
+	return { cacheName: policy.cacheName, maxEntries: policy.maxEntries, refetchOnRestore, monotonicRevisionField } as const;
+}
+
+function readMonotonicDecimalRevision(query: PersistedQuery, field: string): string | null {
+	const data = query.state.data;
+	if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+	const revision = Reflect.get(data, field);
+	if (typeof revision !== "string" || !/^\d+$/u.test(revision)) return null;
+	return revision.replace(/^0+(?=\d)/u, "");
+}
+
+function compareDecimalRevisions(left: string, right: string): number {
+	if (left.length !== right.length) return left.length - right.length;
+	if (left === right) return 0;
+	return left < right ? -1 : 1;
 }
 
 export function createIndexedDbQueryStorage<TStorageValue = unknown>(
@@ -295,9 +318,15 @@ export function createReactQueryPersister() {
 	});
 	const sessionPersisters = new Map<string, ReturnType<typeof experimental_createQueryPersister<PersistedQuery>>>();
 
-	function getSessionPersister(scope: SessionQueryPersistenceScope, cacheName: string, maxEntries: number) {
+	function getSessionPersister(
+		scope: SessionQueryPersistenceScope,
+		cacheName: string,
+		maxEntries: number,
+		refetchOnRestore = true,
+		monotonicRevisionField?: string
+	) {
 		const prefix = getSessionPersistenceCachePrefix(scope.id, cacheName);
-		const identity = `${prefix}:${maxEntries}:${scope.expiresAt}`;
+		const identity = `${prefix}:${maxEntries}:${refetchOnRestore}:${monotonicRevisionField ?? ""}:${scope.expiresAt}`;
 		const existing = sessionPersisters.get(identity);
 		if (existing) return existing;
 
@@ -313,7 +342,19 @@ export function createReactQueryPersister() {
 				const activeScope = getSessionQueryPersistenceScope();
 				if (activeScope?.id !== scope.id) return;
 
-				await indexedDbStorage.setItem(key, value);
+				if (monotonicRevisionField === undefined) {
+					await indexedDbStorage.setItem(key, value);
+				} else {
+					await indexedDbStorage.updateItem(key, (stored) => {
+						if (!stored || stored.buster !== value.buster) return { action: "set", value, result: undefined };
+						const storedRevision = readMonotonicDecimalRevision(stored, monotonicRevisionField);
+						const nextRevision = readMonotonicDecimalRevision(value, monotonicRevisionField);
+						if (storedRevision !== null && nextRevision !== null && compareDecimalRevisions(storedRevision, nextRevision) > 0) {
+							return { action: "keep", result: undefined };
+						}
+						return { action: "set", value, result: undefined };
+					});
+				}
 				pruneQueue = pruneQueue.then(async () => {
 					const entries = (await indexedDbStorage.entries()).filter(([entryKey]) => entryKey.startsWith(`${prefix}-`));
 					entries.sort((left, right) => (right[1].state.dataUpdatedAt ?? 0) - (left[1].state.dataUpdatedAt ?? 0));
@@ -329,7 +370,7 @@ export function createReactQueryPersister() {
 			prefix,
 			buster: getQueryPersistenceProjectAdapter().persistenceBuster ?? REACT_QUERY_PERSISTENCE_BUSTER,
 			maxAge: REACT_QUERY_PERSISTENCE_MAX_AGE,
-			refetchOnRestore: true,
+			refetchOnRestore,
 			filters: {
 				predicate: (query) => readSessionQueryPersistencePolicy(query)?.cacheName === cacheName
 			}
@@ -351,7 +392,13 @@ export function createReactQueryPersister() {
 			const scope = getSessionQueryPersistenceScope();
 			if (!scope) return Promise.resolve(queryFn(context));
 
-			return getSessionPersister(scope, policy.cacheName, policy.maxEntries).persisterFn(queryFn, context, query);
+			return getSessionPersister(
+				scope,
+				policy.cacheName,
+				policy.maxEntries,
+				policy.refetchOnRestore,
+				policy.monotonicRevisionField
+			).persisterFn(queryFn, context, query);
 		}
 	};
 }

@@ -541,10 +541,7 @@ queryOptions({
 Только для явно согласованного offline allowlist создайте bounded metadata:
 
 ```ts
-import {
-	createSessionQueryPersistenceMeta,
-	setSessionQueryPersistenceScope
-} from "@ryuzaki13/react-foundation-lib/query-client";
+import { createSessionQueryPersistenceMeta, setSessionQueryPersistenceScope } from "@ryuzaki13/react-foundation-lib/query-client";
 
 await setSessionQueryPersistenceScope({
 	id: session.id,
@@ -556,7 +553,8 @@ queryOptions({
 	queryFn: fetchWeek,
 	meta: createSessionQueryPersistenceMeta({
 		cacheName: "opened-weeks",
-		maxEntries: 24
+		maxEntries: 24,
+		refetchOnRestore: true
 	}),
 	networkMode: "offlineFirst"
 });
@@ -565,6 +563,25 @@ queryOptions({
 Scope устанавливается отдельно от query contract, не содержит cookie secret/access token и меняет in-memory границу до очистки IndexedDB.
 При `null`, истёкшем `expiresAt` или смене `id` старые session snapshots удаляются. `networkMode: "offlineFirst"` нужен, чтобы
 TanStack вызвал persister до network pause. Cached data остаётся неавторитетным: write после reconnect обязан повторно получить серверный state.
+
+Если consumer имеет отдельный лёгкий checker актуальности, полный запрос после
+restore можно отключить. Для revisioned snapshot передайте поле верхнего уровня
+с decimal string revision:
+
+```ts
+meta: createSessionQueryPersistenceMeta({
+	cacheName: "reference-data",
+	maxEntries: 16,
+	refetchOnRestore: false,
+	monotonicRevisionField: "revision"
+});
+```
+
+`refetchOnRestore: false` без внешнего checker оставляет consumer ответственным
+за бесконечно устаревшие данные. `monotonicRevisionField` не создаёт новые
+storage keys: запись того же query key обновляется атомарно, а меньшая decimal
+revision из запоздавшей вкладки не заменяет уже сохранённую большую. Если поле
+отсутствует или не является строкой из цифр, запись использует обычную policy.
 
 ### Meta нельзя совмещать
 
@@ -824,7 +841,7 @@ const persister = createReactQueryPersister();
   prefix: systemIdentifier,
   buster: adapterBuster ?? buildTimeBuster,
   maxAge: 90 * 24 * 60 * 60 * 1000,
-  refetchOnRestore: true,
+  refetchOnRestore: true, // либо session policy конкретного cache
   filters: { predicate: shouldPersistQuery }
 }
 ```
@@ -894,7 +911,8 @@ deserialize: (query) => query;
 3. По `prefix-queryHash` читается IndexedDB.
 4. Проверяются buster и возраст записи.
 5. Подходящее state восстанавливается в Query cache.
-6. Если восстановленная query stale, `refetchOnRestore: true` запускает обновление.
+6. Если восстановленная query stale, effective `refetchOnRestore` запускает
+   обновление; session cache может отключить его при наличии внешнего checker.
 7. Если записи нет/она протухла/не совпал buster, выполняется обычный `queryFn`.
 8. Успешный результат планируется к записи в IndexedDB.
 
@@ -2389,12 +2407,12 @@ Profile tests подтверждают:
 
 ### Query metadata
 
-| Symbol                   | Вид   | Назначение                                      |
-| ------------------------ | ----- | ----------------------------------------------- |
-| `AppQueryMeta`                      | type     | Public/session persistence и consumer metadata.       |
-| `SessionQueryPersistencePolicy`     | type     | Имя и bounded limit session cache.                    |
-| `persistedQueryMeta`                | const    | Opt-in public persistence marker.                     |
-| `sessionScopedQueryMeta`            | const    | Session reset marker без browser persistence.         |
+| Symbol                              | Вид      | Назначение                                               |
+| ----------------------------------- | -------- | -------------------------------------------------------- |
+| `AppQueryMeta`                      | type     | Public/session persistence и consumer metadata.          |
+| `SessionQueryPersistencePolicy`     | type     | Имя и bounded limit session cache.                       |
+| `persistedQueryMeta`                | const    | Opt-in public persistence marker.                        |
+| `sessionScopedQueryMeta`            | const    | Session reset marker без browser persistence.            |
 | `createSessionQueryPersistenceMeta` | function | Явный opt-in bounded persistence текущей server session. |
 
 ### Persistence project adapter

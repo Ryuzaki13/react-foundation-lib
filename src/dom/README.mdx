@@ -13,6 +13,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - установить начальный фокус, зациклить `Tab` и восстановить прежний фокус;
 - узнать высоту элемента через `ResizeObserver`;
 - узнать, пересекается ли элемент с viewport или другим root;
+- сохранить позицию чтения при вставке элементов выше текущего;
 - определить наличие touch/coarse-pointer возможностей.
 
 Модуль является низкоуровневым browser foundation-слоем. Он не создаёт готовые кнопки, dialog, modal, popover, tooltip или download UI. Визуальный компонент по-прежнему отвечает за семантический HTML, ARIA, стили, анимацию, стек overlay, сообщения об ошибках и пользовательский сценарий.
@@ -27,6 +28,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - [Быстрый старт](#быстрый-старт)
 - [Скачивание файлов](#скачивание-файлов)
 - [`getOrCreatePortalRoot`](#getorcreateportalroot)
+- [`captureScrollAnchor`](#capturescrollanchor)
 - [`useClickOutside`](#useclickoutside)
 - [`useEscapeDismiss`](#useescapedismiss)
 - [`useElementHeightObserver`](#useelementheightobserver)
@@ -103,6 +105,7 @@ npm install react react-dom
 
 ```ts
 import {
+	captureScrollAnchor,
 	downloadFileFromBlob,
 	downloadFileFromJson,
 	downloadFileFromObjectURL,
@@ -272,6 +275,7 @@ Focus определяет, какой элемент получает keyboard 
 | Скачать готовый `Blob`                                               | `downloadFileFromBlob`            |
 | Сериализовать значение в readable JSON и скачать                     | `downloadFileFromJson`            |
 | Получить общий container для `createPortal`                          | `getOrCreatePortalRoot`           |
+| Сохранить позицию при вставке элементов сверху                       | `captureScrollAnchor`             |
 | Закрыть UI по `mousedown` вне одного элемента                        | `useClickOutside`                 |
 | Считать trigger и portal content одной «внутренней» областью         | `useClickOutside` с массивом refs |
 | Закрыть активный overlay по `Escape`                                 | `useEscapeDismiss`                |
@@ -667,6 +671,81 @@ getOrCreatePortalRoot("dialog-root"); // null, если document отсутст�
 ```
 
 Не кешируйте этот `null` в server-loaded module и не ожидайте, что он автоматически станет HTMLElement на client. Portal target должен разрешаться на корректной browser lifecycle boundary.
+
+## `captureScrollAnchor`
+
+Одноразовая компенсация сдвига сохраняемого DOM-элемента в обычном
+вертикальном scroll-контейнере. Например, при добавлении более ранних
+элементов в начало списка. Не запускает запросы и не зависит от React,
+Query, cursor или предметной модели.
+
+```ts
+declare function captureScrollAnchor(viewport: HTMLElement | null, anchor: HTMLElement | null): CapturedScrollAnchor | null;
+
+type CapturedScrollAnchor = Readonly<{
+	restore: () => boolean;
+	release: () => void;
+}>;
+```
+
+Host выбирает сохраняемый элемент, захватывает его **до изменения DOM**,
+вызывает `restore()` **после DOM commit**, а при отмене, ошибке или unmount —
+`release()`. Разрешение Promise загрузки не гарантирует DOM commit: React-host
+применяет восстановление в layout effect соответствующего обновления, а не
+сразу после `await fetchNextPage()`.
+
+```ts
+const pendingAnchor = captureScrollAnchor(viewportElement, retainedElement);
+try {
+	// Здесь пример синхронного DOM commit, не React render.
+	listElement.prepend(olderElementsFragment);
+	pendingAnchor?.restore();
+} finally {
+	pendingAnchor?.release();
+}
+```
+
+Операция сохраняет положение anchor в координатах содержимого контейнера.
+Разницу после commit прибавляет к **текущему** `scrollTop`: ручная прокрутка
+во время ожидания не отменяется. Компенсация мгновенная даже при CSS
+`scroll-behavior: smooth`; горизонтальная позиция не меняется. При нулевом
+сдвиге запись прокрутки не выполняется. Допустимый диапазон ограничивает
+сам браузер.
+
+На время операции `overflow-anchor` контейнера устанавливается в
+`none!important`, чтобы браузер не выполнил вторую компенсацию. При завершении
+возвращаются исходные inline-значение и priority либо удаляется отсутствовавшее
+свойство. Внешнее изменение этого свойства отменяет компенсацию и не
+перезаписывается: native anchoring уже мог возобновиться. Браузер без
+поддержки `overflow-anchor` не требует отключения native anchoring.
+
+На контейнер допускается один активный захват: новый корректный вызов
+отменяет предыдущий без прокрутки. Его старый handle становится неактивным
+и не может освободить стиль нового захвата. Разные контейнеры независимы.
+
+`null` возвращается для отсутствующих или отключённых от документа элементов,
+самого viewport в качестве anchor и элемента вне viewport. `restore()`
+возвращает `true`, если anchor сохранился и операция выполнена, включая нулевой
+сдвиг; `false` — если операция уже завершена либо DOM больше не подходит.
+`release()` и повторный `restore()` безопасны. Временный стиль освобождается
+и при ошибке browser API; ошибка не подавляется.
+После завершения host отбрасывает handle: пока он хранится, его closure
+содержит ссылки на захваченные DOM-элементы.
+
+Границы: anchor должен сохранять DOM identity и обычное положение в потоке
+без промежуточного независимо прокручиваемого контейнера. Не использовать
+для window-scroll, горизонтальной или reverse-flex ленты, sticky/fixed anchor,
+CSS scroll-snap и преобразования масштаба/поворота. Изменения layout после
+завершения операции, например поздние изображения, не отслеживаются. API не
+создаёт listeners, observers, timers или React state. Его импорт SSR-safe;
+во время render вызов с реальными DOM-элементами запрещён.
+
+Реальная геометрия, native anchoring, CSS smooth и browser clamp проверяются
+в [browser fixture](./scroll-anchor/scroll-anchor.browser.html). Для повторения
+запустить `npx vite dev --host 127.0.0.1 --port 6011 --strictPort`, открыть
+`http://127.0.0.1:6011/src/dom/scroll-anchor/scroll-anchor.browser.html` и нажать
+«Запустить проверки». Результаты и измерения выводятся на странице; этот
+dev-only сценарий дополняет unit-тесты, а не заменяет проверку React-host.
 
 ## `useClickOutside`
 
@@ -2055,6 +2134,7 @@ Touch-capable laptop не обязательно mobile. Не связывайт
 | `downloadFileFromBlob`      | filename, `Blob`              | `void`                              | Сам создаёт/revokes URL               | Browser-only, ошибки синхронные.                         |
 | `downloadFileFromJson`      | filename, `unknown`           | `void`                              | JSON с 2 spaces, UTF-8 MIME           | Наследует ошибки и потери `JSON.stringify`.              |
 | `getOrCreatePortalRoot`     | `id: string`                  | `HTMLElement \| null`               | Создаёт `div` в body                  | DOM mutation; root не удаляется.                         |
+| `captureScrollAnchor`       | viewport, сохраняемый элемент | `CapturedScrollAnchor \| null`      | Один активный захват на viewport      | Обычный вертикальный DOM flow; restore после commit.     |
 | `useClickOutside`           | один ref/массив refs, handler | `void`                              | Global bubbling `mousedown`           | Нет enabled/event arg/custom document.                   |
 | `useEscapeDismiss`          | options object                | `void`                              | enabled=true, capture `keydown`       | Не управляет stack/focus; defaultPrevented игнорируется. |
 | `useElementHeightObserver`  | element ref                   | `number`                            | Initial `0`                           | ContentRect, требует ResizeObserver.                     |

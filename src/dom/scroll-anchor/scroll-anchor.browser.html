@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Проверка captureScrollAnchor в браузере</title>
+		<style>
+			:root {
+				color-scheme: light dark;
+				font-family: system-ui, sans-serif;
+			}
+			body {
+				max-width: 52rem;
+				margin: 1.5rem auto;
+				padding: 0 1rem;
+			}
+			button {
+				padding: 0.5rem 1rem;
+			}
+			/* Фиксированная геометрия — вход browser-проверки, не библиотечный UI primitive. */
+			.viewport {
+				height: 240px;
+				width: min(100%, 560px);
+				box-sizing: border-box;
+				overflow: auto;
+				border: 3px solid currentColor;
+				overflow-anchor: auto !important;
+				overscroll-behavior: contain;
+			}
+			.row {
+				box-sizing: border-box;
+				padding: 8px;
+				border-bottom: 1px solid currentColor;
+			}
+			[data-anchor] {
+				outline: 2px dashed currentColor;
+				outline-offset: -4px;
+			}
+			#fixture {
+				margin-block: 1rem;
+			}
+			#parking {
+				display: none;
+			}
+			pre {
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+			}
+		</style>
+	</head>
+	<body data-result="idle">
+		<h1>Проверка сохранения позиции прокрутки</h1>
+		<p>
+			Проверки используют реальную геометрию DOM. Прокрутка во время ожидания имитируется browser scroll API; измеряется положение
+			элемента относительно viewport. Алгоритм компенсации не повторяется в fixture.
+		</p>
+		<button type="button" data-action="run-scroll-anchor-checks">Запустить проверки</button>
+		<p id="status" role="status">Готово к запуску.</p>
+		<div id="fixture"></div>
+		<div id="parking"></div>
+		<ol id="results"></ol>
+		<pre id="measurements" aria-label="Машиночитаемые результаты"></pre>
+		<script type="module">
+			import { captureScrollAnchor } from "./captureScrollAnchor.ts";
+
+			const fixture = document.querySelector("#fixture");
+			const parking = document.querySelector("#parking");
+			const button = document.querySelector('[data-action="run-scroll-anchor-checks"]');
+			const status = document.querySelector("#status");
+			const results = document.querySelector("#results");
+			const measurements = document.querySelector("#measurements");
+			const tolerance = 0.75;
+
+			function assert(condition, message) {
+				if (!condition) throw new Error(message);
+			}
+
+			function close(actual, expected, message) {
+				assert(
+					Math.abs(actual - expected) <= tolerance,
+					`${message}: ожидалось ${expected.toFixed(2)}, получено ${actual.toFixed(2)}`
+				);
+			}
+
+			async function frames(count = 2) {
+				for (let index = 0; index < count; index++) await new Promise(requestAnimationFrame);
+			}
+
+			function rows(count, prefix) {
+				return Array.from({ length: count }, (_, index) => {
+					const row = document.createElement("div");
+					row.className = "row";
+					row.style.height = `${52 + (index % 3) * 8}px`;
+					row.textContent = `${prefix} ${index + 1}`;
+					return row;
+				});
+			}
+
+			function createViewport() {
+				const viewport = document.createElement("div");
+				viewport.className = "viewport";
+				viewport.tabIndex = 0;
+				viewport.setAttribute("aria-label", "Прокручиваемый список для проверки");
+				const items = rows(24, "Исходная строка");
+				const anchor = items[6];
+				anchor.dataset.anchor = "true";
+				viewport.append(...items);
+				fixture.replaceChildren(viewport);
+				viewport.scrollTo({ top: 300, behavior: "instant" });
+				return { viewport, anchor, items };
+			}
+
+			// Только наблюдаемая viewport-позиция: здесь нет content offset или расчёта scroll-компенсации.
+			function observe(viewport, anchor) {
+				return {
+					scrollTop: viewport.scrollTop,
+					anchorTop: anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top,
+					maximum: viewport.scrollHeight - viewport.clientHeight
+				};
+			}
+
+			function styleReleased(viewport) {
+				assert(viewport.style.getPropertyValue("overflow-anchor") === "", "Временный inline overflow-anchor не освобождён");
+				assert(viewport.style.getPropertyPriority("overflow-anchor") === "", "Временный CSS priority не освобождён");
+			}
+
+			async function withViewport(check) {
+				const context = createViewport();
+				const operations = [];
+				const capture = (anchor = context.anchor) => {
+					const operation = captureScrollAnchor(context.viewport, anchor);
+					assert(operation !== null, "Подключённый anchor не захвачен");
+					operations.push(operation);
+					return operation;
+				};
+				await frames();
+				try {
+					return await check({ ...context, capture });
+				} finally {
+					for (const operation of operations) operation.release();
+					parking.replaceChildren();
+				}
+			}
+
+			const checks = [
+				[
+					"Prepend сохраняет прокрутку, выполненную во время ожидания",
+					() =>
+						withViewport(async ({ viewport, anchor, capture }) => {
+							const operation = capture();
+							viewport.scrollTo({ top: 335, behavior: "instant" });
+							await frames();
+							const before = observe(viewport, anchor);
+							viewport.prepend(...rows(3, "Добавленная строка"));
+							assert(operation.restore(), "Валидный prepend не восстановлен");
+							const after = observe(viewport, anchor);
+							close(after.anchorTop, before.anchorTop, "Положение после ручной прокрутки изменилось");
+							assert(after.scrollTop > before.scrollTop, "Prepend не компенсирован прокруткой");
+							styleReleased(viewport);
+							return { before, after };
+						})
+				],
+				[
+					"Нет двойной native-компенсации через границы кадров",
+					() =>
+						withViewport(async ({ viewport, anchor, capture }) => {
+							const before = observe(viewport, anchor);
+							const operation = capture();
+							if (CSS.supports("overflow-anchor", "none")) {
+								assert(
+									getComputedStyle(viewport).overflowAnchor === "none",
+									"Native anchoring не отключён поверх CSS !important"
+								);
+							}
+							viewport.prepend(...rows(3, "Добавленная строка"));
+							await frames(3);
+							const beforeRestore = observe(viewport, anchor);
+							close(beforeRestore.scrollTop, before.scrollTop, "Браузер прокрутил viewport до restore");
+							assert(operation.restore(), "Restore отклонён");
+							const immediate = observe(viewport, anchor);
+							await frames(4);
+							const afterFrames = observe(viewport, anchor);
+							close(immediate.anchorTop, before.anchorTop, "Первичная компенсация неверна");
+							close(afterFrames.anchorTop, before.anchorTop, "После кадров появилась повторная компенсация");
+							close(afterFrames.scrollTop, immediate.scrollTop, "Native anchoring повторно изменил scrollTop");
+							styleReleased(viewport);
+							return { before, beforeRestore, immediate, afterFrames };
+						})
+				],
+				[
+					"CSS smooth не откладывает компенсацию",
+					() =>
+						withViewport(async ({ viewport, anchor, capture }) => {
+							viewport.style.scrollBehavior = "smooth";
+							const before = observe(viewport, anchor);
+							const operation = capture();
+							viewport.prepend(...rows(3, "Добавленная строка"));
+							assert(operation.restore(), "Restore отклонён");
+							const immediate = observe(viewport, anchor);
+							close(immediate.anchorTop, before.anchorTop, "Компенсация не применена синхронно");
+							await new Promise((resolve) => setTimeout(resolve, 400));
+							const settled = observe(viewport, anchor);
+							close(settled.anchorTop, before.anchorTop, "После restore продолжилась smooth-анимация");
+							assert(getComputedStyle(viewport).scrollBehavior === "smooth", "Настройка smooth была перезаписана");
+							styleReleased(viewport);
+							return { before, immediate, settled };
+						})
+				],
+				[
+					"Браузер ограничивает компенсацию концом списка",
+					() =>
+						withViewport(async ({ viewport, items, capture }) => {
+							const anchor = items.at(-3);
+							viewport.scrollTo({ top: viewport.scrollHeight, behavior: "instant" });
+							await frames();
+							const before = observe(viewport, anchor);
+							const operation = capture(anchor);
+							viewport.prepend(...rows(3, "Добавленная строка"));
+							items.at(-1).remove();
+							items.at(-2).remove();
+							assert(operation.restore(), "Допустимый anchor должен завершить restore даже при clamp");
+							const after = observe(viewport, anchor);
+							close(after.scrollTop, after.maximum, "Scroll не ограничен концом списка");
+							assert(
+								after.anchorTop > before.anchorTop + tolerance,
+								"Fixture не создала недостижимую прежнюю позицию anchor"
+							);
+							await frames(3);
+							close(viewport.scrollTop, after.maximum, "Положение после clamp нестабильно");
+							styleReleased(viewport);
+							return { before, after };
+						})
+				],
+				[
+					"Отмена освобождает стиль без прокрутки",
+					() =>
+						withViewport(async ({ viewport, anchor, capture }) => {
+							viewport.style.setProperty("overflow-anchor", "auto", "important");
+							const operation = capture();
+							viewport.prepend(...rows(2, "Добавленная строка"));
+							await frames(3);
+							const beforeRelease = observe(viewport, anchor);
+							operation.release();
+							operation.release();
+							assert(!operation.restore(), "Отменённая операция повторно применила restore");
+							const afterRelease = observe(viewport, anchor);
+							close(afterRelease.scrollTop, beforeRelease.scrollTop, "Release изменил scrollTop");
+							assert(viewport.style.getPropertyValue("overflow-anchor") === "auto", "Исходное значение не восстановлено");
+							assert(
+								viewport.style.getPropertyPriority("overflow-anchor") === "important",
+								"Исходный priority не восстановлен"
+							);
+							return { beforeRelease, afterRelease };
+						})
+				],
+				[
+					"Новый capture завершает старый без двойного сдвига",
+					() =>
+						withViewport(async ({ viewport, anchor, capture }) => {
+							const before = observe(viewport, anchor);
+							const previous = capture();
+							const current = capture();
+							viewport.prepend(...rows(3, "Добавленная строка"));
+							await frames(2);
+							assert(!previous.restore(), "Устаревший capture остался активным");
+							previous.release();
+							if (CSS.supports("overflow-anchor", "none")) {
+								assert(
+									getComputedStyle(viewport).overflowAnchor === "none",
+									"Старый release освободил стиль нового capture"
+								);
+							}
+							assert(current.restore(), "Новый capture не восстановлен");
+							assert(!current.restore(), "Restore оказался повторно применимым");
+							await frames(3);
+							const after = observe(viewport, anchor);
+							close(after.anchorTop, before.anchorTop, "Позиция изменилась при замене capture");
+							styleReleased(viewport);
+							return { before, after };
+						})
+				],
+				...["anchor", "viewport", "reparent"].map((change) => [
+					`Устаревший DOM не прокручивается: ${change}`,
+					() =>
+						withViewport(async ({ viewport, anchor, capture }) => {
+							const operation = capture();
+							if (change === "anchor") anchor.remove();
+							else if (change === "viewport") viewport.remove();
+							else parking.append(anchor);
+							const beforeRestore = viewport.scrollTop;
+							assert(!operation.restore(), "Устаревшая DOM identity принята");
+							close(viewport.scrollTop, beforeRestore, "Restore прокрутил устаревший DOM");
+							styleReleased(viewport);
+							return {
+								beforeRestore,
+								afterRestore: viewport.scrollTop,
+								anchorConnected: anchor.isConnected,
+								viewportConnected: viewport.isConnected
+							};
+						})
+				])
+			];
+
+			createViewport();
+			button.addEventListener("click", async () => {
+				button.disabled = true;
+				document.body.dataset.result = "running";
+				status.textContent = "Выполняются проверки…";
+				results.replaceChildren();
+				measurements.textContent = "";
+				const report = [];
+				try {
+					for (const [name, check] of checks) {
+						const row = document.createElement("li");
+						try {
+							const metrics = await check();
+							report.push({ name, result: "passed", metrics });
+							row.dataset.result = "passed";
+							row.textContent = `Пройдено: ${name}`;
+						} catch (error) {
+							const message = error instanceof Error ? error.message : String(error);
+							report.push({ name, result: "failed", message });
+							row.dataset.result = "failed";
+							row.textContent = `Ошибка: ${name}. ${message}`;
+						}
+						results.append(row);
+					}
+					const failed = report.filter((entry) => entry.result === "failed").length;
+					document.body.dataset.result = failed ? "failed" : "passed";
+					document.body.dataset.passed = String(report.length - failed);
+					document.body.dataset.failed = String(failed);
+					status.textContent = `Пройдено: ${report.length - failed}; ошибок: ${failed}.`;
+					measurements.textContent = JSON.stringify(
+						{ nativeAnchoring: CSS.supports("overflow-anchor", "none"), checks: report },
+						null,
+						2
+					);
+				} finally {
+					button.disabled = false;
+					createViewport();
+				}
+			});
+		</script>
+	</body>
+</html>

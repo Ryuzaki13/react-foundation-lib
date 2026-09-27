@@ -1021,7 +1021,7 @@ await resetSessionScopedQueries(queryClient);
 - потери авторизации;
 - смены роли/контекста, если старые данные более недопустимы.
 
-Порядок работы:
+Порядок работы без дополнительных lifecycle-регистраций сохраняется:
 
 1. Находит только query с `sessionScoped === true`.
 2. Отменяет их незавершённые requests.
@@ -1031,6 +1031,12 @@ await resetSessionScopedQueries(queryClient);
 6. По умолчанию отправляет другим вкладкам команду такого же reset.
 
 Обычные публичные query остаются нетронутыми.
+
+Если установлен `installSessionScopedQueryResetLifecycle`, его `beforeReset`
+синхронно отзывает session-bound ресурсы **до** отмены Query. Reset ожидает
+завершения retirement, выполняет прежнюю последовательность, затем вызывает
+парный `afterReset`. Локальный и входящий межвкладочный reset используют одну
+границу; отдельная установка lifecycle для BroadcastChannel не требуется.
 
 ### Почему observed query не удаляется
 
@@ -1057,9 +1063,9 @@ Foundation-пакет не включает SSR самостоятельно, н
 ### Options
 
 ```ts
-type ResetSessionScopedQueriesOptions = {
-	readonly broadcast?: boolean;
-};
+type ResetSessionScopedQueriesOptions = Readonly<{
+	broadcast?: boolean;
+}>;
 ```
 
 По умолчанию `broadcast` включён:
@@ -1076,24 +1082,90 @@ await resetSessionScopedQueries(queryClient, { broadcast: false });
 
 Обычно consumer вручную не передаёт `false`: это делает `installSessionScopedQueryReset` внутри message handler.
 
+### `installSessionScopedQueryResetLifecycle`
+
+```ts
+const boundary = installSessionScopedQueryResetLifecycle(queryClient, {
+	beforeReset: () => scopedRuntime.beginReset(),
+	afterReset: (outcome) => scopedRuntime.finishReset(outcome)
+});
+
+// Завершение lifetime QueryClient, а не временное снятие React host.
+boundary.cleanup();
+```
+
+Типы доступны через тот же публичный subpath `/query-client`:
+
+```ts
+type SessionScopedQueryResetOutcome = Readonly<{
+	status: "completed" | "failed";
+}>;
+
+type SessionScopedQueryResetLifecycle = Readonly<{
+	beforeReset: () => void | Promise<void>;
+	afterReset: (outcome: SessionScopedQueryResetOutcome) => void;
+}>;
+
+type InstalledSessionScopedQueryResetLifecycle = Readonly<{
+	cleanup: () => void;
+}>;
+```
+
+Это техническая subscription-граница, а не auth store. Она не знает account,
+Query data, WebSocket или React. Регистрации и число активных вызовов reset
+хранятся по QueryClient в WeakMap, без browser storage или глобального scope.
+Установка сама по себе не запускает I/O и допустима при SSR.
+
+Правила lifecycle:
+
+- Устанавливайте boundary **до** запуска session-bound runtime, на весь срок
+  жизни QueryClient/router. Попытка новой регистрации во время любого reset
+  синхронно бросает `Error`, даже если в начале reset не было listeners.
+  Пропущенный `beforeReset` не воспроизводится задним числом. React host может
+  подключаться и отключаться от постоянного runtime без переустановки boundary.
+- Каждый reset захватывает собственную пару callbacks. Все `beforeReset`
+  вызываются синхронно в порядке регистрации, даже если один бросил исключение.
+  Возвращённые promises завершаются до отмены/очистки Query.
+- Перекрывающиеся reset не объединяются и не ставятся в новую очередь. Consumer
+  считает активные пары и не допускает новый scope до завершения всех пар и
+  собственной асинхронной очистки. Callback не должен рекурсивно ожидать
+  `resetSessionScopedQueries` того же client: это создаст циклическое ожидание.
+- `cleanup()` идемпотентен и запрещает будущие вызовы `beforeReset`. Уже
+  захваченный `afterReset` всё равно выполняется; закрытый consumer проверяет
+  собственный lifetime, а не восстанавливает ресурсы из такого callback.
+- `afterReset` — синхронное уведомление из finally, включая ошибочный исход.
+  `completed` означает завершение retirement и Query/reset/broadcast-операций,
+  **не** успешный результат каждой queryFn и не разрешение пользоваться
+  прежним auth snapshot. Consumer заново проверяет актуальное состояние Query.
+  Ошибка одного `afterReset` не меняет уже вычисленный outcome соседних
+  callbacks, но входит в отказ всего reset.
+- Если retirement завершился ошибкой, reset всё равно отменяет и очищает
+  session-scoped Query, но не выполняет refetch/broadcast. Все пары получают
+  `failed`, и прежний scope нельзя автоматически допустить снова.
+- Единственная ошибка возвращается исходным объектом; несколько ошибок
+  объединяются в `AggregateError` в порядке before, Query flow, after.
+  Исключение одного callback не отменяет выполнение остальных пар.
+
 ### `installSessionScopedQueryReset`
 
 ```ts
 const installed = installSessionScopedQueryReset(queryClient, {
-	channelName: "sales-app:session-cache-reset"
+	channelName: "sales-app:session-cache-reset",
+	onError: (error) => reportSessionResetFailure(error)
 });
 ```
 
 Типы:
 
 ```ts
-type InstallSessionScopedQueryResetOptions = {
-	readonly channelName: string;
-};
+type InstallSessionScopedQueryResetOptions = Readonly<{
+	channelName: string;
+	onError?: (error: unknown) => void | Promise<void>;
+}>;
 
-type InstalledSessionScopedQueryReset = {
-	readonly cleanup: () => void;
-};
+type InstalledSessionScopedQueryReset = Readonly<{
+	cleanup: () => void;
+}>;
 ```
 
 Канал передаёт только command:
@@ -1113,6 +1185,12 @@ type InstalledSessionScopedQueryReset = {
 - session details.
 
 Это безопаснее полной передачи session cache между вкладками.
+
+Ошибка входящего reset передаётся локальному `onError`, без повторной рассылки
+или `unhandled rejection`. Прежние consumers могут не передавать callback:
+в этом случае ошибка явно выводится через `console.error`. Если сам обработчик
+бросает исключение либо возвращает rejected Promise, fallback сообщает обе
+ошибки в `AggregateError`. Diagnostics не входят в Query data или wire.
 
 ### Browser fallback
 
@@ -2457,14 +2535,18 @@ type InstalledBroadcast = ReturnType<typeof installReactQueryBroadcast>;
 
 ### Session-scoped cache
 
-| Symbol                                  | Вид      | Назначение                                |
-| --------------------------------------- | -------- | ----------------------------------------- |
-| `ResetSessionScopedQueriesOptions`      | type     | Управляет broadcast reset.                |
-| `InstallSessionScopedQueryResetOptions` | type     | Имя command channel.                      |
-| `InstalledSessionScopedQueryReset`      | type     | Cleanup contract.                         |
-| `isSessionScopedQuery`                  | function | Predicate по query meta.                  |
-| `resetSessionScopedQueries`             | function | Cancel/clear/refetch session query.       |
-| `installSessionScopedQueryReset`        | function | Межвкладочная reset-command installation. |
+| Symbol                                      | Вид      | Назначение                                |
+| ------------------------------------------- | -------- | ----------------------------------------- |
+| `ResetSessionScopedQueriesOptions`          | type     | Управляет broadcast reset.                |
+| `InstallSessionScopedQueryResetOptions`     | type     | Имя command channel.                      |
+| `InstalledSessionScopedQueryReset`          | type     | Cleanup contract.                         |
+| `isSessionScopedQuery`                      | function | Predicate по query meta.                  |
+| `resetSessionScopedQueries`                 | function | Cancel/clear/refetch session query.       |
+| `installSessionScopedQueryReset`            | function | Межвкладочная reset-command installation. |
+| `SessionScopedQueryResetOutcome`            | type     | Исход retirement и core reset.            |
+| `SessionScopedQueryResetLifecycle`          | type     | Парные callbacks reset.                   |
+| `InstalledSessionScopedQueryResetLifecycle` | type     | Cleanup lifecycle-регистрации.            |
+| `installSessionScopedQueryResetLifecycle`   | function | Per-QueryClient retirement boundary.      |
 
 ### Optimistic update
 

@@ -1,27 +1,16 @@
 import { type Query, type QueryClient } from "@tanstack/react-query";
 
+import { beginSessionScopedQueryReset } from "./sessionScopedResetLifecycle";
+import {
+	type InstalledSessionScopedQueryReset,
+	type InstallSessionScopedQueryResetOptions,
+	type ResetSessionScopedQueriesOptions
+} from "./sessionScopedTypes";
+
 const SESSION_SCOPED_QUERY_CACHE_RESET_EVENT = "session-scoped-query-cache-reset";
 
 type SessionScopedQueryCacheResetEvent = {
 	readonly type: typeof SESSION_SCOPED_QUERY_CACHE_RESET_EVENT;
-};
-
-export type ResetSessionScopedQueriesOptions = {
-	/**
-	 * Передавать ли команду сброса другим вкладкам. При обработке входящего
-	 * сообщения значение отключается, чтобы вкладки не создавали цикл событий.
-	 */
-	readonly broadcast?: boolean;
-};
-
-export type InstallSessionScopedQueryResetOptions = {
-	/** Уникальное для приложения имя служебного BroadcastChannel. */
-	readonly channelName: string;
-};
-
-export type InstalledSessionScopedQueryReset = {
-	/** Освобождает канал и прекращает межвкладочную синхронизацию. */
-	readonly cleanup: () => void;
 };
 
 let broadcastSessionScopedQueryReset: (() => void) | undefined;
@@ -41,34 +30,55 @@ export function isSessionScopedQuery(query: Pick<Query, "meta">): boolean {
  * сброса отправляется другим вкладкам без передачи содержимого кеша или токенов.
  */
 export async function resetSessionScopedQueries(queryClient: QueryClient, options: ResetSessionScopedQueriesOptions = {}): Promise<void> {
+	const boundary = beginSessionScopedQueryReset(queryClient);
 	const filters = { predicate: isSessionScopedQuery } as const;
-
-	await queryClient.cancelQueries(filters);
-
-	const matchedQueries = queryClient.getQueryCache().findAll(filters);
-	for (const query of matchedQueries) {
-		if (query.getObserversCount() === 0) {
-			queryClient.getQueryCache().remove(query);
-			continue;
+	const failures: unknown[] = [];
+	try {
+		if (boundary.retirement) failures.push(...(await boundary.retirement));
+		try {
+			await queryClient.cancelQueries(filters);
+		} catch (error) {
+			failures.push(error);
 		}
 
-		// Hydrated query хранит SSR-данные как initial state, поэтому одного
-		// query.reset() недостаточно: старая сессия могла бы вернуться в UI.
-		query.reset();
-		query.setState({ data: undefined, dataUpdatedAt: 0 });
-	}
+		// Отказ retirement не оставляет доступным прежний snapshot и не допускает
+		// новые чтения. Ошибка одного observer также не прерывает очистку остальных.
+		const matchedQueries = queryClient.getQueryCache().findAll(filters);
+		for (const query of matchedQueries) {
+			try {
+				if (query.getObserversCount() === 0) {
+					queryClient.getQueryCache().remove(query);
+				} else {
+					try {
+						query.reset();
+					} finally {
+						// Hydration сохраняет SSR initialData: обычный reset мог бы вернуть старую сессию.
+						query.setState({ data: undefined, dataUpdatedAt: 0 });
+					}
+				}
+			} catch (error) {
+				failures.push(error);
+			}
+		}
 
-	await queryClient.refetchQueries(
-		{
-			predicate: (query) => isSessionScopedQuery(query) && query.getObserversCount() > 0,
-			type: "active"
-		},
-		{ cancelRefetch: true }
-	);
+		if (failures.length === 0) {
+			await queryClient.refetchQueries(
+				{
+					predicate: (query) => isSessionScopedQuery(query) && query.getObserversCount() > 0,
+					type: "active"
+				},
+				{ cancelRefetch: true }
+			);
 
-	if (options.broadcast !== false) {
-		broadcastSessionScopedQueryReset?.();
+			if (options.broadcast !== false) broadcastSessionScopedQueryReset?.();
+		}
+	} catch (error) {
+		failures.push(error);
+	} finally {
+		failures.push(...(await boundary.complete({ status: failures.length === 0 ? "completed" : "failed" })));
 	}
+	if (failures.length === 1) throw failures[0];
+	if (failures.length > 1) throw new AggregateError(failures, "Не удалось завершить сброс session-scoped Query");
 }
 
 /**
@@ -97,11 +107,27 @@ export function installSessionScopedQueryReset(
 	broadcastSessionScopedQueryReset = broadcast;
 	channel.onmessage = (event: MessageEvent<unknown>) => {
 		if (!isSessionScopedQueryCacheResetEvent(event.data)) return;
-		void resetSessionScopedQueries(queryClient, { broadcast: false });
+		void resetSessionScopedQueries(queryClient, { broadcast: false }).catch(async (error: unknown) => {
+			if (!options.onError) {
+				console.error("Не удалось обработать межвкладочный сброс session-scoped Query", error);
+				return;
+			}
+			try {
+				await options.onError(error);
+			} catch (reportingError) {
+				console.error(
+					"Не удалось сообщить об ошибке межвкладочного сброса session-scoped Query",
+					new AggregateError([error, reportingError], "Ошибка сброса и её обработчика")
+				);
+			}
+		});
 	};
 
+	let closed = false;
 	return {
 		cleanup: () => {
+			if (closed) return;
+			closed = true;
 			channel.onmessage = null;
 			channel.close();
 			if (broadcastSessionScopedQueryReset === broadcast) {

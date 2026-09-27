@@ -5,3 +5,6 @@ export * from "./queryMeta";
 export * from "./queryPersistenceAdapter";
 export * from "./queryClient";
 export * from "./sessionScoped";
+export { installSessionScopedQueryResetLifecycle } from "./sessionScopedResetLifecycle";
+export * from "./sessionScopedResetLifecycleTypes";
+export * from "./sessionScopedTypes";

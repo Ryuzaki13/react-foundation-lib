@@ -1,5 +1,6 @@
 export * from "./downloadFile";
 export * from "./getOrCreatePortalRoot";
+export { observeElementResize } from "./observeElementResize";
 export { captureScrollAnchor } from "./scroll-anchor/captureScrollAnchor";
 export { type CapturedScrollAnchor } from "./scroll-anchor/scrollAnchorTypes";
 export * from "./useClickOutside";

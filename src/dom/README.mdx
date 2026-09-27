@@ -2131,6 +2131,23 @@ Touch-capable laptop не обязательно mobile. Не связывайт
 
 ## Краткий справочник API
 
+### `observeElementResize`
+
+`observeElementResize(element: HTMLElement, onResize: () => void): () => void`
+наблюдает один контейнер без React state и возвращает idempotent cleanup.
+Используйте API в browser effect/imperative lifecycle, если размер нужен для
+DOM-операции, а не для JSX. Начальная и последующие native deliveries вызывают
+callback один раз; нулевой размер не скрывается. После cleanup поздняя delivery
+игнорируется. Ошибка callback не поглощается.
+
+API не вычисляет scroll policy и не меняет CSS. Чтение геометрии и решение,
+нужно ли прокручивать контейнер, остаются у consumer. Не изменяйте размеры
+наблюдаемого элемента без проверки возможного resize loop. Дополнительный rAF
+не добавляется: ResizeObserver уже группирует изменения перед paint.
+При отсутствии API наблюдение не начинается и cleanup остаётся безопасным;
+polyfill и имитация resize через window.resize не создаются. Импорт SSR-safe,
+но сам DOM-элемент передают только после browser commit.
+
 ### Блокировка документа и visual viewport
 
 ```tsx

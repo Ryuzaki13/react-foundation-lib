@@ -1,6 +1,7 @@
 import { type RefObject } from "react";
 
 import {
+	observeElementResize,
 	useDocumentScrollLock,
 	useVisualViewportFrame,
 	type UseDocumentScrollLockOptions,
@@ -12,4 +13,5 @@ const frame: (options: UseVisualViewportFrameOptions) => void = useVisualViewpor
 const divRef: RefObject<HTMLDivElement | null> = { current: null };
 const frameOptions = { active: true, containerRef: divRef } satisfies UseVisualViewportFrameOptions;
 const lockOptions = { active: true, documentTarget: null, compensateScrollbar: true } satisfies UseDocumentScrollLockOptions;
-void [lock, frame, frameOptions, lockOptions];
+const observe: (element: HTMLElement, onResize: () => void) => () => void = observeElementResize;
+void [lock, frame, frameOptions, lockOptions, observe];

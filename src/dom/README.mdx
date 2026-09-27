@@ -14,6 +14,8 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - узнать высоту элемента через `ResizeObserver`;
 - узнать, пересекается ли элемент с viewport или другим root;
 - сохранить позицию чтения при вставке элементов выше текущего;
+- согласованно блокировать прокрутку документа для вложенных overlays;
+- привязать fixed-поверхность к visual viewport при экранной клавиатуре;
 - определить наличие touch/coarse-pointer возможностей.
 
 Модуль является низкоуровневым browser foundation-слоем. Он не создаёт готовые кнопки, dialog, modal, popover, tooltip или download UI. Визуальный компонент по-прежнему отвечает за семантический HTML, ARIA, стили, анимацию, стек overlay, сообщения об ошибках и пользовательский сценарий.
@@ -29,6 +31,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - [Скачивание файлов](#скачивание-файлов)
 - [`getOrCreatePortalRoot`](#getorcreateportalroot)
 - [`captureScrollAnchor`](#capturescrollanchor)
+- [Блокировка документа и visual viewport](#блокировка-документа-и-visual-viewport)
 - [`useClickOutside`](#useclickoutside)
 - [`useEscapeDismiss`](#useescapedismiss)
 - [`useElementHeightObserver`](#useelementheightobserver)
@@ -69,7 +72,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - не удаляет portal root после использования;
 - не реализует полноценный dialog/modal/popover;
 - не назначает `role`, `aria-modal`, `aria-labelledby` или `aria-describedby`;
-- не блокирует прокрутку страницы;
+- не выбирает автоматически, какие поверхности должны блокировать прокрутку страницы;
 - не делает фон `inert`;
 - не управляет стеком вложенных overlay;
 - не блокирует программный уход фокуса;
@@ -2127,6 +2130,64 @@ Touch-capable laptop не обязательно mobile. Не связывайт
 Не измеряйте layout через JavaScript, если задача полностью решается CSS.
 
 ## Краткий справочник API
+
+### Блокировка документа и visual viewport
+
+```tsx
+import { useRef } from "react";
+import { useDocumentScrollLock, useVisualViewportFrame } from "@ryuzaki13/react-foundation-lib/dom";
+
+function Surface({ open }: { open: boolean }) {
+	const containerRef = useRef<HTMLDivElement>(null);
+	useDocumentScrollLock({ active: open });
+	useVisualViewportFrame({ active: open, containerRef });
+	return open ? <div ref={containerRef} className="viewportSurface" /> : null;
+}
+```
+
+```css
+.viewportSurface {
+	position: fixed;
+	top: var(--visual-viewport-top, 0px);
+	left: var(--visual-viewport-left, 0px);
+	width: var(--visual-viewport-width, 100%);
+	height: var(--visual-viewport-height, 100dvh);
+	overflow: hidden;
+}
+```
+
+`UseDocumentScrollLockOptions` содержит `active`, необязательные `documentTarget`
+и `compensateScrollbar` (по умолчанию `false`). `undefined` выбирает глобальный
+document, `null` явно отключает операцию. Потребители одного документа разделяют
+аренды: закрытие вложенного dialog не разблокирует открытый fullscreen. После
+последнего cleanup восстанавливаются исходные inline properties с priority и
+scroll X/Y; посторонние CSS-свойства не затрагиваются. Пока lock активен, другой
+код не должен параллельно изменять принадлежащие ему position/top/left/width,
+overflow, box-sizing и padding-right body или overflow html.
+
+`UseVisualViewportFrameOptions` содержит `active` и `containerRef`. Hook пишет
+четыре показанные CSS-переменные только на переданный контейнер; готовый layout,
+scroll host, safe-area padding и z-index задаёт UI-владелец. `resize` и `scroll`
+visual viewport объединяются одним animation frame. Несколько потребителей
+одного portal root разделяют подписку. Отложенное появление portal ref
+поддерживается; после установки DOM-узел должен оставаться тем же до деактивации.
+При замене узла деактивируйте прежний lifecycle либо перемонтируйте его owner.
+
+При отсутствии VisualViewport используются innerWidth/innerHeight окна и его
+resize. Нулевая размерность сохраняется как действительное состояние, NaN
+заменяется fallback. Pinch zoom не отключается: hook использует CSS-pixel bounds
+браузера и не добавляет обратный scale. Эти hooks не определяют «телефон» по UA,
+не перехватывают touchmove и не заставляют окно постоянно возвращаться в (0, 0).
+
+Оба hook SSR-safe: browser работа начинается только после commit, первый HTML
+использует CSS fallback. Они не предоставляют focus trap, inert, Escape или
+порядок overlays — используйте UI primitive и `useOverlayFocus` по назначению.
+Прежние независимые body locks нужно заменить во всех совместно открываемых
+потребителях: общий ref-count не может координировать чужую реализацию.
+
+JSDOM покрывает leases, lifecycle и события, но не поведение виртуальной
+клавиатуры. Мобильные fixed-поверхности дополнительно проверяйте на физическом
+устройстве: keyboard open/close, pan, orientation, pinch zoom и вложенный overlay.
 
 | API                         | Вход                          | Результат                           | Default/событие                       | Главное ограничение                                      |
 | --------------------------- | ----------------------------- | ----------------------------------- | ------------------------------------- | -------------------------------------------------------- |

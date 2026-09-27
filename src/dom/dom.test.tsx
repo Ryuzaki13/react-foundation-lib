@@ -97,6 +97,27 @@ describe("dom helpers", () => {
 });
 
 describe("dom hooks", () => {
+	it("useOverlayFocus включает contenteditable в границы Tab", async () => {
+		function EditableOverlay() {
+			const ref = useOverlayFocus<HTMLDivElement>({ active: true, trapFocus: true, restoreFocus: false });
+			return React.createElement(
+				"div",
+				{ ref },
+				React.createElement("button", { type: "button", "data-first": true }, "Начало"),
+				React.createElement("div", { contentEditable: true, "data-editor": true })
+			);
+		}
+		await render(React.createElement(EditableOverlay));
+		const first = document.querySelector<HTMLElement>("[data-first]");
+		const editor = document.querySelector<HTMLElement>("[data-editor]");
+		editor?.focus();
+		const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+		editor?.dispatchEvent(tab);
+		expect(tab.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(first);
+		first?.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+		expect(document.activeElement).toBe(editor);
+	});
 	it("useClickOutside вызывает handler только для клика вне всех ref", async () => {
 		const handler = vi.fn();
 

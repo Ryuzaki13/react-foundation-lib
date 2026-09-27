@@ -9,3 +9,7 @@ export * from "./useFocusTrap";
 export * from "./useIntersectionObserver";
 export * from "./useIsTouchDevice";
 export * from "./useOverlayFocus";
+export { useDocumentScrollLock } from "./useDocumentScrollLock";
+export { type UseDocumentScrollLockOptions } from "./document-scroll/documentScrollLockTypes";
+export { useVisualViewportFrame } from "./useVisualViewportFrame";
+export { type UseVisualViewportFrameOptions } from "./visual-viewport/visualViewportFrameTypes";

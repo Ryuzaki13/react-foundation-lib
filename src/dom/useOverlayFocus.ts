@@ -1,7 +1,7 @@
 import { RefObject, useEffect, useEffectEvent, useRef } from "react";
 
 const focusableElementsSelector =
-	'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])';
+	'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"]:not([tabindex="-1"]), [contenteditable=""]:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"]):not([disabled])';
 
 export interface UseOverlayFocusOptions<T extends HTMLElement> {
 	active: boolean;

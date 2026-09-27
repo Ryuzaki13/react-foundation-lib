@@ -2193,8 +2193,26 @@ visual viewport объединяются одним animation frame. Неско�
 При отсутствии VisualViewport используются innerWidth/innerHeight окна и его
 resize. Нулевая размерность сохраняется как действительное состояние, NaN
 заменяется fallback. Pinch zoom не отключается: hook использует CSS-pixel bounds
-браузера и не добавляет обратный scale. Эти hooks не определяют «телефон» по UA,
-не перехватывают touchmove и не заставляют окно постоянно возвращаться в (0, 0).
+браузера и не добавляет обратный scale. Эти hooks не определяют «телефон» по UA
+и не заставляют окно постоянно возвращаться в (0, 0).
+
+Document lock дополнительно отменяет cancelable вертикальный одноточечный
+`touchmove`, если вложенная scroll-цепочка не может принять движение. `body/html`
+исключены из разрешённых hosts; `overscroll-behavior-y: contain/none` останавливает
+поиск выше достигнутого края. Допуск 1 CSS px учитывает округление scroll-размеров
+при дробном scrollTop. Подписка общая на документ и снимается последним
+lease. React state, scroll positions и selection во время движения не меняются.
+
+Guard не перехватывает touchstart, wheel, горизонтальные жесты, native
+input/textarea/select/contenteditable/media controls и активное выделение
+в целевой области. Multi-touch освобождает всю последовательность до отпускания
+всех пальцев; при pinch zoom больше 1 одноточечное панорамирование также остаётся
+браузеру. Утечка из нативного editor этим guard не объявляется исправленной.
+Обычная вертикальная геометрия поддержана; reverse/writing-mode scroll hosts
+пропускаются. Open shadow DOM учитывается через composedPath, closed shadow
+не предоставляет внутреннюю геометрию. Guard страхует непрокручиваемые области
+и уже достигнутые края, но не заменяет CSS containment и native scroll physics
+при пересечении края одним движением.
 
 Оба hook SSR-safe: browser работа начинается только после commit, первый HTML
 использует CSS fallback. Они не предоставляют focus trap, inert, Escape или

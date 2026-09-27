@@ -1,3 +1,5 @@
+import { attachDocumentTouchScrollGuard } from "./attachDocumentTouchScrollGuard";
+
 type InlineProperty = Readonly<{ name: string; value: string; priority: string }>;
 
 type DocumentScrollLock = Readonly<{
@@ -59,6 +61,7 @@ export function acquireDocumentScrollLock(documentTarget: Document, compensateSc
 		bodyStyle.setProperty("width", "100%");
 		bodyStyle.setProperty("overflow", "hidden");
 		bodyStyle.setProperty("box-sizing", "border-box");
+		const releaseTouchGuard = attachDocumentTouchScrollGuard(documentTarget);
 
 		lock = {
 			leases,
@@ -68,6 +71,7 @@ export function acquireDocumentScrollLock(documentTarget: Document, compensateSc
 				} else restoreProperties(bodyStyle, originalPadding);
 			},
 			restore: () => {
+				releaseTouchGuard();
 				restoreProperties(rootStyle, rootProperties);
 				restoreProperties(bodyStyle, bodyProperties);
 				view.scrollTo({ left: scrollX, top: scrollY, behavior: "instant" });

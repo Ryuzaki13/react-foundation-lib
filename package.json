@@ -61,6 +61,10 @@
 			"types": "./dist/date-segments/index.d.ts",
 			"import": "./dist/date-segments/index.js"
 		},
+		"./decimal": {
+			"types": "./dist/decimal/index.d.ts",
+			"import": "./dist/decimal/index.js"
+		},
 		"./dom": {
 			"types": "./dist/dom/index.d.ts",
 			"import": "./dist/dom/index.js"

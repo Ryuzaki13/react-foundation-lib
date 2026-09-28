@@ -111,6 +111,7 @@ npm run pack:dry-run
 | `/crypto`              | [`crypto/README.mdx`](./src/crypto/README.mdx)                                 |
 | `/currency`            | [`currency/README.mdx`](./src/currency/README.mdx)                             |
 | `/date-segments`       | [`date-segments/README.mdx`](./src/date-segments/README.mdx)                   |
+| `/decimal`             | [Точная десятичная арифметика](./src/decimal/README.md)                        |
 | `/dom`                 | [`dom/README.mdx`](./src/dom/README.mdx)                                       |
 | `/error`               | [`error/README.mdx`](./src/error/README.mdx)                                   |
 | `/error-report`        | [`error-report/README.mdx`](./src/error-report/README.mdx)                     |

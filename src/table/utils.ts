@@ -71,6 +71,8 @@ export function resolveTableLength(length: string | number): string {
 
 /**
  * Определяет, пришёл ли клик из интерактивного элемента внутри таблицы.
+ * Учитывает только элементы внутри ближайшей строки: фокусируемая вкладка или
+ * диалог вокруг таблицы не должны перехватывать выбор её строк.
  */
 export function isTableInteractiveElement(target: EventTarget | null, extraSelector?: string): boolean {
 	if (typeof Element === "undefined" || !(target instanceof Element)) {
@@ -78,6 +80,9 @@ export function isTableInteractiveElement(target: EventTarget | null, extraSelec
 	}
 
 	const selector = extraSelector ? `${TABLE_INTERACTIVE_ELEMENT_SELECTOR}, ${extraSelector}` : TABLE_INTERACTIVE_ELEMENT_SELECTOR;
+	const interactiveElement = target.closest(selector);
+	if (!interactiveElement) return false;
 
-	return Boolean(target.closest(selector));
+	const row = target.closest("tr");
+	return !row || row.contains(interactiveElement);
 }

@@ -141,4 +141,24 @@ describe("table utils", () => {
 		expect(isTableInteractiveElement(document.createElement("span"))).toBe(false);
 		expect(isTableInteractiveElement(null)).toBe(false);
 	});
+
+	it("не принимает фокусируемую панель вокруг таблицы за элемент строки", () => {
+		const panel = document.createElement("div");
+		const table = document.createElement("table");
+		const body = document.createElement("tbody");
+		const row = document.createElement("tr");
+		const cell = document.createElement("td");
+		const text = document.createElement("span");
+		const button = document.createElement("button");
+
+		panel.tabIndex = 0;
+		cell.append(text, button);
+		row.append(cell);
+		body.append(row);
+		table.append(body);
+		panel.append(table);
+
+		expect(isTableInteractiveElement(text)).toBe(false);
+		expect(isTableInteractiveElement(button)).toBe(true);
+	});
 });

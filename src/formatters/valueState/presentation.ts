@@ -5,8 +5,8 @@ export const DEFAULT_VALUE_STATES: readonly State[] = ["none", "information", "s
 export const VALUE_STATE_COLOR_TOKENS: Record<State, string> = {
 	"": "transparent",
 	none: "var(--content-1)",
-	information: "var(--status-info-text)",
-	success: "var(--status-success-text)",
-	warning: "var(--status-warning-text)",
-	error: "var(--status-error-text)"
+	information: "var(--info-text)",
+	success: "var(--success-text)",
+	warning: "var(--warning-text)",
+	error: "var(--error-text)"
 };

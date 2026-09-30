@@ -105,9 +105,31 @@ export type FormattersPipelineRowBasedOverrideNode = {
 	config: FormattersPipelineRowBasedOverrideConfig;
 };
 
+/** Состояние определяется по текущему значению на входе шага. */
+export type FormattersPipelineValueStateValueSource = {
+	kind: "value";
+};
+
+/**
+ * Отдельный числовой расчёт состояния из реестра table formulas.
+ *
+ * Порядок dependencyIds задаёт аргументы ctx.value/num(index). Результат
+ * используется только для состояния и иконки, без подмены значения ячейки.
+ */
+export type FormattersPipelineValueStateFormulaSource = {
+	kind: "formula";
+	formulaId: string;
+	dependencyIds: string[];
+};
+
+/** Источник значения, по которому определяется состояние ячейки. */
+export type FormattersPipelineValueStateSource = FormattersPipelineValueStateValueSource | FormattersPipelineValueStateFormulaSource;
+
 export type FormattersPipelineResolveValueStateConfig = {
 	resolver: FormattersPipelineValueStateResolverConfig;
 	icon?: FormattersPipelineValueStateIconSettings;
+	/** Без отдельного источника состояние определяется по текущему значению pipeline. */
+	valueSource?: FormattersPipelineValueStateSource;
 };
 
 /**
@@ -238,10 +260,7 @@ export type FormattersPipelineRowBasedOverrideStep = {
 export type FormattersPipelineResolveValueStateStep = {
 	id: string;
 	type: "resolveValueState";
-	config: {
-		resolver: FormattersPipelineValueStateResolverConfig;
-		icon?: FormattersPipelineValueStateIconSettings;
-	};
+	config: FormattersPipelineResolveValueStateConfig;
 };
 
 /**
@@ -299,6 +318,12 @@ export type FormattersPipelineConfig = {
 export type FormattersPipelineExecutionContext = {
 	value: unknown;
 	rowData: Record<string, unknown>;
+	/**
+	 * Проекция текущей динамической ячейки для формулы состояния. Потребитель
+	 * может связать исходные имена показателей с текущим периодом, сохранив
+	 * исходную строку для остальных шагов pipeline.
+	 */
+	valueStateFormulaRowData?: Record<string, unknown>;
 	rowKind: FormattersPipelineRowKind;
 	/**
 	 * Совместимые производные флаги для legacy-кода.
@@ -424,6 +449,8 @@ export type FormatPipelineDisplayValueArgs<TField extends FormattersPipelineRunt
 	rawValue: unknown;
 	/** Данные строки, доступные формуле и pipeline. */
 	rowData: TableFormulaRowData;
+	/** Проекция текущего периода, доступная только формуле состояния. */
+	valueStateFormulaRowData?: TableFormulaRowData;
 	/** Тип строки, который определяет семантику `rowBasedOverride`. */
 	rowKind: FormattersPipelineRowKind;
 	/** Уровень строки, если потребитель поддерживает иерархию или группировку. */

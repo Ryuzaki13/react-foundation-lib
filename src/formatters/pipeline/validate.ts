@@ -1,5 +1,8 @@
+import { validateTableFormulaDependencies } from "../../formulas";
 import { getNumberPreset } from "../number";
 import { createRowBasedFormatterContext, getRowBasedFormatterById } from "../rowBased";
+
+import { cloneResolveValueStateConfig } from "./clone";
 
 import type {
 	FormattersPipelineConfig,
@@ -8,7 +11,8 @@ import type {
 	FormattersPipelineNode,
 	FormattersPipelinePlan,
 	FormattersPipelineRowBasedOverrideFormulaConfig,
-	FormattersPipelineStep
+	FormattersPipelineStep,
+	FormattersPipelineValueStateFormulaSource
 } from "./types";
 
 export type FormattersPipelineValidationCode =
@@ -39,6 +43,13 @@ export type FormattersPipelineValidationCode =
 	| "step_row_based_override_unused_dependencies"
 	| "step_row_based_override_formula_does_not_use_dependencies"
 	| "step_row_based_override_formula_runtime_error"
+	| "step_value_state_formula_id_empty"
+	| "step_value_state_formula_not_found"
+	| "step_value_state_dependency_id_empty"
+	| "step_value_state_dependency_index_out_of_range"
+	| "step_value_state_unused_dependencies"
+	| "step_value_state_formula_does_not_use_dependencies"
+	| "step_value_state_formula_runtime_error"
 	| "step_threshold_states_count_invalid"
 	| "step_value_hidden_without_icon"
 	| "step_typed_value_format_preset_empty"
@@ -161,6 +172,48 @@ function validateRowBasedOverrideFormulaConfig(config: FormattersPipelineRowBase
 	}
 }
 
+/**
+ * Pipeline проверяет контракт формулы и индексы, а наличие полей в конкретном
+ * источнике данных проверяет потребитель через collectRuntimeFieldDependencyIds.
+ */
+function validateValueStateFormulaSource(source: FormattersPipelineValueStateFormulaSource, state: MutableValidationState) {
+	if (!source.formulaId.trim()) {
+		pushError(state, "step_value_state_formula_id_empty", "Для источника состояния необходимо выбрать формулу.");
+		return;
+	}
+
+	if (source.dependencyIds.some((dependencyId) => !dependencyId.trim())) {
+		pushError(state, "step_value_state_dependency_id_empty", "Зависимость формулы состояния не может иметь пустой id.");
+		return;
+	}
+
+	const validation = validateTableFormulaDependencies({
+		formulaId: source.formulaId,
+		dependencies: source.dependencyIds,
+		availableColumnIds: source.dependencyIds
+	});
+	for (const error of validation.errors) {
+		if (error.code === "formula_not_found") {
+			pushError(state, "step_value_state_formula_not_found", "Формула источника состояния не найдена в реестре.");
+		} else if (error.code === "dependency_index_out_of_range") {
+			pushError(state, "step_value_state_dependency_index_out_of_range", error.message);
+		}
+	}
+	for (const warning of validation.warnings) {
+		switch (warning.code) {
+			case "unused_dependencies":
+				pushWarning(state, "step_value_state_unused_dependencies", warning.message);
+				break;
+			case "formula_does_not_use_dependencies":
+				pushWarning(state, "step_value_state_formula_does_not_use_dependencies", warning.message);
+				break;
+			case "formula_runtime_error":
+				pushWarning(state, "step_value_state_formula_runtime_error", warning.message);
+				break;
+		}
+	}
+}
+
 function validateStepDefinitions(steps: readonly FormattersPipelineStep[], state: MutableValidationState) {
 	const stepIdSet = new Set<string>();
 	const counters = {
@@ -203,6 +256,9 @@ function validateStepDefinitions(steps: readonly FormattersPipelineStep[], state
 				break;
 			case "resolveValueState":
 				counters.resolveValueState += 1;
+				if (step.config.valueSource?.kind === "formula") {
+					validateValueStateFormulaSource(step.config.valueSource, state);
+				}
 
 				if (
 					step.config.resolver.kind === "threshold" &&
@@ -481,24 +537,7 @@ export function validateFormattersPipelineGraph(graph: FormattersPipelineGraph):
 				steps.push({
 					id: node.id,
 					type: "resolveValueState",
-					config: {
-						resolver:
-							node.config.resolver.kind === "fixed"
-								? {
-										kind: "fixed",
-										entries: { ...node.config.resolver.entries },
-										fallbackState: node.config.resolver.fallbackState
-									}
-								: {
-										kind: "threshold",
-										thresholds: node.config.resolver.thresholds.map((item) =>
-											typeof item === "number" ? item : { ...item }
-										),
-										states: [...node.config.resolver.states],
-										invalidState: node.config.resolver.invalidState
-									},
-						icon: node.config.icon ? { ...node.config.icon } : undefined
-					}
+					config: cloneResolveValueStateConfig(node.config)
 				});
 				break;
 			case "typedValueFormat":

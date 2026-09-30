@@ -41,6 +41,13 @@ export function collectFormattersPipelineDependencyIds(config: FormattersPipelin
 	const seen = new Set<string>();
 
 	for (const step of validation.plan.steps) {
+		if (step.type === "resolveValueState" && step.config.valueSource?.kind === "formula") {
+			for (const dependencyId of step.config.valueSource.dependencyIds) {
+				addUnique(dependencyIds, seen, dependencyId);
+			}
+			continue;
+		}
+
 		if (step.type !== "rowBasedOverride") continue;
 
 		if (step.config.mode === "field") {
@@ -62,6 +69,7 @@ export function collectFormattersPipelineDependencyIds(config: FormattersPipelin
  * Учитывает:
  * - binding-поля renderer-а;
  * - field/dependency поля formatter-а `rowBasedOverride`.
+ * - зависимости формулы источника состояния `resolveValueState`.
  */
 export function collectRuntimeFieldDependencyIds<TField extends RuntimeDependencyField>(
 	fieldIds: readonly string[],

@@ -1,3 +1,4 @@
+import { compileTableFormula } from "../../formulas";
 import { getBaseTypeFromODataType } from "../../odata-service";
 import { isSafe } from "../../validators";
 import { formatDate, getDatePreset, parseDate } from "../date";
@@ -28,7 +29,7 @@ type CompileFormattersPipelineExecutorResult =
 	  }
 	| {
 			ok: false;
-			reason: "pipeline_invalid" | "row_based_formula_not_found";
+			reason: "pipeline_invalid" | "row_based_formula_not_found" | "value_state_formula_not_found";
 	  };
 
 const DEFAULT_TYPED_VALUE_FORMAT_PRESETS = Object.freeze({
@@ -103,6 +104,13 @@ export function compileFormattersPipelineExecutor(args: {
 }): CompileFormattersPipelineExecutorResult {
 	const validation = validateFormattersPipelineConfig(args.config);
 	if (!validation.ok || !validation.plan) {
+		if (validation.errors.some((error) => error.code === "step_value_state_formula_not_found")) {
+			return {
+				ok: false,
+				reason: "value_state_formula_not_found"
+			};
+		}
+
 		if (validation.errors.some((error) => error.code === "step_row_based_override_formula_not_found")) {
 			return {
 				ok: false,
@@ -121,6 +129,15 @@ export function compileFormattersPipelineExecutor(args: {
 	const hasTypedValueFormat = steps.some((step) => step.type === "typedValueFormat");
 
 	const valueStateStep = steps.find((step) => step.type === "resolveValueState");
+	const valueStateSource = valueStateStep?.config.valueSource;
+	// Формулу компилируем один раз вместе с колонкой, а не для каждой ячейки.
+	const valueStateFormula =
+		valueStateSource?.kind === "formula"
+			? compileTableFormula({ formulaId: valueStateSource.formulaId, keys: valueStateSource.dependencyIds })
+			: undefined;
+	if (valueStateFormula && !valueStateFormula.ok) {
+		return { ok: false, reason: "value_state_formula_not_found" };
+	}
 	const valueStateResolverId =
 		valueStateStep?.config.resolver.kind === "fixed"
 			? registerFixedResolver({
@@ -206,11 +223,28 @@ export function compileFormattersPipelineExecutor(args: {
 								break;
 							}
 
-							nextState = resolveValueState(valueStateResolverId, nextValue);
+							if (valueStateSource?.kind === "formula") {
+								const rowData = ctx.valueStateFormulaRowData ?? ctx.rowData;
+								// ctx.num() превращает отсутствующие значения в 0. Для состояния
+								// отсутствие исходных данных нельзя выдавать за успешный расчёт.
+								const hasDependencies = valueStateSource.dependencyIds.every(
+									(dependencyId) =>
+										Object.hasOwn(rowData, dependencyId) &&
+										rowData[dependencyId] != null &&
+										(typeof rowData[dependencyId] !== "string" || rowData[dependencyId].trim() !== "")
+								);
+								const result = hasDependencies && valueStateFormula?.ok ? valueStateFormula.execute(rowData) : undefined;
+								nextState = result?.ok ? resolveValueState(valueStateResolverId, result.value) : "none";
+							} else {
+								nextState = resolveValueState(valueStateResolverId, nextValue);
+							}
 							showIcon = step.config.icon?.enabled ?? false;
 							showValue = step.config.icon?.showValue ?? true;
 							iconPosition = step.config.icon?.position ?? "left";
 							icon = showIcon ? resolveIconState(nextState) : undefined;
+							if (valueStateSource?.kind === "formula" && nextState === "none") {
+								showIcon = false;
+							}
 							break;
 						case "typedValueFormat":
 							nextValue = formatTypedCellValue(nextValue, args.column, step.config);

@@ -97,6 +97,7 @@ function executePipelineFormatting<TField extends FormattersPipelineRuntimeField
 	const execution: FormattersPipelineExecutionResult = executor.execute({
 		value: sourceValue,
 		rowData: args.rowData,
+		valueStateFormulaRowData: args.valueStateFormulaRowData,
 		rowKind: args.rowKind,
 		isGroupRow: args.rowKind === "group",
 		isTotalsRow: args.rowKind === "totals",

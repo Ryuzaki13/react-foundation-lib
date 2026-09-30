@@ -1,5 +1,6 @@
 import { uuidv4 } from "../../crypto";
 
+import { cloneResolveValueStateConfig } from "./clone";
 import { validateFormattersPipelineGraph } from "./validate";
 
 import type {
@@ -54,24 +55,7 @@ function cloneNodeWithId(node: FormattersPipelineNode, id: string): FormattersPi
 				...node,
 				id,
 				position: { ...node.position },
-				config: {
-					resolver:
-						node.config.resolver.kind === "fixed"
-							? {
-									kind: "fixed",
-									entries: { ...node.config.resolver.entries },
-									fallbackState: node.config.resolver.fallbackState
-								}
-							: {
-									kind: "threshold",
-									thresholds: node.config.resolver.thresholds.map((item) =>
-										typeof item === "number" ? item : { ...item }
-									),
-									states: [...node.config.resolver.states],
-									invalidState: node.config.resolver.invalidState
-								},
-					icon: node.config.icon ? { ...node.config.icon } : undefined
-				}
+				config: cloneResolveValueStateConfig(node.config)
 			};
 	}
 }
@@ -125,24 +109,7 @@ function rekeyPlan(plan: FormattersPipelinePlan, idFactory: IdFactory): Formatte
 					return {
 						...step,
 						id: idFactory(),
-						config: {
-							resolver:
-								step.config.resolver.kind === "fixed"
-									? {
-											kind: "fixed",
-											entries: { ...step.config.resolver.entries },
-											fallbackState: step.config.resolver.fallbackState
-										}
-									: {
-											kind: "threshold",
-											thresholds: step.config.resolver.thresholds.map((item) =>
-												typeof item === "number" ? item : { ...item }
-											),
-											states: [...step.config.resolver.states],
-											invalidState: step.config.resolver.invalidState
-										},
-							icon: step.config.icon ? { ...step.config.icon } : undefined
-						}
+						config: cloneResolveValueStateConfig(step.config)
 					};
 			}
 		})

@@ -43,6 +43,12 @@ export function cloneResolveValueStateConfig(config: FormattersPipelineResolveVa
 						states: [...config.resolver.states],
 						invalidState: config.resolver.invalidState
 					},
+		valueSource:
+			config.valueSource?.kind === "formula"
+				? { ...config.valueSource, dependencyIds: [...config.valueSource.dependencyIds] }
+				: config.valueSource
+					? { ...config.valueSource }
+					: undefined,
 		icon: config.icon ? { ...config.icon } : undefined
 	};
 }

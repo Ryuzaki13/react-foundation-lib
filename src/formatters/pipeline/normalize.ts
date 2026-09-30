@@ -68,6 +68,15 @@ function isResolveValueStateConfig(value: unknown): value is FormattersPipelineR
 	if (!isRecord(value) || !isRecord(value.resolver)) return false;
 
 	const { resolver, icon } = value;
+	const source = value.valueSource;
+	const hasValidSource =
+		source === undefined ||
+		(isRecord(source) &&
+			(source.kind === "value" ||
+				(source.kind === "formula" &&
+					typeof source.formulaId === "string" &&
+					Array.isArray(source.dependencyIds) &&
+					source.dependencyIds.every((dependencyId) => typeof dependencyId === "string"))));
 	const hasValidIcon =
 		icon === undefined ||
 		(isRecord(icon) &&
@@ -75,7 +84,7 @@ function isResolveValueStateConfig(value: unknown): value is FormattersPipelineR
 			isOptionalBoolean(icon.showValue) &&
 			(icon.position === undefined || icon.position === "left" || icon.position === "right"));
 
-	if (!hasValidIcon) return false;
+	if (!hasValidIcon || !hasValidSource) return false;
 
 	if (resolver.kind === "fixed") {
 		return (

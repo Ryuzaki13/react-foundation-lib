@@ -98,8 +98,12 @@ export function collectQueryClientDiagnostics(queryClient: QueryClient) {
 	return {
 		queries: queries.slice(-MAX_QUERY_DIAGNOSTICS).map(collectQueryDiagnostics),
 		mutations: mutations.slice(-MAX_MUTATION_DIAGNOSTICS).map(collectMutationDiagnostics),
-		omittedQueries: Math.max(0, queries.length - MAX_QUERY_DIAGNOSTICS) || undefined,
-		omittedMutations: Math.max(0, mutations.length - MAX_MUTATION_DIAGNOSTICS) || undefined
+		...(getErrorReportCaptureOptions().valuePolicy === "verbatim"
+			? {
+					omittedQueries: Math.max(0, queries.length - MAX_QUERY_DIAGNOSTICS) || undefined,
+					omittedMutations: Math.max(0, mutations.length - MAX_MUTATION_DIAGNOSTICS) || undefined
+				}
+			: {})
 	};
 }
 

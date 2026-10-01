@@ -343,7 +343,7 @@ uninstallBreadcrumbs();
 
 ### `collectQueryClientDiagnostics(queryClient)`
 
-Возвращает последние 40 query и последние 40 mutations из соответствующих cache. Поля `omittedQueries` и `omittedMutations` показывают, сколько более старых записей не вошло в snapshot. Это синхронный snapshot текущего QueryClient.
+Возвращает последние 40 query и последние 40 mutations из соответствующих cache. В `verbatim`-режиме поля `omittedQueries` и `omittedMutations` показывают, сколько более старых записей не вошло в snapshot. По умолчанию сохраняется прежняя форма без этих полей. Это синхронный snapshot текущего QueryClient.
 
 ### `collectPersistedQueryDiagnostics()`
 
@@ -448,7 +448,7 @@ parseErrorReportDrafts(value);
 
 ### Bounded payload
 
-`limitErrorReportPayload(payload)` сначала повторно применяет выбранную policy, затем проверяет UTF-8 размер `JSON.stringify`. Предел — `ERROR_REPORT_PAYLOAD_MAX_BYTES` (256 KiB). При превышении сначала уменьшаются data previews, затем число старых записей cache, и только после этого удаляются optional sections. Каждый сокращённый preview получает `truncated: true`, а `payload.truncation` фиксирует исходный размер, limit и список удалённых секций. `getErrorReportPayloadSize(payload)` возвращает фактический сериализованный размер в байтах.
+`limitErrorReportPayload(payload)` сначала повторно применяет выбранную policy, затем проверяет UTF-8 размер `JSON.stringify`. Предел — `ERROR_REPORT_PAYLOAD_MAX_BYTES` (256 KiB). В `verbatim`-режиме при превышении сначала уменьшаются data previews, затем число старых записей cache, и только после этого удаляются optional sections. Каждый сокращённый preview получает `truncated: true`. По умолчанию сохраняется прежний порядок: первой удаляется вся секция `queryClient`. `payload.truncation` фиксирует исходный размер, limit и список удалённых секций. `getErrorReportPayloadSize(payload)` возвращает фактический сериализованный размер в байтах.
 
 ### Хранение
 

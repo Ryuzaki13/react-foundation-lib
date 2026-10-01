@@ -131,6 +131,7 @@ export function getErrorReportPayloadSize(payload: ErrorReportPayload) {
 }
 
 function normalizePayloadStrings(payload: ErrorReportPayload): ErrorReportPayload {
+	const verbatim = getErrorReportCaptureOptions().valuePolicy === "verbatim";
 	return {
 		...payload,
 		reportId: sanitizeDiagnosticText(payload.reportId, 128),
@@ -185,10 +186,16 @@ function normalizePayloadStrings(payload: ErrorReportPayload): ErrorReportPayloa
 			? {
 					queries: payload.queryClient.queries.slice(-40).map(sanitizeQueryDiagnostics),
 					mutations: payload.queryClient.mutations.slice(-40).map(sanitizeMutationDiagnostics),
-					omittedQueries:
-						(payload.queryClient.omittedQueries ?? 0) + Math.max(0, payload.queryClient.queries.length - 40) || undefined,
-					omittedMutations:
-						(payload.queryClient.omittedMutations ?? 0) + Math.max(0, payload.queryClient.mutations.length - 40) || undefined
+					...(verbatim
+						? {
+								omittedQueries:
+									(payload.queryClient.omittedQueries ?? 0) + Math.max(0, payload.queryClient.queries.length - 40) ||
+									undefined,
+								omittedMutations:
+									(payload.queryClient.omittedMutations ?? 0) + Math.max(0, payload.queryClient.mutations.length - 40) ||
+									undefined
+							}
+						: {})
 				}
 			: undefined,
 		persistedQueries: payload.persistedQueries?.slice(-40).map(sanitizePersistedQueryDiagnostics),
@@ -277,11 +284,13 @@ export function limitErrorReportPayload(input: ErrorReportPayload): ErrorReportP
 		}
 	};
 
-	for (const previewLimit of [512, 128, 4]) {
-		if (getErrorReportPayloadSize(payload) <= ERROR_REPORT_PAYLOAD_MAX_BYTES) break;
-		payload = reduceDataPreviews(payload, previewLimit, true);
-		if (getErrorReportPayloadSize(payload) <= ERROR_REPORT_PAYLOAD_MAX_BYTES) break;
-		payload = reduceDataPreviews(payload, previewLimit, false);
+	if (getErrorReportCaptureOptions().valuePolicy === "verbatim") {
+		for (const previewLimit of [512, 128, 4]) {
+			if (getErrorReportPayloadSize(payload) <= ERROR_REPORT_PAYLOAD_MAX_BYTES) break;
+			payload = reduceDataPreviews(payload, previewLimit, true);
+			if (getErrorReportPayloadSize(payload) <= ERROR_REPORT_PAYLOAD_MAX_BYTES) break;
+			payload = reduceDataPreviews(payload, previewLimit, false);
+		}
 	}
 
 	const drop = (
@@ -294,39 +303,41 @@ export function limitErrorReportPayload(input: ErrorReportPayload): ErrorReportP
 		payload = update(payload);
 	};
 
-	drop(
-		"queryClient.queries:oldest",
-		(current) => (current.queryClient?.queries.length ?? 0) > 10,
-		(current) => ({
-			...current,
-			queryClient: current.queryClient
-				? {
-						...current.queryClient,
-						queries: current.queryClient.queries.slice(-10),
-						omittedQueries: (current.queryClient.omittedQueries ?? 0) + current.queryClient.queries.length - 10
-					}
-				: undefined
-		})
-	);
-	drop(
-		"queryClient.mutations:oldest",
-		(current) => (current.queryClient?.mutations.length ?? 0) > 10,
-		(current) => ({
-			...current,
-			queryClient: current.queryClient
-				? {
-						...current.queryClient,
-						mutations: current.queryClient.mutations.slice(-10),
-						omittedMutations: (current.queryClient.omittedMutations ?? 0) + current.queryClient.mutations.length - 10
-					}
-				: undefined
-		})
-	);
-	drop(
-		"persistedQueries:oldest",
-		(current) => (current.persistedQueries?.length ?? 0) > 10,
-		(current) => ({ ...current, persistedQueries: current.persistedQueries?.slice(-10) })
-	);
+	if (getErrorReportCaptureOptions().valuePolicy === "verbatim") {
+		drop(
+			"queryClient.queries:oldest",
+			(current) => (current.queryClient?.queries.length ?? 0) > 10,
+			(current) => ({
+				...current,
+				queryClient: current.queryClient
+					? {
+							...current.queryClient,
+							queries: current.queryClient.queries.slice(-10),
+							omittedQueries: (current.queryClient.omittedQueries ?? 0) + current.queryClient.queries.length - 10
+						}
+					: undefined
+			})
+		);
+		drop(
+			"queryClient.mutations:oldest",
+			(current) => (current.queryClient?.mutations.length ?? 0) > 10,
+			(current) => ({
+				...current,
+				queryClient: current.queryClient
+					? {
+							...current.queryClient,
+							mutations: current.queryClient.mutations.slice(-10),
+							omittedMutations: (current.queryClient.omittedMutations ?? 0) + current.queryClient.mutations.length - 10
+						}
+					: undefined
+			})
+		);
+		drop(
+			"persistedQueries:oldest",
+			(current) => (current.persistedQueries?.length ?? 0) > 10,
+			(current) => ({ ...current, persistedQueries: current.persistedQueries?.slice(-10) })
+		);
+	}
 	drop(
 		"queryClient",
 		(current) => current.queryClient !== undefined,

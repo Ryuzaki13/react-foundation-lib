@@ -89,12 +89,24 @@ describe("error-report", () => {
 	});
 
 	it("указывает число query вне 40 последних записей снимка", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
 		const queryClient = new QueryClient();
 		for (let index = 0; index < 45; index += 1) queryClient.setQueryData(["orders", index], index);
 
 		const diagnostic = collectQueryClientDiagnostics(queryClient);
 		expect(diagnostic.queries).toHaveLength(40);
 		expect(diagnostic.omittedQueries).toBe(5);
+	});
+
+	it("по умолчанию сохраняет прежнюю форму снимка при более чем 40 query", () => {
+		setErrorReportCaptureOptions(undefined);
+		const queryClient = new QueryClient();
+		for (let index = 0; index < 45; index += 1) queryClient.setQueryData(["orders", index], index);
+
+		const diagnostic = collectQueryClientDiagnostics(queryClient);
+		expect(diagnostic.queries).toHaveLength(40);
+		expect(diagnostic).not.toHaveProperty("omittedQueries");
+		expect(diagnostic).not.toHaveProperty("omittedMutations");
 	});
 
 	it("в verbatim-режиме сохраняет ограниченные variables мутации", async () => {

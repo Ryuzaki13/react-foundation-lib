@@ -229,6 +229,48 @@ describe("versioned error-report payload", () => {
 		expect(parseErrorReportPayload(payload)).toEqual(payload);
 	});
 
+	it("по умолчанию оставляет прежнюю форму queryClient при лимите 40 записей", () => {
+		setErrorReportCaptureOptions(undefined);
+		const payload = limitErrorReportPayload(
+			createPayload({
+				queryClient: {
+					queries: Array.from({ length: 45 }, (_, index) => ({ queryHash: `hash-${index}`, queryKey: ["orders", index] })),
+					mutations: [],
+					omittedQueries: 5,
+					omittedMutations: 2
+				}
+			})
+		);
+
+		expect(payload.queryClient?.queries).toHaveLength(40);
+		expect(payload.queryClient).not.toHaveProperty("omittedQueries");
+		expect(payload.queryClient).not.toHaveProperty("omittedMutations");
+		expect(JSON.stringify(payload)).not.toContain("omittedQueries");
+		expect(parseErrorReportPayload(payload)).toEqual(payload);
+	});
+
+	it("по умолчанию при 256 KiB сначала удаляет весь queryClient, как прежде", () => {
+		setErrorReportCaptureOptions(undefined);
+		const payload = limitErrorReportPayload(
+			createPayload({
+				queryClient: {
+					queries: Array.from({ length: 40 }, (_, index) => ({
+						queryHash: `hash-${index}`,
+						queryKey: ["orders", "x".repeat(4_096)],
+						meta: { first: "a".repeat(4_096), second: "b".repeat(4_096), third: "c".repeat(4_096) }
+					})),
+					mutations: []
+				}
+			})
+		);
+
+		expect(payload.queryClient).toBeUndefined();
+		expect(payload.truncation?.droppedSections[0]).toBe("queryClient");
+		expect(payload.truncation?.droppedSections).not.toContain("queryClient.queries:oldest");
+		expect(getErrorReportPayloadSize(payload)).toBeLessThanOrEqual(ERROR_REPORT_PAYLOAD_MAX_BYTES);
+		expect(parseErrorReportPayload(payload)).toEqual(payload);
+	});
+
 	it("детерминированно уменьшает oversized payload и добавляет marker", () => {
 		const largeContext = Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`field-${index}`, "x".repeat(4_096)])) as Record<
 			string,

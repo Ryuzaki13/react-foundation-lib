@@ -4,9 +4,11 @@ import { QueryClient } from "@tanstack/react-query";
 import { indexedDB } from "fake-indexeddb";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { hashString128 } from "../crypto";
 import { createIndexedDbQueryStorage, REACT_QUERY_PERSISTENCE_BUSTER } from "../query-client";
 
-import { collectPersistedQueryDiagnostics, collectQueryClientDiagnostics } from "./diagnostics";
+import { setErrorReportCaptureOptions } from "./captureOptions";
+import { collectMutationDiagnostics, collectPersistedQueryDiagnostics, collectQueryClientDiagnostics } from "./diagnostics";
 import { isErrorReportingEnabled } from "./environment";
 import { createErrorInfo } from "./errorInfo";
 import { reportRuntimeError, setErrorReportRuntimeErrorReporter } from "./runtime";
@@ -16,6 +18,7 @@ import type { PersistedQuery } from "@tanstack/query-persist-client-core";
 afterEach(() => {
 	Reflect.deleteProperty(globalThis, "indexedDB");
 	setErrorReportRuntimeErrorReporter(undefined);
+	setErrorReportCaptureOptions(undefined);
 	sessionStorage.clear();
 });
 
@@ -43,6 +46,71 @@ describe("error-report", () => {
 		expect(serialized).toContain("dataShape");
 		expect(serialized).not.toContain("secret-password");
 		expect(serialized).not.toContain('amount":1000');
+	});
+
+	it("в verbatim-режиме сохраняет исходный queryHash, ключ и ограниченный снимок данных", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim", dataPreviewBytes: { query: 2_048 } });
+		const queryClient = new QueryClient();
+		const queryKey = ["orders", { filter: "customer=1000", token: "example-token" }] as const;
+		queryClient.setQueryData(queryKey, { rows: [{ id: 42, description: "x".repeat(3_000) }] });
+		const query = queryClient.getQueryCache().find({ queryKey });
+		const diagnostic = collectQueryClientDiagnostics(queryClient).queries[0];
+
+		expect(diagnostic.queryHash).toBe(hashString128(query!.queryHash));
+		expect(diagnostic.queryKey).toEqual(queryKey);
+		expect(diagnostic.dataPreview?.truncated).toBe(true);
+		expect(new TextEncoder().encode(diagnostic.dataPreview?.json).byteLength).toBeLessThanOrEqual(2_048);
+		expect(JSON.parse(diagnostic.dataPreview!.json)).toMatchObject({ rows: [{ id: 42 }] });
+	});
+
+	it("различает исходные queryHash при одинаково усечённых длинных ключах", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+		const queryClient = new QueryClient();
+		const common = "x".repeat(9_000);
+		queryClient.setQueryData(["orders", `${common}first`], { id: 1 });
+		queryClient.setQueryData(["orders", `${common}other`], { id: 2 });
+		const diagnostics = collectQueryClientDiagnostics(queryClient).queries;
+
+		expect(diagnostics[0].queryKey).toEqual(diagnostics[1].queryKey);
+		expect(diagnostics[0].queryHash).not.toBe(diagnostics[1].queryHash);
+		expect(diagnostics[0].queryHash).toHaveLength(32);
+	});
+
+	it("сохраняет различимыми значения queryKey длиннее прежних 4096 символов", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+		const queryClient = new QueryClient();
+		const common = "x".repeat(5_000);
+		queryClient.setQueryData(["orders", `${common}first`], { id: 1 });
+		queryClient.setQueryData(["orders", `${common}second`], { id: 2 });
+		const diagnostics = collectQueryClientDiagnostics(queryClient).queries;
+
+		expect(diagnostics[0].queryKey).toEqual(["orders", `${common}first`]);
+		expect(diagnostics[1].queryKey).toEqual(["orders", `${common}second`]);
+	});
+
+	it("указывает число query вне 40 последних записей снимка", () => {
+		const queryClient = new QueryClient();
+		for (let index = 0; index < 45; index += 1) queryClient.setQueryData(["orders", index], index);
+
+		const diagnostic = collectQueryClientDiagnostics(queryClient);
+		expect(diagnostic.queries).toHaveLength(40);
+		expect(diagnostic.omittedQueries).toBe(5);
+	});
+
+	it("в verbatim-режиме сохраняет ограниченные variables мутации", async () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim", dataPreviewBytes: { mutation: 512 } });
+		const queryClient = new QueryClient();
+		const mutation = queryClient.getMutationCache().build(queryClient, {
+			mutationKey: ["save", { id: 42 }],
+			mutationFn: async (variables: { id: number; comment: string }) => variables
+		});
+		await mutation.execute({ id: 42, comment: "x".repeat(3_000) });
+		const diagnostic = collectMutationDiagnostics(mutation);
+
+		expect(diagnostic.mutationKey).toEqual(["save", { id: 42 }]);
+		expect(diagnostic.variablesPreview?.truncated).toBe(true);
+		expect(new TextEncoder().encode(diagnostic.variablesPreview?.json).byteLength).toBeLessThanOrEqual(512);
+		expect(JSON.parse(diagnostic.variablesPreview!.json)).toMatchObject({ id: 42 });
 	});
 
 	it("собирает persisted diagnostics без state.data", async () => {
@@ -78,6 +146,33 @@ describe("error-report", () => {
 		expect(serialized).not.toContain("must-not-leak");
 	});
 
+	it("в verbatim-режиме использует сохранённый hash и ограниченный preview persisted data", async () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim", dataPreviewBytes: { persistedQuery: 512 } });
+		Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: indexedDB });
+		const storage = createIndexedDbQueryStorage<PersistedQuery>({ indexedDB });
+		await storage!.setItem("ktk:verbatim-query-hash", {
+			buster: REACT_QUERY_PERSISTENCE_BUSTER,
+			queryHash: "original-query-hash",
+			queryKey: ["orders", { requestUrl: "/api/orders?customer=1000" }],
+			state: {
+				data: { rows: [{ id: 42, comment: "x".repeat(3_000) }] },
+				dataUpdatedAt: 123,
+				errorUpdatedAt: 0,
+				fetchFailureCount: 0,
+				fetchStatus: "idle",
+				status: "success"
+			}
+		} as unknown as PersistedQuery);
+
+		const diagnostic = (await collectPersistedQueryDiagnostics()).find(
+			(query) => query.queryHash === hashString128("original-query-hash")
+		);
+		expect(diagnostic?.queryKey).toEqual(["orders", { requestUrl: "/api/orders?customer=1000" }]);
+		expect(diagnostic?.dataPreview?.truncated).toBe(true);
+		expect(new TextEncoder().encode(diagnostic?.dataPreview?.json).byteLength).toBeLessThanOrEqual(512);
+		expect(JSON.parse(diagnostic!.dataPreview!.json)).toMatchObject({ rows: [{ id: 42 }] });
+	});
+
 	it("сохраняет stacktrace при нормализации runtime ошибки", () => {
 		const error = new Error("boom");
 		error.stack = "Error: boom\n    at test.ts:1:1";
@@ -87,6 +182,16 @@ describe("error-report", () => {
 			message: "boom",
 			stackTrace: "Error: boom\n    at test.ts:1:1"
 		});
+	});
+
+	it("в verbatim-режиме не обрезает сообщение после 4096 символов и помечает предел 128 KiB", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+		const ordinary = createErrorInfo(new Error(`${"x".repeat(5_000)}END`));
+		const oversized = createErrorInfo(new Error("x".repeat(130 * 1_024)));
+
+		expect(ordinary.message).toMatch(/END$/);
+		expect(oversized.message).toContain("[TRUNCATED:");
+		expect(new TextEncoder().encode(oversized.message).byteLength).toBeLessThanOrEqual(128 * 1_024);
 	});
 
 	it("подставляет сообщение по умолчанию для ошибки без текста", () => {

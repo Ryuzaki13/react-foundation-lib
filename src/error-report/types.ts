@@ -8,6 +8,12 @@ export type ErrorReportPayloadVersion = 1;
 
 export type ErrorReportSafeValue = string | number | boolean | null | ErrorReportSafeValue[] | { [key: string]: ErrorReportSafeValue };
 
+/** Ограниченный валидный JSON-снимок данных; `truncated` отмечает утрату хвоста. */
+export type ErrorReportDataPreview = {
+	json: string;
+	truncated: boolean;
+};
+
 export type ErrorReportErrorInfo = {
 	name: string;
 	message: string;
@@ -38,6 +44,7 @@ export type ErrorReportQueryDiagnostics = {
 	observersCount?: number;
 	meta?: Record<string, ErrorReportSafeValue>;
 	dataShape?: ErrorReportSafeValue;
+	dataPreview?: ErrorReportDataPreview;
 	error?: ErrorReportErrorInfo;
 };
 
@@ -47,6 +54,7 @@ export type ErrorReportMutationDiagnostics = {
 	failureCount?: number;
 	submittedAt?: number;
 	meta?: Record<string, ErrorReportSafeValue>;
+	variablesPreview?: ErrorReportDataPreview;
 	error?: ErrorReportErrorInfo;
 };
 
@@ -59,6 +67,7 @@ export type ErrorReportPersistedQueryDiagnostics = {
 	dataUpdatedAt?: number;
 	errorUpdatedAt?: number;
 	failureCount?: number;
+	dataPreview?: ErrorReportDataPreview;
 	error?: ErrorReportErrorInfo;
 };
 
@@ -83,6 +92,8 @@ export type ErrorReportPayload = {
 	location?: {
 		pathname: string;
 		origin?: string;
+		search?: string;
+		hash?: string;
 	};
 	viewport?: {
 		width: number;
@@ -97,6 +108,8 @@ export type ErrorReportPayload = {
 	queryClient?: {
 		queries: ErrorReportQueryDiagnostics[];
 		mutations: ErrorReportMutationDiagnostics[];
+		omittedQueries?: number;
+		omittedMutations?: number;
 	};
 	persistedQueries?: ErrorReportPersistedQueryDiagnostics[];
 	breadcrumbs: ErrorReportBreadcrumb[];

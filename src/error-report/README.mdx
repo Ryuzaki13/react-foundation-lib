@@ -12,7 +12,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - сведения о browser/build;
 - URL и viewport;
 - последние действия пользователя — breadcrumbs;
-- состояние TanStack Query без полного query data;
+- состояние TanStack Query и, при явном включении, ограниченные снимки данных;
 - технические сведения о persisted queries;
 - контекст React/runtime/transport;
 - локальный draft lifecycle: `pending`, `sending`, `sent`, `failed`;
@@ -38,6 +38,7 @@ import {
 	createErrorInfo,
 	installErrorReportBrowserBreadcrumbs,
 	setErrorReportRuntimeErrorReporter,
+	setErrorReportCaptureOptions,
 	setErrorReportSanitizer,
 	type ErrorReportDraft
 } from "@ryuzaki13/react-foundation-lib/error-report";
@@ -170,7 +171,7 @@ type ErrorReportErrorInfo = {
 };
 ```
 
-Для обычного `Error` сохраняются `name`, непустой `message` и `stack` до 64 KiB.
+Для обычного `Error` сохраняются `name`, непустой `message` и `stack` до 64 KiB. В `verbatim`-режиме сообщение допускается до 128 KiB; превышение отмечается в самом тексте.
 
 ```ts
 createErrorInfo(new Error("Не удалось сохранить"));
@@ -222,6 +223,21 @@ setErrorReportSanitizer((value, context) => {
 ```
 
 Callback должен быть чистым и идемпотентным: capture может повторно применить его к уже подготовленной секции перед storage write. Если callback бросает исключение, рискованная секция удаляется. При teardown/hot reload вызовите `setErrorReportSanitizer(undefined)`.
+
+### `setErrorReportCaptureOptions(options?)`
+
+По умолчанию действуют прежняя built-in redaction и отсутствие снимков query data. Приложение, которое контролирует канал доступа к отчётам и хочет видеть фактические диагностические значения, может включить режим `verbatim`:
+
+```ts
+setErrorReportCaptureOptions({
+	valuePolicy: "verbatim",
+	dataPreviewBytes: { query: 2_048, persistedQuery: 512, mutation: 2_048 }
+});
+```
+
+В этом режиме foundation сохраняет исходные значения message, stack, query/mutation keys, meta, context и URL с search/hash. Диагностический `queryHash` вычисляется из исходного TanStack hash до ограничения длинного ключа, поэтому остаётся различимым при одинаково усечённых `queryKey`. Ограничения глубины, размера строк, количества записей и общего payload продолжают действовать. В приложении не следует регистрировать удаляющий значения `setErrorReportSanitizer`, если нужны полные диагностические значения: app callback применяется и в `verbatim`-режиме.
+
+`dataPreviewBytes` задаёт предел одного JSON-снимка в UTF-8 байтах, максимум 16 KiB на запись. При усечении `dataPreview.truncated` или `variablesPreview.truncated` становится `true`; поле `json` остаётся валидным JSON. В `verbatim`-режиме строковые части ключей сохраняются до 8192 символов, остальные диагностические строки — до их локального предела. Усечение строки, массива, объекта или глубины отмечается непосредственно в значении. Снимки включаются только в `verbatim`-режиме и только для указанных положительных бюджетов. В teardown вызовите `setErrorReportCaptureOptions(undefined)`, чтобы вернуть режим по умолчанию.
 
 ### `sanitizeDetail(detail)`
 
@@ -311,29 +327,29 @@ uninstallBreadcrumbs();
 
 Собирает:
 
-- безопасный hash уже очищенного query key и его диагностическое представление;
+- по умолчанию hash уже очищенного query key; в `verbatim`-режиме hash исходного TanStack `queryHash` и фактический bounded key;
 - status/fetchStatus;
 - timestamps обновления data/error;
 - failure count, invalidation и observer count;
 - meta;
-- `dataShape` вместо data;
+- `dataShape`, а при включённом `dataPreviewBytes.query` — ограниченный `dataPreview`;
 - нормализованную query error.
 
 Значения `queryKey` и `meta` проходят built-in redaction и app sanitizer. Предметные персональные идентификаторы всё равно должны удаляться policy приложения.
 
 ### `collectMutationDiagnostics(mutation)`
 
-Собирает mutation key, status, failure count, submitted timestamp, meta и error. Mutation variables/data не копируются.
+Собирает mutation key, status, failure count, submitted timestamp, meta и error. При включённом `dataPreviewBytes.mutation` добавляет ограниченный `variablesPreview`; результат мутации не копируется.
 
 ### `collectQueryClientDiagnostics(queryClient)`
 
-Возвращает последние 40 query и последние 40 mutations из соответствующих cache. Это синхронный snapshot текущего QueryClient.
+Возвращает последние 40 query и последние 40 mutations из соответствующих cache. Поля `omittedQueries` и `omittedMutations` показывают, сколько более старых записей не вошло в snapshot. Это синхронный snapshot текущего QueryClient.
 
 ### `collectPersistedQueryDiagnostics()`
 
 Асинхронно читает IndexedDB persistence из `/query-client` и возвращает максимум 40 записей.
 
-Сохраняются buster, безопасный hash/key, statuses, timestamps, failure count и error. IndexedDB storage key и `state.data` намеренно исключены полностью.
+По умолчанию сохраняются buster, очищенные hash/key, statuses, timestamps, failure count и error. В `verbatim`-режиме диагностический hash вычисляется из сохранённого исходного `queryHash`, а bounded key остаётся читаемым; `dataPreviewBytes.persistedQuery` дополнительно включает ограниченный снимок `state.data`. IndexedDB storage key не копируется.
 
 Если IndexedDB/persistence недоступны или чтение бросает ошибку, возвращается пустой массив — сбор отчёта не падает.
 
@@ -432,7 +448,7 @@ parseErrorReportDrafts(value);
 
 ### Bounded payload
 
-`limitErrorReportPayload(payload)` сначала повторно применяет sanitization, затем проверяет UTF-8 размер `JSON.stringify`. Предел — `ERROR_REPORT_PAYLOAD_MAX_BYTES` (256 KiB). При превышении optional diagnostics удаляются в фиксированном порядке, а `payload.truncation` фиксирует исходный размер, limit и список удалённых секций. `getErrorReportPayloadSize(payload)` возвращает фактический сериализованный размер в байтах.
+`limitErrorReportPayload(payload)` сначала повторно применяет выбранную policy, затем проверяет UTF-8 размер `JSON.stringify`. Предел — `ERROR_REPORT_PAYLOAD_MAX_BYTES` (256 KiB). При превышении сначала уменьшаются data previews, затем число старых записей cache, и только после этого удаляются optional sections. Каждый сокращённый preview получает `truncated: true`, а `payload.truncation` фиксирует исходный размер, limit и список удалённых секций. `getErrorReportPayloadSize(payload)` возвращает фактический сериализованный размер в байтах.
 
 ### Хранение
 
@@ -591,7 +607,7 @@ setErrorReportTransportErrorReporter(async (error, context) => {
 
 ### `reportTransportError(error, context)`
 
-Context имеет source `fetch.parseResponse` или `fetch.buildHttpError` и может содержать URL, method, SAP client, status/content type, redirect/response type и только техническое summary HTML-response. HTML title и text preview больше не входят в контракт, потому что являются содержимым response body.
+Context имеет source `fetch.parseResponse` или `fetch.buildHttpError` и может содержать URL, method, SAP client, status/content type, redirect/response type и техническое summary HTML-response. Транспорт может передать `html.sample` и `html.truncated` как ограниченный фрагмент ответа при явно включённом `verbatim`-режиме; по умолчанию содержимое response body не собирается.
 
 Вызов планирует reporter через 250 мс. Задержка позволяет TanStack Query перехватить тот же `Error` и создать более полезный query/mutation report.
 
@@ -644,9 +660,9 @@ export function installErrorReporting(queryClient: QueryClient) {
 
 ### Что намеренно не сохраняется
 
-- полное `query.state.data`;
-- persisted `state.data`;
-- mutation variables;
+- полное `query.state.data` (при явном включении доступен только bounded preview);
+- полное persisted `state.data` (при явном включении доступен только bounded preview);
+- полные mutation variables (при явном включении доступен только bounded preview);
 - значения input при автоматическом click breadcrumb;
 - тела transport-запросов.
 
@@ -655,7 +671,7 @@ export function installErrorReporting(queryClient: QueryClient) {
 - queryKey и mutationKey;
 - query/mutation meta;
 - `context.detail`;
-- pathname без search/hash;
+- pathname без search/hash по умолчанию; в `verbatim`-режиме search/hash сохраняются;
 - error message/stack;
 - app-provided context, если policy ошибочно разрешила предметные данные;
 - user agent, language, timezone;
@@ -679,6 +695,8 @@ Capture только создаёт draft. Приложение должно enq
 ### Считать built-in redaction полной privacy policy
 
 Foundation удаляет известные secret-like keys и email, но не умеет надёжно распознавать ФИО, телефоны и предметные IDs. Настройте app sanitizer по allow-list.
+
+В `verbatim`-режиме built-in redaction отключена намеренно. Контролируйте доступ к endpoint, хранилищу и странице отчётов в приложении.
 
 ### Вызывать production capture в development и ждать draft
 
@@ -705,6 +723,7 @@ Foundation удаляет известные secret-like keys и email, но н�
 | Группа           | Экспорты                                                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Capture          | `captureQueryErrorReport`, `captureMutationErrorReport`, `captureRuntimeErrorReport`, `captureErrorReportDraft`                   |
+| Capture options  | `setErrorReportCaptureOptions`                                                                                                    |
 | Errors           | `createErrorInfo`                                                                                                                 |
 | Safe values      | `createDiagnosticValue`, `createDataShape`, `sanitizeDetail`, `sanitizeErrorReportValue`, `setErrorReportSanitizer`               |
 | Payload contract | `ERROR_REPORT_PAYLOAD_VERSION`, `ERROR_REPORT_PAYLOAD_MAX_BYTES`, `limitErrorReportPayload`, `getErrorReportPayloadSize`, parsers |

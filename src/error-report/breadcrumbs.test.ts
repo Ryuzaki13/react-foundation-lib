@@ -8,6 +8,7 @@ import {
 	getErrorReportBreadcrumbs,
 	installErrorReportBrowserBreadcrumbs
 } from "./breadcrumbs";
+import { setErrorReportCaptureOptions } from "./captureOptions";
 
 describe("error-report breadcrumbs", () => {
 	beforeEach(() => {
@@ -17,6 +18,7 @@ describe("error-report breadcrumbs", () => {
 
 	afterEach(() => {
 		clearErrorReportBreadcrumbs();
+		setErrorReportCaptureOptions(undefined);
 		document.body.innerHTML = "";
 	});
 
@@ -137,5 +139,19 @@ describe("error-report breadcrumbs", () => {
 				detail: { password: "[REDACTED]" }
 			}
 		]);
+	});
+
+	it("в verbatim-режиме сохраняет route search/hash и исходный detail", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+		addErrorReportBreadcrumb({
+			type: "route",
+			routeId: "/workspace/students?person=42#profile",
+			detail: { password: "example-password", email: "user@example.test" }
+		});
+
+		expect(getErrorReportBreadcrumbs()[0]).toMatchObject({
+			routeId: "/workspace/students?person=42#profile",
+			detail: { password: "example-password", email: "user@example.test" }
+		});
 	});
 });

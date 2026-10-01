@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { setErrorReportCaptureOptions } from "./captureOptions";
 import {
 	ERROR_REPORT_PAYLOAD_MAX_BYTES,
 	ERROR_REPORT_PAYLOAD_VERSION,
@@ -44,6 +45,7 @@ function createPayload(overrides: Partial<ErrorReportPayload> = {}): ErrorReport
 
 afterEach(() => {
 	setErrorReportSanitizer(undefined);
+	setErrorReportCaptureOptions(undefined);
 });
 
 describe("versioned error-report payload", () => {
@@ -108,6 +110,123 @@ describe("versioned error-report payload", () => {
 		expect(payload.error.message).toContain("[REDACTED_PERSON]");
 		expect(payload.location?.pathname).toBe("/workspace/students");
 		expect(JSON.stringify(payload)).not.toContain("Иванов Иван Иванович");
+	});
+
+	it("verbatim-режим сохраняет message, URL и bounded preview", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim", dataPreviewBytes: { query: 2_048 } });
+		const payload = limitErrorReportPayload(
+			createPayload({
+				error: { name: "Error", message: "Bearer example-token user@example.test" },
+				location: {
+					pathname: "/workspace/students?person=42#profile",
+					origin: "https://education.example.test",
+					search: "?person=42",
+					hash: "#profile"
+				},
+				query: {
+					queryHash: "original-hash",
+					queryKey: ["students", { url: "/api/students?person=42" }],
+					dataPreview: { json: JSON.stringify({ row: { id: 42 } }), truncated: false }
+				}
+			})
+		);
+
+		expect(payload.error.message).toBe("Bearer example-token user@example.test");
+		expect(payload.location).toMatchObject({ search: "?person=42", hash: "#profile" });
+		expect(payload.location?.pathname).toBe("/workspace/students?person=42#profile");
+		expect(payload.query?.queryKey).toEqual(["students", { url: "/api/students?person=42" }]);
+		expect(payload.query?.dataPreview).toEqual({ json: '{"row":{"id":42}}', truncated: false });
+		expect(parseErrorReportPayload(payload)).toEqual(payload);
+	});
+
+	it("verbatim-режим проводит HTML sample transport context до payload", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+		const payload = limitErrorReportPayload(
+			createPayload({
+				context: {
+					requestUrl: "/sap/odata/Orders?$filter=Customer eq '42'",
+					html: { length: 5_000, sample: "<html><title>Ошибка заказа 42</title></html>", truncated: true }
+				}
+			})
+		);
+
+		expect(payload.context).toMatchObject({
+			requestUrl: "/sap/odata/Orders?$filter=Customer eq '42'",
+			html: { length: 5_000, sample: "<html><title>Ошибка заказа 42</title></html>", truncated: true }
+		});
+		expect(parseErrorReportPayload(payload)).toEqual(payload);
+	});
+
+	it("парсит явные маркеры усечения длинного queryKey и context", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+		const payload = limitErrorReportPayload(
+			createPayload({
+				query: {
+					queryHash: "original-hash",
+					queryKey: Array.from({ length: 25 }, (_, index) => index)
+				},
+				context: Object.fromEntries(Array.from({ length: 45 }, (_, index) => [`field-${index}`, index]))
+			})
+		);
+
+		expect(payload.query?.queryKey).toHaveLength(20);
+		expect((payload.query?.queryKey as Array<unknown>).at(-1)).toEqual({ type: "truncated", omittedItems: 6 });
+		expect(payload.context?.["$truncated"]).toEqual({ type: "truncated", omittedKeys: 6 });
+		expect(parseErrorReportPayload(payload)).toEqual(payload);
+	});
+
+	it("при переполнении сначала сокращает data previews и сохраняет queryClient", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim", dataPreviewBytes: { query: 16 * 1_024 } });
+		const dataPreview = { json: JSON.stringify({ id: 42, body: "x".repeat(10_000) }), truncated: false };
+		const payload = limitErrorReportPayload(
+			createPayload({
+				queryClient: {
+					queries: Array.from({ length: 40 }, (_, index) => ({
+						queryHash: `original-hash-${index}`,
+						queryKey: ["orders", index],
+						dataPreview
+					})),
+					mutations: [],
+					omittedQueries: 5,
+					omittedMutations: 2
+				}
+			})
+		);
+
+		expect(getErrorReportPayloadSize(payload)).toBeLessThanOrEqual(ERROR_REPORT_PAYLOAD_MAX_BYTES);
+		expect(payload.queryClient?.queries).toHaveLength(40);
+		expect(payload.queryClient?.omittedQueries).toBe(5);
+		expect(payload.queryClient?.omittedMutations).toBe(2);
+		expect(payload.queryClient?.queries.every((query) => query.dataPreview?.truncated)).toBe(true);
+		expect(payload.truncation?.droppedSections).toEqual([]);
+		expect(parseErrorReportPayload(payload)).toEqual(payload);
+	});
+
+	it("при 40 больших ключах явно отмечает удалённые старые query и соблюдает общий предел", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+		const payload = limitErrorReportPayload(
+			createPayload({
+				queryClient: {
+					queries: Array.from({ length: 40 }, (_, index) => ({
+						queryHash: `original-hash-${index}`,
+						queryKey: ["orders", `${"x".repeat(9_000)}-${index}`],
+						meta: {
+							first: "a".repeat(4_096),
+							second: "b".repeat(4_096),
+							third: "c".repeat(4_096)
+						}
+					})),
+					mutations: []
+				}
+			})
+		);
+
+		expect(getErrorReportPayloadSize(payload)).toBeLessThanOrEqual(ERROR_REPORT_PAYLOAD_MAX_BYTES);
+		expect(payload.truncation?.droppedSections).toContain("queryClient.queries:oldest");
+		expect(payload.queryClient?.queries).toHaveLength(10);
+		expect(payload.queryClient?.omittedQueries).toBe(30);
+		expect(payload.queryClient?.queries[0].queryKey).toContainEqual(expect.stringContaining("[TRUNCATED:"));
+		expect(parseErrorReportPayload(payload)).toEqual(payload);
 	});
 
 	it("детерминированно уменьшает oversized payload и добавляет marker", () => {

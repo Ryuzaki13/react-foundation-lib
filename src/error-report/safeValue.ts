@@ -1,9 +1,12 @@
+import { getErrorReportCaptureOptions } from "./captureOptions";
+
 import type { ErrorReportSafeValue, ErrorReportSanitizationContext, ErrorReportSanitizer } from "./types";
 
 const MAX_DEPTH = 4;
 const MAX_ARRAY_ITEMS = 20;
 const MAX_OBJECT_KEYS = 40;
 const MAX_DIAGNOSTIC_STRING_LENGTH = 4_096;
+const MAX_VERBATIM_KEY_STRING_LENGTH = 8_192;
 const REDACTED_VALUE = "[REDACTED]";
 const SENSITIVE_KEY_PARTS = [
 	"apikey",
@@ -54,6 +57,15 @@ function stripUrlSearchAndHash(value: string) {
  * обязано исключить своим allow-list sanitizer.
  */
 export function sanitizeDiagnosticText(value: string, maxLength = MAX_DIAGNOSTIC_STRING_LENGTH) {
+	if (getErrorReportCaptureOptions().valuePolicy === "verbatim") {
+		if (value.length <= maxLength) return value;
+		const marker = `… [TRUNCATED: ${value.length} characters total]`;
+		if (marker.length > maxLength) return "[TRUNCATED]".slice(0, Math.max(0, maxLength));
+		const prefix = value.slice(0, Math.max(0, maxLength - marker.length));
+		const lastCodeUnit = prefix.charCodeAt(prefix.length - 1);
+		const safePrefix = lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff ? prefix.slice(0, -1) : prefix;
+		return `${safePrefix}${marker}`;
+	}
 	let sanitizedValue = value.slice(0, maxLength);
 	if (/\bbearer\s/i.test(sanitizedValue)) {
 		sanitizedValue = sanitizedValue.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]");
@@ -76,6 +88,23 @@ export function getUtf8TextSize(value: string) {
  * размеру transport payload.
  */
 export function sanitizeDiagnosticTextBytes(value: string, maxBytes: number) {
+	if (getErrorReportCaptureOptions().valuePolicy === "verbatim") {
+		const originalBytes = getUtf8TextSize(value);
+		if (originalBytes <= maxBytes) return value;
+		const marker = `… [TRUNCATED: ${originalBytes} UTF-8 bytes total]`;
+		if (getUtf8TextSize(marker) > maxBytes) return "[TRUNCATED]".slice(0, Math.max(0, maxBytes));
+		const prefixLimit = Math.max(0, maxBytes - getUtf8TextSize(marker));
+		let left = 0;
+		let right = value.length;
+		while (left < right) {
+			const middle = Math.ceil((left + right) / 2);
+			if (getUtf8TextSize(value.slice(0, middle)) <= prefixLimit) left = middle;
+			else right = middle - 1;
+		}
+		const lastCodeUnit = value.charCodeAt(left - 1);
+		const safeEnd = lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff ? left - 1 : left;
+		return `${value.slice(0, safeEnd)}${marker}`;
+	}
 	const sanitizedValue = sanitizeDiagnosticText(value, maxBytes);
 	if (getUtf8TextSize(sanitizedValue) <= maxBytes) return sanitizedValue;
 
@@ -98,12 +127,14 @@ type DiagnosticValueState = {
 };
 
 function createDiagnosticValueInternal(value: unknown, depth: number, state: DiagnosticValueState, key?: string): ErrorReportSafeValue {
-	if (key && isSensitiveKey(key)) return REDACTED_VALUE;
+	const verbatim = getErrorReportCaptureOptions().valuePolicy === "verbatim";
+	if (!verbatim && key && isSensitiveKey(key)) return REDACTED_VALUE;
 	if (depth >= MAX_DEPTH) return { type: "truncated" };
 	if (value === null || typeof value === "boolean") return value;
 	if (typeof value === "number") return Number.isFinite(value) ? value : { type: "non-finite-number" };
 	if (typeof value === "string") {
-		const normalizedValue = (key && isUrlKey(key)) || looksLikeUrlWithPrivateParts(value) ? stripUrlSearchAndHash(value) : value;
+		const normalizedValue =
+			!verbatim && ((key && isUrlKey(key)) || looksLikeUrlWithPrivateParts(value)) ? stripUrlSearchAndHash(value) : value;
 		return sanitizeDiagnosticText(normalizedValue, state.maxStringLength);
 	}
 	if (value === undefined) return { type: "undefined" };
@@ -113,17 +144,26 @@ function createDiagnosticValueInternal(value: unknown, depth: number, state: Dia
 		state.seen.add(value);
 	}
 	if (Array.isArray(value)) {
-		return value.slice(0, MAX_ARRAY_ITEMS).map((item) => createDiagnosticValueInternal(item, depth + 1, state));
+		const keptItems = verbatim && value.length > MAX_ARRAY_ITEMS ? MAX_ARRAY_ITEMS - 1 : MAX_ARRAY_ITEMS;
+		const items = value.slice(0, keptItems).map((item) => createDiagnosticValueInternal(item, depth + 1, state));
+		if (verbatim && value.length > keptItems) items.push({ type: "truncated", omittedItems: value.length - keptItems });
+		return items;
 	}
 	if (typeof value === "object") {
 		try {
-			const entries = Object.entries(value as Record<string, unknown>)
-				.sort(([left], [right]) => left.localeCompare(right))
-				.slice(0, MAX_OBJECT_KEYS);
-
-			return Object.fromEntries(
-				entries.map(([entryKey, item]) => [entryKey, createDiagnosticValueInternal(item, depth + 1, state, entryKey)])
+			const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right));
+			const keptKeys = verbatim && entries.length > MAX_OBJECT_KEYS ? MAX_OBJECT_KEYS - 1 : MAX_OBJECT_KEYS;
+			const result: Record<string, ErrorReportSafeValue> = Object.fromEntries(
+				entries
+					.slice(0, keptKeys)
+					.map(([entryKey, item]) => [entryKey, createDiagnosticValueInternal(item, depth + 1, state, entryKey)])
 			);
+			if (verbatim && entries.length > keptKeys) {
+				let markerKey = "$truncated";
+				while (Object.hasOwn(value, markerKey)) markerKey += "_";
+				result[markerKey] = { type: "truncated", omittedKeys: entries.length - keptKeys };
+			}
+			return result;
 		} catch {
 			return { type: "unreadable" };
 		}
@@ -192,8 +232,13 @@ export function sanitizeErrorReportValue(
 	context: ErrorReportSanitizationContext,
 	maxStringLength = MAX_DIAGNOSTIC_STRING_LENGTH
 ) {
+	const keyScope = context.scope === "query-key" || context.scope === "mutation-key" || context.scope === "persisted-query-key";
+	const effectiveMaxStringLength =
+		getErrorReportCaptureOptions().valuePolicy === "verbatim" && keyScope
+			? Math.max(maxStringLength, MAX_VERBATIM_KEY_STRING_LENGTH)
+			: maxStringLength;
 	const createBoundedValue = (candidate: unknown) =>
-		createDiagnosticValueInternal(candidate, 0, { seen: new WeakSet(), maxStringLength });
+		createDiagnosticValueInternal(candidate, 0, { seen: new WeakSet(), maxStringLength: effectiveMaxStringLength });
 	const safeValue = createBoundedValue(value);
 	if (!errorReportSanitizer) return safeValue;
 

@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { setErrorReportCaptureOptions } from "./captureOptions";
 import { createDiagnosticValue, getUtf8TextSize, sanitizeDetail, sanitizeDiagnosticTextBytes, setErrorReportSanitizer } from "./safeValue";
 
 afterEach(() => {
 	setErrorReportSanitizer(undefined);
+	setErrorReportCaptureOptions(undefined);
 });
 
 describe("error-report sanitizer", () => {
@@ -24,6 +26,40 @@ describe("error-report sanitizer", () => {
 		expect(serialized).not.toContain("top-secret-token");
 		expect(serialized).not.toContain("access_token");
 		expect(serialized).not.toContain("secret-password");
+	});
+
+	it("в verbatim-режиме оставляет исходные значения, включая URL и свободный текст", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+
+		expect(
+			createDiagnosticValue({
+				authorization: "Bearer example-token",
+				requestUrl: "https://example.test/orders?order=42#details",
+				email: "user@example.test"
+			})
+		).toEqual({
+			authorization: "Bearer example-token",
+			email: "user@example.test",
+			requestUrl: "https://example.test/orders?order=42#details"
+		});
+		expect(sanitizeDiagnosticTextBytes("Bearer example-token user@example.test", 100)).toBe("Bearer example-token user@example.test");
+	});
+
+	it("в verbatim-режиме отмечает локальные ограничения строк, массивов и объектов", () => {
+		setErrorReportCaptureOptions({ valuePolicy: "verbatim" });
+		const value = createDiagnosticValue({
+			message: "x".repeat(5_000),
+			rows: Array.from({ length: 25 }, (_, index) => index),
+			fields: Object.fromEntries(Array.from({ length: 45 }, (_, index) => [`field-${index}`, index]))
+		}) as Record<string, unknown>;
+		const rows = value.rows as Array<Record<string, unknown> | number>;
+		const fields = value.fields as Record<string, unknown>;
+
+		expect(value.message).toContain("[TRUNCATED: 5000 characters total]");
+		expect(rows).toHaveLength(20);
+		expect(rows.at(-1)).toEqual({ type: "truncated", omittedItems: 6 });
+		expect(Object.keys(fields)).toHaveLength(40);
+		expect(fields["$truncated"]).toEqual({ type: "truncated", omittedKeys: 6 });
 	});
 
 	it("помечает циклические ссылки и не бросает исключение", () => {

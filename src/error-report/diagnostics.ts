@@ -5,6 +5,8 @@ import { hashString128 } from "../crypto";
 import { createIndexedDbQueryStorage } from "../query-client";
 import { stableStringify } from "../utils";
 
+import { getErrorReportCaptureOptions } from "./captureOptions";
+import { createErrorReportDataPreview } from "./dataPreview";
 import { createErrorInfo } from "./errorInfo";
 import { createDataShape, sanitizeDetail, sanitizeDiagnosticText, sanitizeErrorReportValue } from "./safeValue";
 import {
@@ -43,8 +45,9 @@ function sanitizeMeta(
 }
 
 export function collectQueryDiagnostics(query: QueryDiagnosticSource): ErrorReportQueryDiagnostics {
+	const captureOptions = getErrorReportCaptureOptions();
 	const queryKey = sanitizeErrorReportValue(query.queryKey, { scope: "query-key" }) ?? { type: "redacted" };
-	const queryHash = hashString128(stableStringify(queryKey));
+	const queryHash = captureOptions.valuePolicy === "verbatim" ? hashString128(query.queryHash) : hashString128(stableStringify(queryKey));
 
 	return {
 		queryHash,
@@ -61,11 +64,16 @@ export function collectQueryDiagnostics(query: QueryDiagnosticSource): ErrorRepo
 			scope: "query-data-shape",
 			source: queryHash
 		}),
+		dataPreview:
+			captureOptions.valuePolicy === "verbatim" && captureOptions.dataPreviewBytes.query > 0 && query.state.data !== undefined
+				? createErrorReportDataPreview(query.state.data, captureOptions.dataPreviewBytes.query)
+				: undefined,
 		error: query.state.error ? createErrorInfo(query.state.error) : undefined
 	};
 }
 
 export function collectMutationDiagnostics(mutation: MutationDiagnosticSource): ErrorReportMutationDiagnostics {
+	const captureOptions = getErrorReportCaptureOptions();
 	return {
 		mutationKey: mutation.options.mutationKey
 			? sanitizeErrorReportValue(mutation.options.mutationKey, { scope: "mutation-key" })
@@ -74,21 +82,37 @@ export function collectMutationDiagnostics(mutation: MutationDiagnosticSource): 
 		failureCount: mutation.state.failureCount,
 		submittedAt: mutation.state.submittedAt,
 		meta: sanitizeMeta(mutation.meta, "mutation-meta"),
+		variablesPreview:
+			captureOptions.valuePolicy === "verbatim" &&
+			captureOptions.dataPreviewBytes.mutation > 0 &&
+			mutation.state.variables !== undefined
+				? createErrorReportDataPreview(mutation.state.variables, captureOptions.dataPreviewBytes.mutation)
+				: undefined,
 		error: mutation.state.error ? createErrorInfo(mutation.state.error) : undefined
 	};
 }
 
 export function collectQueryClientDiagnostics(queryClient: QueryClient) {
+	const queries = queryClient.getQueryCache().getAll();
+	const mutations = queryClient.getMutationCache().getAll();
 	return {
-		queries: queryClient.getQueryCache().getAll().slice(-MAX_QUERY_DIAGNOSTICS).map(collectQueryDiagnostics),
-		mutations: queryClient.getMutationCache().getAll().slice(-MAX_MUTATION_DIAGNOSTICS).map(collectMutationDiagnostics)
+		queries: queries.slice(-MAX_QUERY_DIAGNOSTICS).map(collectQueryDiagnostics),
+		mutations: mutations.slice(-MAX_MUTATION_DIAGNOSTICS).map(collectMutationDiagnostics),
+		omittedQueries: Math.max(0, queries.length - MAX_QUERY_DIAGNOSTICS) || undefined,
+		omittedMutations: Math.max(0, mutations.length - MAX_MUTATION_DIAGNOSTICS) || undefined
 	};
 }
 
 function collectPersistedStateDiagnostics(persistedQuery: PersistedQuery): ErrorReportPersistedQueryDiagnostics {
+	const captureOptions = getErrorReportCaptureOptions();
 	const state = persistedQuery.state;
 	const queryKey = sanitizeErrorReportValue(persistedQuery.queryKey, { scope: "persisted-query-key" });
-	const queryHash = queryKey ? hashString128(stableStringify(queryKey)) : undefined;
+	const queryHash =
+		captureOptions.valuePolicy === "verbatim"
+			? hashString128(persistedQuery.queryHash)
+			: queryKey
+				? hashString128(stableStringify(queryKey))
+				: undefined;
 
 	return {
 		buster: persistedQuery.buster ? sanitizeDiagnosticText(persistedQuery.buster, 512) : undefined,
@@ -99,13 +123,17 @@ function collectPersistedStateDiagnostics(persistedQuery: PersistedQuery): Error
 		dataUpdatedAt: state.dataUpdatedAt,
 		errorUpdatedAt: state.errorUpdatedAt,
 		failureCount: state.fetchFailureCount,
+		dataPreview:
+			captureOptions.valuePolicy === "verbatim" && captureOptions.dataPreviewBytes.persistedQuery > 0 && state.data !== undefined
+				? createErrorReportDataPreview(state.data, captureOptions.dataPreviewBytes.persistedQuery)
+				: undefined,
 		error: state.error ? createErrorInfo(state.error) : undefined
 	};
 }
 
 /**
- * Читает IndexedDB persistence и возвращает только технические поля.
- * `state.data` и другие значения кеша не попадают в результат.
+ * Читает IndexedDB persistence. Данные кэша попадают в результат только при
+ * явном включении ограниченных previews приложением.
  */
 export async function collectPersistedQueryDiagnostics(): Promise<ErrorReportPersistedQueryDiagnostics[]> {
 	const storage = createIndexedDbQueryStorage<PersistedQuery>();

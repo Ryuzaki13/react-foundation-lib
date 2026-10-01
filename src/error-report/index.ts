@@ -1,4 +1,5 @@
 export * from "./breadcrumbs";
+export { setErrorReportCaptureOptions, type ErrorReportCaptureOptions } from "./captureOptions";
 export * from "../error-report-build";
 export * from "./capture";
 export * from "./diagnostics";

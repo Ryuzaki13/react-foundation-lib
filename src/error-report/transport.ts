@@ -2,6 +2,8 @@ export type ErrorReportTransportHtmlSummary = {
 	length: number;
 	formCount?: number;
 	inputNames?: string[];
+	sample?: string;
+	truncated?: boolean;
 };
 
 export type ErrorReportTransportErrorContext = {

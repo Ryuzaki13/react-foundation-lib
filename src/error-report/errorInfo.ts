@@ -1,6 +1,7 @@
 import { normalizeText } from "../formatters";
 
-import { ERROR_REPORT_STACK_TRACE_MAX_BYTES } from "./payload";
+import { getErrorReportCaptureOptions } from "./captureOptions";
+import { ERROR_REPORT_STACK_TRACE_MAX_BYTES, ERROR_REPORT_VERBATIM_MESSAGE_MAX_BYTES } from "./payload";
 import { sanitizeDiagnosticText, sanitizeDiagnosticTextBytes } from "./safeValue";
 
 import type { ErrorReportErrorInfo } from "./types";
@@ -12,7 +13,10 @@ const DEFAULT_ERROR_MESSAGE = "Неизвестная ошибка";
  * Fallback нужен для Error без message и для брошенных пустых строк.
  */
 function resolveErrorMessage(message: string) {
-	return normalizeText(message) ? sanitizeDiagnosticText(message) : DEFAULT_ERROR_MESSAGE;
+	if (!normalizeText(message)) return DEFAULT_ERROR_MESSAGE;
+	return getErrorReportCaptureOptions().valuePolicy === "verbatim"
+		? sanitizeDiagnosticTextBytes(message, ERROR_REPORT_VERBATIM_MESSAGE_MAX_BYTES)
+		: sanitizeDiagnosticText(message);
 }
 
 function readStatus(value: Record<string, unknown>) {
@@ -39,7 +43,7 @@ function readServerFnTransportErrorInfo(error: unknown): ErrorReportErrorInfo | 
 
 	return {
 		name: "AppError",
-		message: sanitizeDiagnosticText(message),
+		message: resolveErrorMessage(message),
 		code: normalizeText(payload.code) ? sanitizeDiagnosticText(String(payload.code), 128) : undefined,
 		httpStatus: readStatus(payload)
 	};
@@ -47,7 +51,8 @@ function readServerFnTransportErrorInfo(error: unknown): ErrorReportErrorInfo | 
 
 /**
  * Нормализует любое брошенное значение в форму, удобную для поиска и сохранения.
- * Stacktrace намеренно сохраняется полностью: это основная диагностическая ценность отчета.
+ * Stacktrace сохраняется до 64 KiB как основной диагностический контекст;
+ * в verbatim-режиме превышение этого предела отмечается внутри строки.
  */
 export function createErrorInfo(error: unknown): ErrorReportErrorInfo {
 	const serverFnErrorInfo = readServerFnTransportErrorInfo(error);

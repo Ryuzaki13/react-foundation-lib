@@ -1,7 +1,16 @@
-import { sanitizeDetail, sanitizeDiagnosticText, sanitizeDiagnosticTextBytes, sanitizeErrorReportValue } from "./safeValue";
+import { getErrorReportCaptureOptions } from "./captureOptions";
+import { createErrorReportDataPreview } from "./dataPreview";
+import {
+	getUtf8TextSize,
+	sanitizeDetail,
+	sanitizeDiagnosticText,
+	sanitizeDiagnosticTextBytes,
+	sanitizeErrorReportValue
+} from "./safeValue";
 
 import type {
 	ErrorReportErrorInfo,
+	ErrorReportDataPreview,
 	ErrorReportMutationDiagnostics,
 	ErrorReportPayload,
 	ErrorReportPersistedQueryDiagnostics,
@@ -10,6 +19,7 @@ import type {
 
 export const ERROR_REPORT_PAYLOAD_VERSION = 1 as const;
 export const ERROR_REPORT_PAYLOAD_MAX_BYTES = 256 * 1_024;
+export const ERROR_REPORT_VERBATIM_MESSAGE_MAX_BYTES = 128 * 1_024;
 export const ERROR_REPORT_STACK_TRACE_MAX_BYTES = 64 * 1_024;
 
 const ERROR_REPORT_COMPONENT_STACK_MAX_BYTES = 32 * 1_024;
@@ -22,7 +32,20 @@ function serializedByteLength(value: unknown) {
 }
 
 function sanitizePathname(value: string) {
-	return sanitizeDiagnosticText(value.split(/[?#]/, 1)[0] ?? value, ERROR_REPORT_LOCATION_MAX_LENGTH);
+	const pathname = getErrorReportCaptureOptions().valuePolicy === "verbatim" ? value : (value.split(/[?#]/, 1)[0] ?? value);
+	return sanitizeDiagnosticText(pathname, ERROR_REPORT_LOCATION_MAX_LENGTH);
+}
+
+function normalizeDataPreview(preview: ErrorReportDataPreview | undefined, maxBytes: number) {
+	if (!preview || maxBytes <= 0 || getErrorReportCaptureOptions().valuePolicy !== "verbatim") return undefined;
+	try {
+		const value: unknown = JSON.parse(preview.json);
+		if (getUtf8TextSize(preview.json) <= maxBytes) return preview;
+		const reduced = createErrorReportDataPreview(value, maxBytes);
+		return { ...reduced, truncated: true };
+	} catch {
+		return undefined;
+	}
 }
 
 function sanitizeScopedText(
@@ -38,9 +61,16 @@ function sanitizeScopedText(
 }
 
 function sanitizeErrorInfo(error: ErrorReportErrorInfo, source?: string): ErrorReportErrorInfo {
+	const verbatim = getErrorReportCaptureOptions().valuePolicy === "verbatim";
 	return {
 		name: sanitizeDiagnosticText(error.name, 256),
-		message: sanitizeScopedText(error.message, { scope: "error-message", source }, 4_096) ?? "[REDACTED]",
+		message:
+			sanitizeScopedText(
+				error.message,
+				{ scope: "error-message", source },
+				verbatim ? ERROR_REPORT_VERBATIM_MESSAGE_MAX_BYTES : 4_096,
+				verbatim ? "bytes" : "characters"
+			) ?? (verbatim ? sanitizeDiagnosticTextBytes(error.message, ERROR_REPORT_VERBATIM_MESSAGE_MAX_BYTES) : "[REDACTED]"),
 		code: error.code ? sanitizeDiagnosticText(error.code, 128) : undefined,
 		stackTrace: error.stackTrace
 			? sanitizeScopedText(error.stackTrace, { scope: "stack-trace", source }, ERROR_REPORT_STACK_TRACE_MAX_BYTES, "bytes")
@@ -50,6 +80,7 @@ function sanitizeErrorInfo(error: ErrorReportErrorInfo, source?: string): ErrorR
 }
 
 function sanitizeQueryDiagnostics(query: ErrorReportQueryDiagnostics): ErrorReportQueryDiagnostics {
+	const captureOptions = getErrorReportCaptureOptions();
 	return {
 		...query,
 		queryHash: sanitizeDiagnosticText(query.queryHash, 512),
@@ -61,20 +92,24 @@ function sanitizeQueryDiagnostics(query: ErrorReportQueryDiagnostics): ErrorRepo
 		dataShape: query.dataShape
 			? sanitizeErrorReportValue(query.dataShape, { scope: "query-data-shape", source: query.queryHash })
 			: undefined,
+		dataPreview: normalizeDataPreview(query.dataPreview, captureOptions.dataPreviewBytes.query),
 		error: query.error ? sanitizeErrorInfo(query.error, query.queryHash) : undefined
 	};
 }
 
 function sanitizeMutationDiagnostics(mutation: ErrorReportMutationDiagnostics): ErrorReportMutationDiagnostics {
+	const captureOptions = getErrorReportCaptureOptions();
 	return {
 		...mutation,
 		mutationKey: mutation.mutationKey ? sanitizeErrorReportValue(mutation.mutationKey, { scope: "mutation-key" }) : undefined,
 		meta: sanitizeDetail(mutation.meta, { scope: "mutation-meta" }),
+		variablesPreview: normalizeDataPreview(mutation.variablesPreview, captureOptions.dataPreviewBytes.mutation),
 		error: mutation.error ? sanitizeErrorInfo(mutation.error, "mutation") : undefined
 	};
 }
 
 function sanitizePersistedQueryDiagnostics(query: ErrorReportPersistedQueryDiagnostics): ErrorReportPersistedQueryDiagnostics {
+	const captureOptions = getErrorReportCaptureOptions();
 	return {
 		...query,
 		buster: query.buster ? sanitizeDiagnosticText(query.buster, 512) : undefined,
@@ -85,6 +120,7 @@ function sanitizePersistedQueryDiagnostics(query: ErrorReportPersistedQueryDiagn
 					source: query.queryHash
 				})
 			: undefined,
+		dataPreview: normalizeDataPreview(query.dataPreview, captureOptions.dataPreviewBytes.persistedQuery),
 		error: query.error ? sanitizeErrorInfo(query.error, query.queryHash) : undefined
 	};
 }
@@ -122,7 +158,15 @@ function normalizePayloadStrings(payload: ErrorReportPayload): ErrorReportPayloa
 								payload.location.origin.split(/[?#]/, 1)[0] ?? payload.location.origin,
 								ERROR_REPORT_LOCATION_MAX_LENGTH
 							)
-						: undefined
+						: undefined,
+					search:
+						getErrorReportCaptureOptions().valuePolicy === "verbatim" && payload.location.search
+							? sanitizeDiagnosticText(payload.location.search, ERROR_REPORT_LOCATION_MAX_LENGTH)
+							: undefined,
+					hash:
+						getErrorReportCaptureOptions().valuePolicy === "verbatim" && payload.location.hash
+							? sanitizeDiagnosticText(payload.location.hash, ERROR_REPORT_LOCATION_MAX_LENGTH)
+							: undefined
 				}
 			: undefined,
 		react: payload.react?.componentStack
@@ -140,7 +184,11 @@ function normalizePayloadStrings(payload: ErrorReportPayload): ErrorReportPayloa
 		queryClient: payload.queryClient
 			? {
 					queries: payload.queryClient.queries.slice(-40).map(sanitizeQueryDiagnostics),
-					mutations: payload.queryClient.mutations.slice(-40).map(sanitizeMutationDiagnostics)
+					mutations: payload.queryClient.mutations.slice(-40).map(sanitizeMutationDiagnostics),
+					omittedQueries:
+						(payload.queryClient.omittedQueries ?? 0) + Math.max(0, payload.queryClient.queries.length - 40) || undefined,
+					omittedMutations:
+						(payload.queryClient.omittedMutations ?? 0) + Math.max(0, payload.queryClient.mutations.length - 40) || undefined
 				}
 			: undefined,
 		persistedQueries: payload.persistedQueries?.slice(-40).map(sanitizePersistedQueryDiagnostics),
@@ -157,6 +205,54 @@ function normalizePayloadStrings(payload: ErrorReportPayload): ErrorReportPayloa
 			})
 		})),
 		context: sanitizeDetail(payload.context, { scope: "context", source: payload.source })
+	};
+}
+
+function reducePreview(preview: ErrorReportDataPreview | undefined, maxBytes: number) {
+	if (!preview || getUtf8TextSize(preview.json) <= maxBytes) return preview;
+	try {
+		const value: unknown = JSON.parse(preview.json);
+		const reduced = createErrorReportDataPreview(value, maxBytes);
+		return { ...reduced, truncated: true };
+	} catch {
+		return { json: "null", truncated: true };
+	}
+}
+
+/**
+ * Сначала уменьшаем тяжёлые значения кэша, сохраняя ключи, статусы и ошибки.
+ * Основные query/mutation отчёта сокращаются только после фонового снимка.
+ */
+function reduceDataPreviews(payload: ErrorReportPayload, maxBytes: number, background: boolean): ErrorReportPayload {
+	if (background) {
+		return {
+			...payload,
+			queryClient: payload.queryClient
+				? {
+						...payload.queryClient,
+						queries: payload.queryClient.queries.map((query) => ({
+							...query,
+							dataPreview: reducePreview(query.dataPreview, maxBytes)
+						})),
+						mutations: payload.queryClient.mutations.map((mutation) => ({
+							...mutation,
+							variablesPreview: reducePreview(mutation.variablesPreview, maxBytes)
+						}))
+					}
+				: undefined,
+			persistedQueries: payload.persistedQueries?.map((query) => ({
+				...query,
+				dataPreview: reducePreview(query.dataPreview, maxBytes)
+			}))
+		};
+	}
+
+	return {
+		...payload,
+		query: payload.query ? { ...payload.query, dataPreview: reducePreview(payload.query.dataPreview, maxBytes) } : undefined,
+		mutation: payload.mutation
+			? { ...payload.mutation, variablesPreview: reducePreview(payload.mutation.variablesPreview, maxBytes) }
+			: undefined
 	};
 }
 
@@ -181,6 +277,13 @@ export function limitErrorReportPayload(input: ErrorReportPayload): ErrorReportP
 		}
 	};
 
+	for (const previewLimit of [512, 128, 4]) {
+		if (getErrorReportPayloadSize(payload) <= ERROR_REPORT_PAYLOAD_MAX_BYTES) break;
+		payload = reduceDataPreviews(payload, previewLimit, true);
+		if (getErrorReportPayloadSize(payload) <= ERROR_REPORT_PAYLOAD_MAX_BYTES) break;
+		payload = reduceDataPreviews(payload, previewLimit, false);
+	}
+
 	const drop = (
 		section: string,
 		isPresent: (current: ErrorReportPayload) => boolean,
@@ -191,6 +294,39 @@ export function limitErrorReportPayload(input: ErrorReportPayload): ErrorReportP
 		payload = update(payload);
 	};
 
+	drop(
+		"queryClient.queries:oldest",
+		(current) => (current.queryClient?.queries.length ?? 0) > 10,
+		(current) => ({
+			...current,
+			queryClient: current.queryClient
+				? {
+						...current.queryClient,
+						queries: current.queryClient.queries.slice(-10),
+						omittedQueries: (current.queryClient.omittedQueries ?? 0) + current.queryClient.queries.length - 10
+					}
+				: undefined
+		})
+	);
+	drop(
+		"queryClient.mutations:oldest",
+		(current) => (current.queryClient?.mutations.length ?? 0) > 10,
+		(current) => ({
+			...current,
+			queryClient: current.queryClient
+				? {
+						...current.queryClient,
+						mutations: current.queryClient.mutations.slice(-10),
+						omittedMutations: (current.queryClient.omittedMutations ?? 0) + current.queryClient.mutations.length - 10
+					}
+				: undefined
+		})
+	);
+	drop(
+		"persistedQueries:oldest",
+		(current) => (current.persistedQueries?.length ?? 0) > 10,
+		(current) => ({ ...current, persistedQueries: current.persistedQueries?.slice(-10) })
+	);
 	drop(
 		"queryClient",
 		(current) => current.queryClient !== undefined,

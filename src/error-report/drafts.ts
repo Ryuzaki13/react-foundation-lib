@@ -3,6 +3,7 @@ import { formatDateAsODataDatetime } from "../formatters";
 import { getSessionStorageId } from "../session-storage";
 
 import { getErrorReportBreadcrumbs } from "./breadcrumbs";
+import { getErrorReportCaptureOptions } from "./captureOptions";
 import { getErrorReportClientEnvironment, getErrorReportEnvironment, isErrorReportingEnabled } from "./environment";
 import { ERROR_REPORT_PAYLOAD_VERSION, limitErrorReportPayload } from "./payload";
 import { sanitizeDetail, sanitizeDiagnosticText, sanitizeErrorReportValue } from "./safeValue";
@@ -52,9 +53,12 @@ function saveDrafts(nextDrafts: ErrorReportDraft[]) {
 function getLocationSnapshot() {
 	if (typeof window === "undefined") return undefined;
 
+	const verbatim = getErrorReportCaptureOptions().valuePolicy === "verbatim";
 	return {
 		pathname: window.location.pathname,
-		origin: window.location.origin
+		origin: window.location.origin,
+		search: verbatim ? window.location.search : undefined,
+		hash: verbatim ? window.location.hash : undefined
 	};
 }
 

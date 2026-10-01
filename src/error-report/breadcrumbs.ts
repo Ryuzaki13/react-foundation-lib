@@ -1,5 +1,6 @@
 import { truncateText } from "../formatters";
 
+import { getErrorReportCaptureOptions } from "./captureOptions";
 import { sanitizeDetail, sanitizeDiagnosticText } from "./safeValue";
 
 import type { ErrorReportBreadcrumb } from "./types";
@@ -23,7 +24,12 @@ export function addErrorReportBreadcrumb(breadcrumb: Omit<ErrorReportBreadcrumb,
 			...breadcrumb,
 			utc: sanitizeDiagnosticText(breadcrumb.utc ?? nowUtc(), 64),
 			routeId: breadcrumb.routeId
-				? sanitizeDiagnosticText(breadcrumb.routeId.split(/[?#]/, 1)[0] ?? breadcrumb.routeId, 512)
+				? sanitizeDiagnosticText(
+						getErrorReportCaptureOptions().valuePolicy === "verbatim"
+							? breadcrumb.routeId
+							: (breadcrumb.routeId.split(/[?#]/, 1)[0] ?? breadcrumb.routeId),
+						512
+					)
 				: undefined,
 			appId: breadcrumb.appId ? sanitizeDiagnosticText(breadcrumb.appId, 128) : undefined,
 			viewId: breadcrumb.viewId ? sanitizeDiagnosticText(breadcrumb.viewId, 128) : undefined,

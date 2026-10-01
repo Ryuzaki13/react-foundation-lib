@@ -7,7 +7,7 @@ import type { ErrorReportDraft, ErrorReportPayload, ErrorReportSafeValue } from 
 
 const safeValueSchema: z.ZodType<ErrorReportSafeValue> = z.lazy(() =>
 	z.union([
-		z.string().max(4_096),
+		z.string().max(8_192),
 		z.number().finite(),
 		z.boolean(),
 		z.null(),
@@ -17,10 +17,28 @@ const safeValueSchema: z.ZodType<ErrorReportSafeValue> = z.lazy(() =>
 );
 
 const safeRecordSchema = z.record(z.string(), safeValueSchema).refine((value) => Object.keys(value).length <= 40);
+const dataPreviewSchema = z
+	.object({
+		json: z.string().refine((value) => {
+			if (getUtf8TextSize(value) > 16 * 1_024) return false;
+			try {
+				JSON.parse(value);
+				return true;
+			} catch {
+				return false;
+			}
+		}),
+		truncated: z.boolean()
+	})
+	.strict();
 const errorInfoSchema = z
 	.object({
 		name: z.string().min(1).max(256),
-		message: z.string().min(1).max(4_096),
+		message: z
+			.string()
+			.min(1)
+			.max(128 * 1_024)
+			.refine((value) => getUtf8TextSize(value) <= 128 * 1_024),
 		code: z.string().max(128).optional(),
 		stackTrace: z
 			.string()
@@ -53,6 +71,7 @@ const queryDiagnosticsSchema = z
 		observersCount: z.number().finite().optional(),
 		meta: safeRecordSchema.optional(),
 		dataShape: safeValueSchema.optional(),
+		dataPreview: dataPreviewSchema.optional(),
 		error: errorInfoSchema.optional()
 	})
 	.strict();
@@ -63,6 +82,7 @@ const mutationDiagnosticsSchema = z
 		failureCount: z.number().finite().optional(),
 		submittedAt: z.number().finite().optional(),
 		meta: safeRecordSchema.optional(),
+		variablesPreview: dataPreviewSchema.optional(),
 		error: errorInfoSchema.optional()
 	})
 	.strict();
@@ -76,6 +96,7 @@ const persistedQueryDiagnosticsSchema = z
 		dataUpdatedAt: z.number().finite().optional(),
 		errorUpdatedAt: z.number().finite().optional(),
 		failureCount: z.number().finite().optional(),
+		dataPreview: dataPreviewSchema.optional(),
 		error: errorInfoSchema.optional()
 	})
 	.strict();
@@ -107,7 +128,9 @@ const errorReportPayloadSchema: z.ZodType<ErrorReportPayload> = z
 		location: z
 			.object({
 				pathname: z.string().max(2_048),
-				origin: z.string().max(2_048).optional()
+				origin: z.string().max(2_048).optional(),
+				search: z.string().max(2_048).optional(),
+				hash: z.string().max(2_048).optional()
 			})
 			.strict()
 			.optional(),
@@ -133,7 +156,9 @@ const errorReportPayloadSchema: z.ZodType<ErrorReportPayload> = z
 		queryClient: z
 			.object({
 				queries: z.array(queryDiagnosticsSchema).max(40),
-				mutations: z.array(mutationDiagnosticsSchema).max(40)
+				mutations: z.array(mutationDiagnosticsSchema).max(40),
+				omittedQueries: z.number().int().nonnegative().optional(),
+				omittedMutations: z.number().int().nonnegative().optional()
 			})
 			.strict()
 			.optional(),

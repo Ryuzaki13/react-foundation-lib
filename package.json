@@ -37,6 +37,10 @@
 			"types": "./dist/array/index.d.ts",
 			"import": "./dist/array/index.js"
 		},
+		"./async-task-runner": {
+			"types": "./dist/async-task-runner/index.d.ts",
+			"import": "./dist/async-task-runner/index.js"
+		},
 		"./binary": {
 			"types": "./dist/binary/index.d.ts",
 			"import": "./dist/binary/index.js"

@@ -104,6 +104,7 @@ npm run pack:dry-run
 | Публичный import path  | Подробная документация                                                         |
 | ---------------------- | ------------------------------------------------------------------------------ |
 | `/array`               | [`array/README.mdx`](./src/array/README.mdx)                                   |
+| `/async-task-runner`   | [`async-task-runner/README.mdx`](./src/async-task-runner/README.mdx)           |
 | `/binary`              | [`binary/README.mdx`](./src/binary/README.mdx)                                 |
 | `/bounded-copy-stack`  | [`bounded-copy-stack/README.mdx`](./src/bounded-copy-stack/README.mdx)         |
 | `/context-menu`        | [`context-menu/README.mdx`](./src/context-menu/README.mdx)                     |

@@ -62,6 +62,10 @@ export function installQueryInvalidationBroadcast(
 
 		applyingRemoteInvalidation = true;
 		try {
+			// Первый GET без data иначе присоединяется к refetch и может вернуть
+			// состояние до чужой записи. cancelQueries отменяет retryer синхронно:
+			// не оставляем await-окна между отменой и точечной invalidation.
+			void queryClient.cancelQueries({ queryKey: message.queryKey, exact: true });
 			void queryClient.invalidateQueries({
 				queryKey: message.queryKey,
 				exact: true,

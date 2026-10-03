@@ -36,16 +36,18 @@ useFetchNextPageEffect({
 	virtualItems,
 	currentItemsCount,
 	fetchNextPage,
-	hasNextPage
+	hasNextPage,
+	onError
 });
 ```
 
-| Поле                | Значение                             |
-| ------------------- | ------------------------------------ |
-| `virtualItems`      | Текущий массив `VirtualItem[]`       |
-| `currentItemsCount` | Число реально загруженных data items |
-| `hasNextPage`       | Есть ли следующая server page        |
-| `fetchNextPage`     | Stable функция, возвращающая Promise |
+| Поле                | Значение                                                            |
+| ------------------- | ------------------------------------------------------------------- |
+| `virtualItems`      | Текущий массив `readonly VirtualItem[]`                             |
+| `currentItemsCount` | Число реально загруженных data items                                |
+| `hasNextPage`       | Есть ли следующая server page                                       |
+| `fetchNextPage`     | Stable функция, возвращающая Promise                                |
+| `onError`           | Необязательный callback `(error: unknown) => void \| Promise<void>` |
 
 Hook ничего не возвращает.
 
@@ -81,25 +83,41 @@ Trigger происходит строго на последнем загруже
 
 ## Защита от параллельного fetch
 
-Внутренний `useRef(false)` устанавливается до вызова и сбрасывается в `.finally()`:
+Внутренний single-flight ref устанавливается до вызова и сбрасывается после
+успеха либо завершения обработки ошибки:
 
 ```text
 idle ── trigger ──► fetchingRef=true
                        │
                  Promise pending
                        │
-             resolve или reject
+        resolve или завершение onError
                        ▼
                  fetchingRef=false
 ```
 
 Защита действует только внутри одного mounted hook instance. TanStack Query также должен владеть дедупликацией/network state.
 
-Если `fetchNextPage` отклоняет Promise, hook не добавляет `.catch`; rejection может стать unhandled. Передавайте функцию с принятой error policy или wrapper, который корректно обрабатывает ожидаемую ошибку.
+## Ошибки и повторная попытка
+
+Promise rejection и синхронный throw `fetchNextPage` передаются в `onError`
+один раз. Hook ожидает async callback; его собственный отказ также обрабатывается.
+Без `onError`, при отказе самого callback либо после unmount исходная ошибка
+остаётся в явной `console.error`-диагностике с контекстом дозагрузки. Hook не
+создаёт дополнительный unhandled Promise rejection и не решает, как показывать
+ошибку пользователю: это остаётся у владельца Query и UI.
+
+После отказа hook не пытается загрузить ту же страницу при каждом scroll/render.
+Неудачная попытка привязана к `currentItemsCount`: новое количество загруженных
+строк либо явное выключение `hasNextPage` и последующее включение разрешают новую
+попытку. Смена identity `fetchNextPage`, `onError` или `virtualItems` не является
+retry. Изменение данных без изменения количества само по себе latch не снимает;
+явная ручная retry-команда остаётся у владельца Query. Интервалов и собственной
+retry-policy в hook нет.
 
 ## Referential stability
 
-Effect зависит от `virtualItems`, `currentItemsCount`, `hasNextPage`, `fetchNextPage`.
+Effect зависит от `virtualItems`, `currentItemsCount`, `hasNextPage`, `fetchNextPage`, `onError`.
 
 - Используйте значение virtualizer как предусмотрено его API.
 - Не создавайте лишний async callback с новой identity без причины.
@@ -110,7 +128,9 @@ Effect зависит от `virtualItems`, `currentItemsCount`, `hasNextPage`, `
 
 Сам hook не читает `window`, но является React effect и не выполняет fetch во время server render. В browser effect запускается после commit.
 
-При unmount Promise не отменяется. Abort/cancel должен быть реализован query/transport owner. `fetchingRef` больше не влияет после удаления hook instance.
+При unmount Promise не отменяется. Abort/cancel должен быть реализован query/transport owner.
+Поздний отказ не вызывает `onError` размонтированного UI, но остаётся в явной
+console-диагностике. Уже начатый async `onError` не отменяется, его отказ не теряется.
 
 ## Типичные ошибки
 
@@ -118,17 +138,20 @@ Effect зависит от `virtualItems`, `currentItemsCount`, `hasNextPage`, `
 - Включить client-side sorting/filtering одной страницы при server-side модели.
 - Добавить фиктивный loader row в `currentItemsCount`.
 - Ожидать preload заранее — trigger находится на самом конце.
-- Передать rejecting Promise без error handling.
+- Ожидать, что hook сам покажет Query-ошибку или автоматически повторит failed page.
 - Выполнять fetch прямо в row render вместо effect.
 - Использовать изменяемый index как domain identity строки.
 
 ## API
 
 ```ts
-function useFetchNextPageEffect(args: {
-	virtualItems: VirtualItem[];
+type UseFetchNextPageEffectOptions = Readonly<{
+	virtualItems: readonly VirtualItem[];
 	currentItemsCount: number;
 	hasNextPage: boolean;
 	fetchNextPage: () => Promise<unknown>;
-}): void;
+	onError?: (error: unknown) => void | Promise<void>;
+}>;
+
+function useFetchNextPageEffect(options: UseFetchNextPageEffectOptions): void;
 ```

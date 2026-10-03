@@ -4,7 +4,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 # Работа с бинарными данными
 
-Модуль `binary` преобразует строковое бинарное содержимое в браузерный `Blob`, определяет предполагаемый MIME-тип документа и предоставляет React hook для типового сценария «base64 → `{ blob, mime }`».
+Модуль `binary` преобразует строковое бинарное содержимое в браузерный `Blob`, определяет предполагаемый MIME-тип документа и предоставляет React hook для типового сценария «base64 → `{ blob, mime }`». Отдельная pure function `getBase64DecodedSize` проверяет стандартный Base64 payload и считает размер без декодирования в browser или server runtime.
 
 Основной сценарий:
 
@@ -20,6 +20,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 - [Назначение и границы модуля](#назначение-и-границы-модуля)
 - [Импорт](#импорт)
+- [`getBase64DecodedSize`](#getbase64decodedsize)
 - [Минимальные понятия](#минимальные-понятия)
 - [Как выбрать API](#как-выбрать-api)
 - [Быстрый старт](#быстрый-старт)
@@ -44,7 +45,8 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - нормализует пробелы, URL-safe алфавит и отсутствующий base64 padding;
 - создаёт `Blob`;
 - предполагает MIME по имени файла, объявлению data URL или небольшой сигнатуре;
-- предоставляет React hook для base64-данных.
+- предоставляет React hook для base64-данных;
+- проверяет стандартную Base64-форму и считает размер без выделения decoded buffer через `getBase64DecodedSize`.
 
 ### Чего модуль не делает
 
@@ -75,7 +77,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 Импортируйте API только из опубликованного subpath `/binary`:
 
 ```ts
-import { binaryToBlob, detectMimeType, useBinaryFile } from "@ryuzaki13/react-foundation-lib/binary";
+import { binaryToBlob, detectMimeType, getBase64DecodedSize, useBinaryFile } from "@ryuzaki13/react-foundation-lib/binary";
 ```
 
 Корневой импорт пакета не поддерживается:
@@ -111,6 +113,27 @@ npm install react react-dom
 - React 19 hooks для `useBinaryFile`.
 
 В тестовой или серверной среде эти Web APIs могут отсутствовать либо вести себя иначе. Наличие похожих globals в конкретной версии Node.js не превращает browser contract в гарантированный server API.
+
+`getBase64DecodedSize` использует только строки и числа. Эта функция подходит для client-safe или server request validation и не вызывает browser API, React hooks, `Buffer` или Node.js imports. Существующий barrel `/binary` по-прежнему экспортирует React hook, поэтому его peer-контракт сохраняется.
+
+## `getBase64DecodedSize`
+
+```ts
+function getBase64DecodedSize(value: string): number | null;
+
+getBase64DecodedSize("AA=="); // 1 байт
+getBase64DecodedSize("AAE="); // 2 байта
+getBase64DecodedSize("QUJD"); // 3 байта
+getBase64DecodedSize(""); // 0
+getBase64DecodedSize("AA"); // null: отсутствует padding
+getBase64DecodedSize("AAA\n"); // null: перенос строки недопустим
+```
+
+Принимается стандартный алфавит `A–Z`, `a–z`, `0–9`, `+`, `/`, длина должна быть кратна четырём. Один или два символа `=` допустимы только в конце; неверный алфавит, положение или количество padding возвращают `null`. Пустая строка является корректной формой с размером `0`; domain contract отдельно решает, разрешён ли пустой файл.
+
+Функция не нормализует whitespace, Base64URL, data URL или отсутствующий padding. Она проверяет форму и вычисляет количество decoded bytes, не декодируя содержимое и не проверяя canonical pad bits, MIME или формат файла. В отличие от browser `binaryToBlob`, это узкий API для проверки строгого transport payload до выделения decoded buffer. Ограничение длины входного HTTP body и лимит размера файла остаются у вызывающей boundary.
+
+Время работы — `O(n)` по длине строки, дополнительная память — `O(1)`. Тесты: [`getBase64DecodedSize.test.ts`](./getBase64DecodedSize.test.ts).
 
 ## Минимальные понятия
 
@@ -1307,11 +1330,12 @@ npm run test -- src/binary/binaryToBlob.test.ts
 import { binaryToBlob, detectMimeType, useBinaryFile } from "@ryuzaki13/react-foundation-lib/binary";
 ```
 
-| API              | Вход                            | Результат         | Ошибка                                   |
-| ---------------- | ------------------------------- | ----------------- | ---------------------------------------- |
-| `binaryToBlob`   | Строка, MIME, base64/raw флаг   | Непустой `Blob`   | Выбрасывает `Error`/browser decode error |
-| `detectMimeType` | Filename и/или base64/data URL  | MIME string       | Не выбрасывает; fallback PDF             |
-| `useBinaryFile`  | Base64/data URL или `undefined` | `{ data, error }` | Логирует и возвращает строку ошибки      |
+| API                    | Вход                            | Результат         | Ошибка                                           |
+| ---------------------- | ------------------------------- | ----------------- | ------------------------------------------------ |
+| `binaryToBlob`         | Строка, MIME, base64/raw флаг   | Непустой `Blob`   | Выбрасывает `Error`/browser decode error         |
+| `getBase64DecodedSize` | Стандартный Base64 payload      | Количество байтов | `null` для неверной формы; `0` для пустой строки |
+| `detectMimeType`       | Filename и/или base64/data URL  | MIME string       | Не выбрасывает; fallback PDF                     |
+| `useBinaryFile`        | Base64/data URL или `undefined` | `{ data, error }` | Логирует и возвращает строку ошибки              |
 
 ### Defaults
 

@@ -89,6 +89,7 @@ npm run pack:dry-run
 | Tree table преобразования                                                   | [`tree-table`](./src/tree-table/index.ts), документация в общем справочнике [`table/README.mdx`](./src/table/README.mdx), тесты в [`tree-table`](./src/tree-table)                                                                  |
 | Excel export                                                                | [`excel`](./src/excel/index.ts), подробный README: [`excel/README.mdx`](./src/excel/README.mdx), тесты: [`excel.test.ts`](./src/excel/excel.test.ts), [`tableExport.test.ts`](./src/excel/tableExport.test.ts)                      |
 | FileReader, изображения, base64 Blob                                        | [`file`](./src/file/index.ts), [`binary`](./src/binary/index.ts)                                                                                                                                                                    |
+| Проверка серверного пути внутри root, ошибки отсутствующего файла            | [`file-system`](./src/file-system/index.ts), Node.js API: [`file-system/README.mdx`](./src/file-system/README.mdx)                                                                                                                   |
 | DOM overlay, portal, focus, download                                        | [`dom`](./src/dom/index.ts), тест: [`dom.test.tsx`](./src/dom/dom.test.tsx)                                                                                                                                                         |
 | Debounce/throttle, DnD sensors, search params, listbox                      | [`hooks`](./src/hooks/index.ts), подробный README: [`hooks/README.mdx`](./src/hooks/README.mdx), [`utils/keyboard.ts`](./src/utils/keyboard.ts)                                                                                     |
 | Breakpoints, media queries и responsive props                               | [`media`](./src/media/index.ts), подробный README: [`media/README.mdx`](./src/media/README.mdx), тест: [`media.test.ts`](./src/media/media.test.ts)                                                                                 |
@@ -118,6 +119,7 @@ npm run pack:dry-run
 | `/error-report`        | [`error-report/README.mdx`](./src/error-report/README.mdx)                     |
 | `/excel`               | [`excel/README.mdx`](./src/excel/README.mdx)                                   |
 | `/file`                | [`file/README.mdx`](./src/file/README.mdx)                                     |
+| `/file-system`         | [Node.js: пути внутри хранилища](./src/file-system/README.mdx)                 |
 | `/fingerprint`         | [`fingerprint/README.mdx`](./src/fingerprint/README.mdx)                       |
 | `/form`                | [`form/README.mdx`](./src/form/README.mdx)                                     |
 | `/formatters`          | [`formatters/README.mdx`](./src/formatters/README.mdx) и его предметные README |
@@ -528,10 +530,11 @@ Pipeline — runtime форматирования ячейки. Он прини�
 | API              | Поведение                                                                      |
 | ---------------- | ------------------------------------------------------------------------------ |
 | `binaryToBlob`   | Base64/data URL/raw binary string -> `Blob`; валидирует пустые и битые данные. |
+| `getBase64DecodedSize` | Проверяет стандартный Base64 и считает размер без декодирования; неверная форма -> `null`, пустая строка -> `0`. |
 | `detectMimeType` | MIME по filename, data URL, byte signature, fallback `application/pdf`.        |
 | `useBinaryFile`  | Hook: base64 string -> `{ blob, mime }` или error; object URL не создает.      |
 
-Тест: [`binaryToBlob.test.ts`](./src/binary/binaryToBlob.test.ts).
+Тесты: [`binaryToBlob.test.ts`](./src/binary/binaryToBlob.test.ts), [`getBase64DecodedSize.test.ts`](./src/binary/getBase64DecodedSize.test.ts).
 
 ### `xml`
 

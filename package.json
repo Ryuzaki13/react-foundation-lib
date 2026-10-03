@@ -97,6 +97,10 @@
 			"types": "./dist/file/index.d.ts",
 			"import": "./dist/file/index.js"
 		},
+		"./file-system": {
+			"types": "./dist/file-system/index.d.ts",
+			"import": "./dist/file-system/index.js"
+		},
 		"./fingerprint": {
 			"types": "./dist/fingerprint/index.d.ts",
 			"import": "./dist/fingerprint/index.js"

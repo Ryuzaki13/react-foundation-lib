@@ -1,0 +1,64 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Foundation Lib/API/File System" />
+
+# Пути внутри серверного файлового хранилища
+
+`@ryuzaki13/react-foundation-lib/file-system` — отдельный Node.js entrypoint для проверки путей перед серверным I/O. Он использует `node:fs/promises` и `node:path`; его нельзя импортировать в browser graph или изоморфный route loader.
+
+Модуль выделен из проверок хранилища современного приложения. Он не знает доменную сущность, пользователя, БД, environment variables или способ публикации файла. Browser API чтения выбранного `File` остаётся в отдельном `/file`.
+
+## Public API
+
+```ts
+import {
+	isFileSystemNotFoundError,
+	resolvePathInsideRoot,
+	type PathRealpathMode,
+	type ResolvePathInsideRootOptions
+} from "@ryuzaki13/react-foundation-lib/file-system";
+
+const options = {
+	rootPath: "/srv/private-files",
+	pathSegments: ["documents", "file.pdf"],
+	realpathMode: "parent"
+} satisfies ResolvePathInsideRootOptions;
+
+const filePath = await resolvePathInsideRoot(options);
+```
+
+`resolvePathInsideRoot(options)` возвращает `Promise<string>` с нормализованным абсолютным путём. Относительный `rootPath` разрешается от `process.cwd()`, внешние пробелы удаляются, пустая конфигурация отвергается. `pathSegments` принимает readonly-массив. Сам root считается допустимым target, а выход через `..`, абсолютный путь вне root или соседний каталог с похожим именем отвергается.
+
+| `PathRealpathMode`      | Назначение и условия                                                                                                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target` — по умолчанию | Root и target должны существовать. `realpath` проверяет, что фактический target после разрешения символических ссылок остаётся внутри фактического root.                      |
+| `parent`                | Root и непосредственный родитель target должны существовать. Режим нужен перед созданием нового файла; сам target может отсутствовать. Проверяется фактический путь родителя. |
+| `none`                  | Только лексическая нормализация и проверка границ. Root и target могут отсутствовать. Символические ссылки не проверяются.                                                    |
+
+Функция возвращает нормализованный исходный путь, а не заменяет его результатом `realpath`. Символическая ссылка внутри root разрешена, если проверяемый фактический путь остаётся внутри root; доверенный root тоже может быть символической ссылкой.
+
+## Ошибки и граница I/O
+
+Пустой root, недоступный root и выход за границы приводят к rejected promise. Ошибка доступа к root сохраняет исходную ошибку в `Error.cause`; ошибки `realpath` target или parent передаются вызывающему коду без замены.
+
+`isFileSystemNotFoundError(error: unknown): boolean` распознаёт `ENOENT` и `ENOTDIR`. Ошибки доступа, диска или произвольный текст с названием кода не считаются отсутствующим файлом:
+
+```ts
+try {
+	await resolvePathInsideRoot({ rootPath: "/srv/private-files", pathSegments: ["documents", "file.pdf"] });
+} catch (error) {
+	if (isFileSystemNotFoundError(error)) {
+		// Здесь вызывающий сценарий выбирает состояние отсутствующего файла.
+	} else {
+		throw error;
+	}
+}
+```
+
+Проверка пути не открывает файл, не создаёт каталог и не устанавливает filesystem lock. Между проверкой и I/O путь может измениться. Режим `parent` также не проверяет существующий target symlink. Вызывающий storage adapter выбирает безопасные open flags, контролирует владельца каталогов и выполняет фактическое чтение или запись.
+
+Загрузка байтов, checksum, MIME validation, staging, публикация, удаление, транзакции и компенсация принадлежат соответствующим владельцам. Этот модуль предоставляет только проверку границ пути и распознавание отсутствующего пути.
+
+## Проверки
+
+Тесты используют реальные временные каталоги и символические ссылки: относительный root, dot-сегменты, абсолютные пути, соседние каталоги, parent/target, недоступный root и системные ошибки. Type-test проверяет публичные сигнатуры и readonly-массив сегментов.

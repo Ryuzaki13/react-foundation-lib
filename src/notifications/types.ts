@@ -19,4 +19,6 @@ export type Notification = {
 	ttlMs?: number;
 	dismissible?: boolean;
 	actions?: NotificationAction[];
+	/** false оставляет текст только в активном toast; отсутствие поля сохраняет прежнее включение в историю. */
+	retainInHistory?: boolean;
 };

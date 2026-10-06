@@ -10,6 +10,8 @@ export type NotificationPushInput = {
 	ttlMs?: number;
 	dismissible?: boolean;
 	actions?: NotificationAction[];
+	/** false исключает текст из истории, не меняя отображение и срок жизни активного toast. */
+	retainInHistory?: boolean;
 };
 
 export type NotificationUpdatePatch = Partial<Omit<Notification, "id" | "createdAt">> & {
@@ -19,7 +21,7 @@ export type NotificationUpdatePatch = Partial<Omit<Notification, "id" | "created
 export type NotificationsState = {
 	/** Активные toast-уведомления, которые должен отображать краткоживущий host. */
 	items: Notification[];
-	/** Полная история за время жизни store; TTL, dismiss и переполнение toast-стека её не сокращают. */
+	/** История сохраняемых уведомлений; TTL, dismiss и переполнение toast-стека её не сокращают. */
 	history: Notification[];
 };
 
@@ -79,22 +81,31 @@ export function createNotificationsStore() {
 					createdAt: now,
 					ttlMs: input.ttlMs,
 					dismissible: input.dismissible ?? true,
-					actions: input.actions
+					actions: input.actions,
+					// Не добавляем поле старым consumers, если они не задали новую политику.
+					...(input.retainInHistory !== undefined ? { retainInHistory: input.retainInHistory } : {})
 				};
 
 				const currentItems = get().items;
 				const nextItems = [notif, ...currentItems.filter((notification) => notification.id !== id)].slice(0, MAX_VISIBLE_ITEMS);
 				const visibleIds = new Set(nextItems.map((notification) => notification.id));
 
-				// Для вытесненного toast таймер больше не нужен: запись уже останется в history.
+				// Для вытесненного toast таймер больше не нужен; сохранение истории определяется его политикой.
 				currentItems.forEach((notification) => {
 					if (!visibleIds.has(notification.id)) clearTimer(notification.id);
 				});
 
-				set((state) => ({
-					items: nextItems,
-					history: [notif, ...state.history.filter((notification) => notification.id !== id)]
-				}));
+				set((state) => {
+					let history = state.history;
+
+					if (notif.retainInHistory !== false) {
+						history = [notif, ...state.history.filter((notification) => notification.id !== id)];
+					} else if (state.history.some((notification) => notification.id === id)) {
+						history = state.history.filter((notification) => notification.id !== id);
+					}
+
+					return { items: nextItems, history };
+				});
 
 				armTimer(store, id, notif.ttlMs);
 				return id;
@@ -104,17 +115,34 @@ export function createNotificationsStore() {
 				const previous = get().items.find((notification) => notification.id === id);
 				if (!previous) return false;
 
+				const { retainInHistory, ...contentPatch } = patch;
 				const next: Notification = {
 					...previous,
-					...patch,
+					...contentPatch,
+					// undefined, в том числе переданный явно, не отменяет прежний отказ от истории.
+					...(retainInHistory !== undefined ? { retainInHistory } : {}),
 					id: previous.id,
 					createdAt: previous.createdAt
 				};
 
-				set((state) => ({
-					items: state.items.map((notification) => (notification.id === id ? next : notification)),
-					history: state.history.map((notification) => (notification.id === id ? next : notification))
-				}));
+				set((state) => {
+					const existsInHistory = state.history.some((notification) => notification.id === id);
+					let history = state.history;
+
+					if (next.retainInHistory === false) {
+						if (existsInHistory) history = state.history.filter((notification) => notification.id !== id);
+					} else if (existsInHistory) {
+						history = state.history.map((notification) => (notification.id === id ? next : notification));
+					} else if (retainInHistory === true) {
+						// После clearHistory вернуть активный toast можно только явным решением consumer.
+						history = [next, ...state.history];
+					}
+
+					return {
+						items: state.items.map((notification) => (notification.id === id ? next : notification)),
+						history
+					};
+				});
 
 				// если ttlMs изменили — пере-армим таймер
 				if ("ttlMs" in patch) {
@@ -130,7 +158,8 @@ export function createNotificationsStore() {
 					title: input.title,
 					message: input.message,
 					ttlMs: input.ttlMs,
-					dismissible: input.dismissible
+					dismissible: input.dismissible,
+					...(input.retainInHistory !== undefined ? { retainInHistory: input.retainInHistory } : {})
 				});
 
 				if (ok) return input.id;

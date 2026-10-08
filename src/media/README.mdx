@@ -276,8 +276,8 @@ const invalid: Breakpoint = "desktop";
 
 ```ts
 const BREAKPOINTS_EM = {
-	mobileMax: 767.98 / 16,
-	tabletMin: 768 / 16,
+	mobileMax: 479.98 / 16,
+	tabletMin: 480 / 16,
 	tabletMax: 1151.98 / 16,
 	laptopMin: 1152 / 16
 } as const;
@@ -285,8 +285,8 @@ const BREAKPOINTS_EM = {
 
 | Поле        | Значение в `em` | При базе `16px` | Назначение             |
 | ----------- | --------------: | --------------: | ---------------------- |
-| `mobileMax` |      `47.99875` |      `767.98px` | верхняя граница mobile |
-| `tabletMin` |            `48` |         `768px` | нижняя граница tablet  |
+| `mobileMax` |      `29.99875` |      `479.98px` | верхняя граница mobile |
+| `tabletMin` |            `30` |         `480px` | нижняя граница tablet  |
 | `tabletMax` |      `71.99875` |     `1151.98px` | верхняя граница tablet |
 | `laptopMin` |            `72` |        `1152px` | нижняя граница laptop  |
 
@@ -320,7 +320,7 @@ type MediaMatches = {
 
 | Root font-size | Mobile          | Tablet                  | Laptop      |
 | -------------: | --------------- | ----------------------- | ----------- |
-|         `16px` | до `767.98px`   | `768px` — `1151.98px`   | от `1152px` |
+|         `16px` | до `479.98px`   | `480px` — `1151.98px`   | от `1152px` |
 |         `18px` | до `863.9775px` | `864px` — `1295.9775px` | от `1296px` |
 |         `20px` | до `959.975px`  | `960px` — `1439.975px`  | от `1440px` |
 

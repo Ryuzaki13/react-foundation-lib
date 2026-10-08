@@ -1,6 +1,6 @@
 export const BREAKPOINTS_EM = {
-	mobileMax: 767.98 / 16,
-	tabletMin: 768 / 16,
+	mobileMax: 479.98 / 16,
+	tabletMin: 480 / 16,
 	tabletMax: 1151.98 / 16,
 	laptopMin: 1152 / 16
 } as const;

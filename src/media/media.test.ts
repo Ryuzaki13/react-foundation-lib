@@ -13,8 +13,8 @@ afterEach(() => {
 
 describe("media helpers", () => {
 	it("хранит breakpoints в em от базовых px-значений", () => {
-		expect(BREAKPOINTS_EM.mobileMax).toBeCloseTo(47.99875);
-		expect(BREAKPOINTS_EM.tabletMin).toBe(48);
+		expect(BREAKPOINTS_EM.mobileMax).toBeCloseTo(29.99875);
+		expect(BREAKPOINTS_EM.tabletMin).toBe(30);
 		expect(BREAKPOINTS_EM.laptopMin).toBe(72);
 	});
 

@@ -4,14 +4,15 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 # Работа с пользовательскими файлами
 
-Модуль `file` содержит browser helpers для четырёх связанных задач:
+Модуль `file` содержит browser helpers и чистые функции для связанных задач:
 
 - прочитать выбранный пользователем `File` как data URL или `ArrayBuffer`;
 - проверить MIME-тип и размер файла перед чтением;
 - прочитать изображение и получить его естественные размеры;
 - определить MIME по расширению и безопаснее сформировать HTTP-заголовок `Content-Disposition` с Unicode-именем файла.
+- проверить ограниченный набор сигнатур в `Uint8Array`, различая совпадение, противоречие и неподдержанный вариант.
 
-Модуль является низкоуровневым foundation-слоем. Он не рисует `<input type="file">`, не отправляет файл на backend, не показывает preview или progress, не проверяет реальное содержимое файла и не заменяет серверную валидацию.
+Модуль является низкоуровневым foundation-слоем. Он не рисует `<input type="file">`, не отправляет файл на backend, не показывает preview или progress, не выполняет полную валидацию содержимого файла и не заменяет серверную policy.
 
 ## Содержание
 
@@ -29,6 +30,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - [Ошибки `readFile`](#ошибки-readfile)
 - [`readImageFile`](#readimagefile)
 - [Ошибки `readImageFile`](#ошибки-readimagefile)
+- [`checkFileSignature`](#checkfilesignature)
 - [`resolveMimeTypeByExtension`](#resolvemimetypebyextension)
 - [Helpers для `Content-Disposition`](#helpers-для-content-disposition)
 - [Низкоуровневые helpers](#низкоуровневые-helpers)
@@ -54,6 +56,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - получает `naturalWidth` и `naturalHeight` изображения в режиме data URL;
 - сопоставляет ограниченный список расширений с MIME;
 - формирует `Content-Disposition` одновременно с ASCII fallback и UTF-8 `filename*`.
+- проверяет поддержанные начальные headers; PDF header ищет только в первых 1024 bytes.
 
 ### Чего модуль не делает
 
@@ -64,7 +67,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - не скачивает `Blob` в браузере;
 - не превращает произвольный base64 в `Blob`;
 - не читает файл потоково и не сообщает progress;
-- не проверяет magic bytes, структуру PDF, ZIP, изображения или документа;
+- не проверяет целостность и полную структуру PDF, ZIP, изображения или документа;
 - не обнаруживает вирусы и вредоносное содержимое;
 - не гарантирует, что `File.type` соответствует байтам;
 - не сжимает и не изменяет изображение;
@@ -136,13 +139,14 @@ import { readFile } from "@ryuzaki13/react-foundation-lib/src/file/read-file/rea
 
 Чистые helpers не зависят от DOM:
 
+- `checkFileSignature`;
 - `resolveMimeTypeByExtension`;
 - `sanitizeFileName`;
 - `createAsciiFilenameFallback`;
 - `encodeFilenameRFC5987`;
 - `createContentDispositionHeader`.
 
-Их можно вызывать на серверной boundary, если runtime предоставляет стандартные строковые функции и `encodeURIComponent`.
+Их можно вызывать на серверной boundary. Проверке сигнатуры нужен только стандартный `Uint8Array`; строковым helpers — стандартные строковые функции и `encodeURIComponent`.
 
 Важно различать:
 
@@ -150,6 +154,58 @@ import { readFile } from "@ryuzaki13/react-foundation-lib/src/file/read-file/rea
 - фактический вызов browser-функции.
 
 Сам импорт не начинает чтение файла. Browser API используется только при вызове соответствующей функции.
+
+## `checkFileSignature`
+
+```ts
+import { checkFileSignature, type FileSignatureCheckResult } from "@ryuzaki13/react-foundation-lib/file";
+
+const result: FileSignatureCheckResult = checkFileSignature({ extension: "png", bytes });
+```
+
+Функция принимает `FileSignatureCheckOptions = Readonly<{ extension: string; bytes: Uint8Array }>`.
+Расширение передаётся без точки и имени файла; применяется только `trim().toLowerCase()`.
+Bytes не копируются и не меняются, учитывается именно переданный view с его `byteOffset` и длиной.
+Функция не использует Node API, DOM, MIME или filesystem и не вводит список разрешённых приложению форматов.
+
+| Результат     | Значение                                                                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `match`       | Совпала проверяемая сигнатура/header; остальное содержимое не проверено.                                                                      |
+| `mismatch`    | Поддержанная сигнатура противоречит bytes либо распознанный обязательный header усечён/повреждён.                                             |
+| `unsupported` | Этот формат или представление не распознано достаточно надёжно этой частичной проверкой. Это не совпадение и не самостоятельный запрет файла. |
+
+### Покрытие и пределы
+
+| Расширение    | Проверка                                                                                                                                                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `png`         | Восемь начальных bytes `89 50 4E 47 0D 0A 1A 0A`; без chunks/CRC.                                                                                                                                                                       |
+| `jpg`, `jpeg` | Начальный SOI `FF D8`; JFIF, Exif и конкретный APP marker не обязательны. Дополнительные FF fill bytes обрабатываются в первых 32 bytes; более длинный неизвестный prefix даёт `unsupported`.                                           |
+| `bmp`         | Windows `BM`, полный 14-byte BITMAPFILEHEADER и нулевые reserved fields. Версия следующего DIB header не ограничивается; альтернативное начало даёт `unsupported`.                                                                      |
+| `psd`         | `8BPS`, big-endian version 1, шесть нулевых reserved bytes. PSB version 2 и неизвестные версии дают `unsupported`.                                                                                                                      |
+| `rtf`         | Обычный текстовый header `{\rtf1` с границей control word; неизвестное начало и обёртки дают `unsupported`.                                                                                                                             |
+| `rar`         | Начальный RAR4/5 marker; неизвестные версии, SFX и неизвестное начало дают `unsupported`. Main/encryption header не проверяется.                                                                                                        |
+| `zip`         | Local header `PK 03 04` с фиксированной частью 30 bytes или EOCD `PK 05 06` с частью 22 bytes. Split/SFX/неизвестное начало дают `unsupported`. Entries, payload, CRC и central directory не проверяются.                               |
+| `7z`          | Начальная сигнатура, major 0 и наличие SignatureHeader 32 bytes; minor не ограничивается. Неизвестный major, SFX и неизвестное начало дают `unsupported`. CRC/NextHeader не проверяются.                                                |
+| `pdf`         | `%PDF-1.0`…`%PDF-1.7` или `%PDF-2.0` целиком в первых 1024 bytes, включая ненулевой offset. Неизвестные версии, альтернативный PS header и отсутствие распознанного header дают `unsupported`. Пересечение scan limit не считается EOF. |
+
+Общий ZIP/CFB header **не доказывает** Office/ODF/XFL формат. Расширения `doc`, `ppt`, `xls`, `dot`, `docx`, `pptx`, `xlsx`, `docm`, `odt`, `fla`, `ai`, `txt`, `bak`, `cdr`, `tga`, `dt`, `mdb`, `accdb`, `erwin` и прочие не перечисленные выше возвращают `unsupported` независимо от общего контейнера.
+
+Архивный header без начального marker не объявляется неверным архивом: SFX может иметь исполняемый prefix.
+Но распознанный поддержанный header с неверными обязательными bytes или усечением не прячется за `unsupported`.
+Например, `Rar!` с повреждёнными marker fields и `PK 03 04` короче 30 bytes дают `mismatch`.
+
+Проверка читает фиксированные заголовки, максимум 32 bytes для JPEG и 1024 для PDF.
+Она не сканирует весь файл, не распаковывает контейнеры и не валидирует структуру или безопасность payload.
+Злоумышленник может добавить правильный header к произвольным bytes; результат останется `match`.
+Обрабатывать `unsupported`, ограничивать размер/форматы и решать вопрос публикации обязан caller.
+`readFile` не вызывает эту функцию автоматически и сохраняет прежнее поведение.
+
+### Основания проверки
+
+- [W3C PNG](https://www.w3.org/TR/PNG-Structure.html), [ITU-T T.81, Annex B](https://www.w3.org/Graphics/JPEG/itu-t81.pdf).
+- [Microsoft BITMAPFILEHEADER](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapfileheader), [Adobe Photoshop file format](https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/), [Microsoft RTF header](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-oxrtfex/3cf14977-3883-404a-8ed8-57c99263fb76).
+- [RARLAB](https://www.rarlab.com/technote.htm), [PKWARE APPNOTE](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT), [7-Zip format](https://raw.githubusercontent.com/ip7z/7zip/main/DOC/7zFormat.txt).
+- [RFC 8118](https://www.rfc-editor.org/rfc/rfc8118.html), [Adobe PDF Reference, Appendix H](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.4.pdf).
 
 ## Минимальные понятия
 
@@ -1612,7 +1668,7 @@ Backend обязан повторно проверить:
 
 ### `File.type` недоверенный
 
-`allowedMime` сравнивает только `file.type`. Модуль не открывает заголовок файла, чтобы подтвердить PNG/PDF/ZIP signature.
+`allowedMime` сравнивает только `file.type`. `readFile` не открывает заголовок для подтверждения signature; отдельный `checkFileSignature` работает с уже полученными bytes.
 
 ### Расширение недоверенное
 
@@ -1775,7 +1831,7 @@ expect(contentDisposition).toContain("filename*=UTF-8''%D0%9E");
 9. `assertValidAllowedMime` и `assertValidAccept` не вызываются автоматически.
 10. `maxBytes` не валидируется как положительное конечное число.
 11. Файл читается целиком; progress и streaming отсутствуют.
-12. MIME и extension не сверяются с реальными bytes.
+12. `readFile` не сверяет MIME и extension с реальными bytes. Отдельный `checkFileSignature` имеет частичное покрытие headers, описанное выше.
 13. Resolver принимает только расширение без точки и поддерживает ограниченную таблицу.
 14. Filename helpers предназначены для header, а не для безопасного filesystem path.
 
@@ -1818,6 +1874,7 @@ const result = await readImageFile(file, {
 | `assertNotAborted`       | Бросает `READ_ABORTED` для уже отменённого signal            |
 | `attachAbort`            | Связывает signal с `FileReader.abort()` и возвращает cleanup |
 | `buildMeta`              | Копирует четыре metadata-поля `File` в новый объект          |
+| `checkFileSignature`     | Частично проверяет header в `Uint8Array`, не весь файл       |
 
 ### MIME и HTTP filename
 

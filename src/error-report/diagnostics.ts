@@ -8,6 +8,7 @@ import { stableStringify } from "../utils";
 import { getErrorReportCaptureOptions } from "./captureOptions";
 import { createErrorReportDataPreview } from "./dataPreview";
 import { createErrorInfo } from "./errorInfo";
+import { canUseErrorReportBrowserStorage } from "./errorReportStorage";
 import { createDataShape, sanitizeDetail, sanitizeDiagnosticText, sanitizeErrorReportValue } from "./safeValue";
 import {
 	type ErrorReportMutationDiagnostics,
@@ -140,11 +141,16 @@ function collectPersistedStateDiagnostics(persistedQuery: PersistedQuery): Error
  * явном включении ограниченных previews приложением.
  */
 export async function collectPersistedQueryDiagnostics(): Promise<ErrorReportPersistedQueryDiagnostics[]> {
+	if (!canUseErrorReportBrowserStorage()) return [];
+
 	const storage = createIndexedDbQueryStorage<PersistedQuery>();
 	if (!storage?.entries) return [];
 
 	try {
 		const entries = await storage.entries();
+		// Уже начатую IDB operation не отменяем, но после opt-out её результат
+		// больше не является доступным источником диагностики этого документа.
+		if (!canUseErrorReportBrowserStorage()) return [];
 		return entries
 			.slice(-MAX_PERSISTED_QUERY_DIAGNOSTICS)
 			.map(([, persistedQuery]) => collectPersistedStateDiagnostics(persistedQuery));

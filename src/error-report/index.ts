@@ -5,6 +5,7 @@ export * from "./capture";
 export * from "./diagnostics";
 export * from "./drafts";
 export * from "./environment";
+export { disableErrorReportBrowserStorage } from "./errorReportStorage";
 export * from "./errorInfo";
 export * from "./payload";
 export * from "./queue";

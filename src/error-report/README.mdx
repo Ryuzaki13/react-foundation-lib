@@ -4,7 +4,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 # Error Report
 
-Модуль `@ryuzaki13/react-foundation-lib/error-report` собирает клиентскую диагностику ошибки в versioned bounded draft, временно хранит последние drafts в `sessionStorage` и предоставляет durable IndexedDB queue для отложенной доставки.
+Модуль `@ryuzaki13/react-foundation-lib/error-report` собирает клиентскую диагностику ошибки в versioned bounded draft, по умолчанию временно хранит последние drafts в `sessionStorage` и предоставляет durable IndexedDB queue для отложенной доставки. Browser bootstrap может односторонне перевести capture/drafts в память документа.
 
 Он умеет объединить:
 
@@ -36,6 +36,7 @@ import {
 	captureRuntimeErrorReport,
 	createErrorReportQueue,
 	createErrorInfo,
+	disableErrorReportBrowserStorage,
 	installErrorReportBrowserBreadcrumbs,
 	setErrorReportRuntimeErrorReporter,
 	setErrorReportCaptureOptions,
@@ -75,6 +76,44 @@ isErrorReportingEnabled({ isDev: false });
 - при SSR draft не создаётся;
 - в development capture-функции возвращают `undefined`;
 - тест может явно передать `{ isDev: false }` только в эту функцию, но остальные capture-функции всё равно используют общий `__DEV__`.
+
+## Документ без browser persistence
+
+### `disableErrorReportBrowserStorage(): void`
+
+```ts
+// Browser bootstrap: до первого capture и запуска UI/error-report lifecycle.
+disableErrorReportBrowserStorage();
+```
+
+Вызов односторонне переводит **capture, drafts и persisted-query diagnostics**
+текущего документа в память. Повторный вызов ничего не сбрасывает. Обратного
+включения нет: документ с другим режимом приложение открывает заново.
+`setErrorReportCaptureOptions`, регистрация reporter и их cleanup не меняют
+эту политику. В SSR вызов ничего не делает и не переключает общий process state.
+
+Сам импорт `/error-report` не читает browser storage. В обычном режиме первый
+`getErrorReportDrafts`, `getErrorReportDraft`, `updateErrorReportDraft` или capture
+лениво загружает прежние drafts; дальнейшие чтение и сохранение остаются прежними.
+В memory-режиме последние 10 drafts и отдельный стабильный session ID живут
+только в памяти документа. Уже загруженные обычные drafts не копируются туда,
+а существующие записи в browser storage не удаляются.
+
+Memory capture сохраняет прежний контракт: runtime/query/mutation возвращают
+`Promise<ErrorReportDraft | undefined>`, прямой draft capture —
+`ErrorReportDraft | undefined`. В production создаётся обычный draft в памяти;
+SSR/dev по-прежнему не создают draft. Поэтому UI boundary может продолжать
+использовать `.then` и report ID. Сбор QueryClient diagnostics из памяти остаётся
+доступным; `collectPersistedQueryDiagnostics()` возвращает `[]` без открытия IDB.
+
+Вызов не отменяет native I/O, начатый ранее. Однако его поздний persisted result
+не попадёт в memory draft, а после отключения drafts больше не пишутся в browser
+storage. Для строгого отсутствия чтений выбирать режим нужно в bootstrap.
+
+**Durable queue независима.** `createErrorReportQueue()` — явный storage API;
+эта функция его не переключает. Приложение отдельно исключает создание очереди,
+enqueue и запуск delivery в документе без persistence. Вызов также не меняет
+Query persistence, Service Worker, пользовательские черновики или transport.
 
 ## Compile-time константы
 
@@ -430,7 +469,7 @@ type ErrorReportDraft = {
 };
 ```
 
-`reportId` — UUID отдельного отчёта. `sessionId` стабилен в текущем `sessionStorage`. `createdUtc` формируется как OData datetime UTC.
+`reportId` — UUID отдельного отчёта. По умолчанию `sessionId` стабилен в текущем `sessionStorage`; после browser opt-out используется отдельный ID только в памяти документа. `createdUtc` формируется как OData datetime UTC.
 
 Payload содержит category/source/error, build environment, client, location, viewport, breadcrumbs и optional секции query/mutation/react/context.
 
@@ -452,11 +491,11 @@ parseErrorReportDrafts(value);
 
 ### Хранение
 
-Versioned drafts сохраняются под ключом `${__APP_ID__}.errorReport.drafts.v2`. В одной вкладке остаются последние 10 элементов. Старые удаляются с начала массива. Предыдущая unversioned storage-форма не загружается.
+По умолчанию versioned drafts сохраняются под ключом `${__APP_ID__}.errorReport.drafts.v2`. В одной вкладке остаются последние 10 элементов. Старые удаляются с начала массива. Предыдущая unversioned storage-форма не загружается. После browser opt-out тот же лимит применяется к отдельному memory store без чтения или удаления browser records.
 
 Storage errors и некорректный JSON подавляются. При переполнении sessionStorage текущее in-memory состояние обновится, но запись на диск может не сохраниться.
 
-Модуль загружает drafts при первом импорте. Это модульное состояние, общее для всех consumers одного bundle.
+Импорт не загружает drafts. В обычном режиме они читаются лениво при первом обращении к draft API, после чего модульное состояние разделяют consumers одного bundle. В memory-режиме чтения browser drafts нет.
 
 ## Durable IndexedDB queue
 
@@ -708,7 +747,7 @@ Foundation удаляет известные secret-like keys и email, но н�
 
 ### Мутировать результат `getErrorReportDrafts()`
 
-Используйте `updateErrorReportDraft`; прямое изменение обходит сохранение в sessionStorage.
+Используйте `updateErrorReportDraft`; прямое изменение обходит валидацию lifecycle и выбранное хранилище drafts.
 
 ### Передавать `UseQueryResult` вместо cache Query
 

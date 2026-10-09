@@ -1,13 +1,18 @@
 import { uuidv4 } from "../crypto";
 import { formatDateAsODataDatetime } from "../formatters";
-import { getSessionStorageId } from "../session-storage";
 
 import { getErrorReportBreadcrumbs } from "./breadcrumbs";
 import { getErrorReportCaptureOptions } from "./captureOptions";
 import { getErrorReportClientEnvironment, getErrorReportEnvironment, isErrorReportingEnabled } from "./environment";
+import {
+	canUseErrorReportBrowserStorage,
+	getErrorReportSessionId,
+	readErrorReportDrafts,
+	saveErrorReportDrafts
+} from "./errorReportStorage";
 import { ERROR_REPORT_PAYLOAD_VERSION, limitErrorReportPayload } from "./payload";
 import { sanitizeDetail, sanitizeDiagnosticText, sanitizeErrorReportValue } from "./safeValue";
-import { parseErrorReportDraft, parseErrorReportDrafts } from "./schema";
+import { parseErrorReportDraft } from "./schema";
 
 import type {
 	ErrorReportCategory,
@@ -18,36 +23,8 @@ import type {
 	ErrorReportSafeValue
 } from "./types";
 
-const STORAGE_KEY = `${__APP_ID__}.errorReport.drafts.v2`;
-const SESSION_STORAGE_KEY = `${__APP_ID__}.errorReport.sessionId.v1`;
-const MAX_DRAFTS = 10;
-
-let drafts = loadDrafts();
-
 function nowUtc() {
 	return formatDateAsODataDatetime(new Date());
-}
-
-function loadDrafts(): ErrorReportDraft[] {
-	if (typeof sessionStorage === "undefined") return [];
-
-	try {
-		const raw = sessionStorage.getItem(STORAGE_KEY);
-		return parseErrorReportDrafts(raw ? JSON.parse(raw) : []);
-	} catch {
-		return [];
-	}
-}
-
-function saveDrafts(nextDrafts: ErrorReportDraft[]) {
-	drafts = nextDrafts.slice(-MAX_DRAFTS);
-	if (typeof sessionStorage === "undefined") return;
-
-	try {
-		sessionStorage.setItem(STORAGE_KEY, JSON.stringify(drafts));
-	} catch {
-		// Переполнение sessionStorage не должно ломать пользовательский сценарий.
-	}
 }
 
 function getLocationSnapshot() {
@@ -79,7 +56,7 @@ function sanitizeFailedReason(value: string | undefined) {
 }
 
 export function getErrorReportDraft(reportId: string) {
-	return drafts.find((draft) => draft.reportId === reportId);
+	return readErrorReportDrafts().find((draft) => draft.reportId === reportId);
 }
 
 export function updateErrorReportDraft(reportId: string, patch: ErrorReportDraftLifecyclePatch) {
@@ -95,12 +72,12 @@ export function updateErrorReportDraft(reportId: string, patch: ErrorReportDraft
 	const parsed = parseErrorReportDraft(next);
 	if (!parsed) return undefined;
 
-	saveDrafts(drafts.map((draft) => (draft.reportId === reportId ? parsed : draft)));
+	saveErrorReportDrafts(readErrorReportDrafts().map((draft) => (draft.reportId === reportId ? parsed : draft)));
 	return parsed;
 }
 
 export function getErrorReportDrafts() {
-	return drafts;
+	return readErrorReportDrafts();
 }
 
 export function captureErrorReportDraft(args: {
@@ -117,7 +94,7 @@ export function captureErrorReportDraft(args: {
 	if (!isErrorReportingEnabled()) return undefined;
 
 	const reportId = uuidv4();
-	const sessionId = getSessionStorageId(SESSION_STORAGE_KEY);
+	const sessionId = getErrorReportSessionId();
 	const createdUtc = nowUtc();
 	const payload = limitErrorReportPayload({
 		payloadVersion: ERROR_REPORT_PAYLOAD_VERSION,
@@ -136,7 +113,8 @@ export function captureErrorReportDraft(args: {
 		query: args.query,
 		mutation: args.mutation,
 		queryClient: args.queryClient,
-		persistedQueries: args.persistedQueries,
+		// Между завершением diagnostics и capture мог сработать browser opt-out.
+		persistedQueries: canUseErrorReportBrowserStorage() ? args.persistedQueries : undefined,
 		breadcrumbs: getErrorReportBreadcrumbs(),
 		context: sanitizeDetail(args.context, { scope: "context", source: args.source })
 	} satisfies ErrorReportPayload);
@@ -151,6 +129,6 @@ export function captureErrorReportDraft(args: {
 	const parsed = parseErrorReportDraft(draft);
 	if (!parsed) return undefined;
 
-	saveDrafts([...drafts, parsed]);
+	saveErrorReportDrafts([...readErrorReportDrafts(), parsed]);
 	return parsed;
 }

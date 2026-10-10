@@ -33,6 +33,10 @@
 		"LICENSE"
 	],
 	"exports": {
+		"./analytical-table": {
+			"types": "./dist/analytical-table/index.d.ts",
+			"import": "./dist/analytical-table/index.js"
+		},
 		"./array": {
 			"types": "./dist/array/index.d.ts",
 			"import": "./dist/array/index.js"

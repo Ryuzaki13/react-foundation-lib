@@ -1,5 +1,6 @@
 export * from "./boolean";
 export * from "./formatName";
+export { formatFileSize } from "./formatFileSize";
 export * from "./formatPhone";
 
 export * from "./date";

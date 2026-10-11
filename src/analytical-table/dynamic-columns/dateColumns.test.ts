@@ -5,6 +5,9 @@ import { registerDatePreset, resetDatePresets } from "../../formatters";
 import { aggregateAnalyticalDateFacts, createAnalyticalDateColumnsPlan, projectAnalyticalDateFacts } from "./index";
 import { type AnalyticalDateColumnsOptions } from "./index";
 
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
 const options: AnalyticalDateColumnsOptions = {
 	id: "attendance",
 	from: "2026-01-30",
@@ -139,22 +142,31 @@ describe("календарный контракт между SSR и браузе
 		);
 		expect(result[plan.columns[0].id]).toBe(2);
 	});
-	it("для canonical дат возвращает одинаковые buckets в разных timezone", () => {
-		const initial = process.env.TZ;
-		try {
-			const results = ["UTC", "Asia/Yekaterinburg", "America/Los_Angeles"].map((zone) => {
-				process.env.TZ = zone;
-				const plan = createAnalyticalDateColumnsPlan({ ...options, granularity: "day" });
-				return {
-					columns: plan.columns,
-					values: aggregateAnalyticalDateFacts([{ unit: 1, person: 2, date: "2026-01-30", value: 2 }], plan)
-				};
-			});
-			expect(results[1]).toEqual(results[0]);
-			expect(results[2]).toEqual(results[0]);
-		} finally {
-			if (initial === undefined) delete process.env.TZ;
-			else process.env.TZ = initial;
-		}
+	it.each(["UTC", "Asia/Yekaterinburg", "America/Los_Angeles"])("сохраняет canonical даты и подписи в процессе %s", (zone) => {
+		// Intl фиксирует локальную timezone при компиляции preset. Смена process.env.TZ
+		// после импорта смешивает старый formatter с новыми Date и не моделирует отдельные SSR/browser runtime.
+		const output = execFileSync(
+			process.execPath,
+			[
+				fileURLToPath(new URL("./dateColumnsTimezone.fixture.mjs", import.meta.url)),
+				JSON.stringify({ ...options, granularity: "day" })
+			],
+			{ env: { ...process.env, TZ: zone }, encoding: "utf8", timeout: 10_000 }
+		);
+		expect(JSON.parse(output)).toEqual({
+			timeZone: zone,
+			columns: [
+				{ id: "attendance:day:2026-01-30", label: "30.01.2026", from: "2026-01-30", to: "2026-01-30" },
+				{ id: "attendance:day:2026-01-31", label: "31.01.2026", from: "2026-01-31", to: "2026-01-31" },
+				{ id: "attendance:day:2026-02-01", label: "01.02.2026", from: "2026-02-01", to: "2026-02-01" },
+				{ id: "attendance:day:2026-02-02", label: "02.02.2026", from: "2026-02-02", to: "2026-02-02" }
+			],
+			values: {
+				"attendance:day:2026-01-30": 2,
+				"attendance:day:2026-01-31": null,
+				"attendance:day:2026-02-01": null,
+				"attendance:day:2026-02-02": null
+			}
+		});
 	});
 });

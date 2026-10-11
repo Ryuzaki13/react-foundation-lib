@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { aggregateAnalyticalValues } from "./index";
+import { aggregateAnalyticalValues } from "../index";
 
 describe("агрегации значений", () => {
 	it.each([

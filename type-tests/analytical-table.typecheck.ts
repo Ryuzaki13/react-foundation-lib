@@ -1,5 +1,7 @@
 import {
 	buildAnalyticalTableModel,
+	compileAnalyticalTableDefinition,
+	createAnalyticalTableRuntime,
 	type AnalyticalExportColumn,
 	type AnalyticalSnapshot,
 	type AnalyticalViewState
@@ -27,3 +29,17 @@ const exportColumn: AnalyticalExportColumn<{ label: string }> = {
 	formatTotal: (value) => String(value)
 };
 void exportColumn;
+
+const definition = compileAnalyticalTableDefinition<{ label: string }>({
+	columns: [{ id: "amount", aggregate: "sum" }],
+	dataFields: [{ id: "identity" }],
+	isAggregateRow: (row) => Boolean(row.original?.label)
+});
+const runtime = createAnalyticalTableRuntime({ definition, snapshot });
+const runtimeLabel: string | undefined = runtime.getModel().rows[0].original?.label;
+void runtimeLabel;
+
+// @ts-expect-error Каталог проверенного описания доступен только для чтения.
+definition.fieldsById.set("new", { id: "new" });
+// @ts-expect-error Runtime сохраняет тип исходной записи снимка.
+createAnalyticalTableRuntime({ definition, snapshot: { rows: [{ id: "wrong", values: {}, original: { label: 42 } }] } });

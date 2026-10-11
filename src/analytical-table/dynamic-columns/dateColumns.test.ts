@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { registerDatePreset, resetDatePresets } from "../../formatters";
 
 import { aggregateAnalyticalDateFacts, createAnalyticalDateColumnsPlan, projectAnalyticalDateFacts } from "./index";
 import { type AnalyticalDateColumnsOptions } from "./index";
@@ -14,6 +16,10 @@ const options: AnalyticalDateColumnsOptions = {
 	aggregation: "sum"
 };
 
+afterEach(() => {
+	resetDatePresets();
+});
+
 describe("динамические календарные столбцы", () => {
 	it("ограничивает крайние buckets диапазоном и сохраняет ID на границах месяца", () => {
 		const plan = createAnalyticalDateColumnsPlan(options);
@@ -21,6 +27,18 @@ describe("динамические календарные столбцы", () =>
 			["attendance:month:2026-01-01", "2026-01-30", "2026-01-31"],
 			["attendance:month:2026-02-01", "2026-02-01", "2026-02-02"]
 		]);
+	});
+	it("настройка date меняет подпись дня, сохраняя машинные даты и сопоставление фактов", () => {
+		const dayOptions = { ...options, granularity: "day" as const, to: options.from };
+		expect(createAnalyticalDateColumnsPlan(dayOptions).columns[0].label).toBe("30.01.2026");
+		registerDatePreset({ name: "date", pattern: "MM/dd/yyyy" });
+
+		const plan = createAnalyticalDateColumnsPlan(dayOptions);
+		expect(plan.columns).toEqual([{ id: "attendance:day:2026-01-30", label: "01/30/2026", from: "2026-01-30", to: "2026-01-30" }]);
+		const facts = [{ unit: 1, person: 2, date: "2026-01-30", value: 3 }];
+		const projected = projectAnalyticalDateFacts({ rows: [{ id: "a", values: { unit: 1, person: 2 } }], facts, plan });
+		expect(projected[0].values[plan.columns[0].id]).toBe(3);
+		expect(aggregateAnalyticalDateFacts(facts, plan)[plan.columns[0].id]).toBe(3);
 	});
 	it("сопоставляет составной ключ без размножения base rows и не мутирует снимок", () => {
 		const plan = createAnalyticalDateColumnsPlan(options);
@@ -53,7 +71,27 @@ describe("динамические календарные столбцы", () =>
 			{ unit: 1, person: 2, date: "2026-01-30", value: 3 },
 			{ unit: 2, person: 3, date: "2026-01-31", value: 20 }
 		];
+		const projected = projectAnalyticalDateFacts({
+			rows: [
+				{ id: "first", values: { unit: 1, person: 2 } },
+				{ id: "second", values: { unit: 2, person: 3 } }
+			],
+			facts,
+			plan
+		});
+		expect(projected.map((row) => row.values[plan.columns[0].id])).toEqual([2, 20]);
 		expect(aggregateAnalyticalDateFacts(facts, plan)[plan.columns[0].id]).toBe(8);
+	});
+	it.each(["sum", "avg", "count"] as const)("для %s различает пустые значения фактов и отсутствие фактов", (aggregation) => {
+		const plan = createAnalyticalDateColumnsPlan({ ...options, aggregation });
+		const facts = [null, undefined, ""].map((value) => ({ unit: 1, person: 2, date: "2026-01-30", value }));
+		const projected = projectAnalyticalDateFacts({ rows: [{ id: "a", values: { unit: 1, person: 2 } }], facts, plan });
+		const totals = aggregateAnalyticalDateFacts(facts, plan);
+		const emptyResult = aggregation === "count" ? 0 : null;
+		expect(projected[0].values[plan.columns[0].id]).toBe(emptyResult);
+		expect(totals[plan.columns[0].id]).toBe(emptyResult);
+		expect(projected[0].values[plan.columns[1].id]).toBeNull();
+		expect(totals[plan.columns[1].id]).toBeNull();
 	});
 	it("не включает факты с неполным ключом ни в строки, ни в общий итог", () => {
 		const plan = createAnalyticalDateColumnsPlan(options);
@@ -93,6 +131,8 @@ describe("календарный контракт между SSR и браузе
 			[
 				{ unit: 1, person: 2, date: new Date("2026-01-30T23:30:00Z"), value: 100 },
 				{ unit: 1, person: 2, date: "2026-01-30T23:30:00Z", value: 100 },
+				{ unit: 1, person: 2, date: "2026-1-30", value: 100 },
+				{ unit: 1, person: 2, date: "30.01.2026", value: 100 },
 				{ unit: 1, person: 2, date: "2026-01-30", value: 2 }
 			],
 			plan

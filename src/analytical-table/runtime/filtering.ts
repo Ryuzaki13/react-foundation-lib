@@ -1,6 +1,7 @@
-import { normalizeTextToLower } from "../formatters";
+import { normalizeTextToLower } from "../../formatters";
+import { type AnalyticalColumn, type AnalyticalDataRow, type AnalyticalFilter } from "../types";
 
-import { type AnalyticalColumn, type AnalyticalDataRow, type AnalyticalFilter } from "./types";
+import { type AnalyticalHierarchyNode } from "./hierarchy";
 import { compareAnalyticalValues } from "./valueComparison";
 
 /** Операции фильтра относятся к данным, поэтому одинаково работают при SSR и в браузере. */
@@ -36,4 +37,30 @@ export function matchesAnalyticalFilter<T>(row: AnalyticalDataRow<T>, filter: An
 		case "notEmpty":
 			return !empty;
 	}
+}
+
+/** Совпавший родитель оставляет всю ветвь; совпавший ребёнок сохраняет путь к нему. */
+export function filterAnalyticalHierarchy<T>(
+	rows: readonly AnalyticalHierarchyNode<T>[],
+	filters: readonly AnalyticalFilter[],
+	fieldsById: ReadonlyMap<string, AnalyticalColumn<T>>
+): readonly AnalyticalHierarchyNode<T>[] {
+	if (filters.length === 0) return rows;
+
+	const filtered: AnalyticalHierarchyNode<T>[] = [];
+	for (const row of rows) {
+		const sourceRow = row.sourceRow;
+		const matches = sourceRow && filters.every((filter) => matchesAnalyticalFilter(sourceRow, filter, fieldsById.get(filter.id)));
+		if (matches) {
+			filtered.push(row);
+			continue;
+		}
+
+		const children = filterAnalyticalHierarchy(row.children, filters, fieldsById);
+		if (children.length > 0) {
+			filtered.push({ ...row, children });
+		}
+	}
+
+	return filtered;
 }

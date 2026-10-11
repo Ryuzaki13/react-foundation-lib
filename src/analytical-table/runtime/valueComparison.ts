@@ -1,8 +1,7 @@
-import { parseDate } from "../formatters";
-import { compareStrings } from "../string-comparison";
-import { stableStringify } from "../utils";
-
-import { type AnalyticalColumn, type AnalyticalValues } from "./types";
+import { parseDate } from "../../formatters";
+import { compareStrings } from "../../string-comparison";
+import { stableStringify } from "../../utils";
+import { type AnalyticalColumn, type AnalyticalValues } from "../types";
 
 /** Тип входит в ключ: null, undefined, строка и число не склеивают разные группы. */
 export function analyticalIdentity(values: AnalyticalValues, ids: readonly string[]): string {

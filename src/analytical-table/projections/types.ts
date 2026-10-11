@@ -1,4 +1,4 @@
-import { type AnalyticalModelRow, type AnalyticalTableModel } from "./modelTypes";
+import { type AnalyticalModelRow, type AnalyticalTableModel } from "../types";
 
 export type AnalyticalExportColumn<TOriginal = unknown> = Readonly<{
 	id: string;

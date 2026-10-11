@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { configureTableFormulaRegistry, createTableFormulaRegistry } from "../formulas";
-
-import { calculateAnalyticalValues, createAnalyticalCalculationPlan } from "./index";
-import { type AnalyticalColumn } from "./index";
+import { configureTableFormulaRegistry, createTableFormulaRegistry } from "../../formulas";
+import { calculateAnalyticalValues, createAnalyticalCalculationPlan } from "../index";
+import { type AnalyticalColumn } from "../index";
 
 afterEach(() => configureTableFormulaRegistry(createTableFormulaRegistry([])));
 

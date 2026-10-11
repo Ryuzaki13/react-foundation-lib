@@ -1,5 +1,5 @@
-import { type AnalyticalAggregation } from "./columnTypes";
-import { type AnalyticalDataRow, type AnalyticalValues } from "./dataTypes";
+import { type AnalyticalAggregation } from "../definition/types";
+import { type AnalyticalDataRow, type AnalyticalValues } from "../runtime/types";
 
 /** Dynamic facts уже входят в снимок: проектирование не выполняет запросов. */
 export type AnalyticalDateColumnsOptions = Readonly<{

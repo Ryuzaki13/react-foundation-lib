@@ -7,7 +7,7 @@ import { TableSelectionMode } from "./types";
 
 interface UseTableRowSelectionParams<TData extends object> {
 	availableRowIds: readonly string[];
-	rowById: Map<string, TData>;
+	rowById: ReadonlyMap<string, TData>;
 	selectionMode: TableSelectionMode;
 	selectedRowIds?: readonly string[];
 	onRowSelectionChange?: (rows: TData[]) => void;

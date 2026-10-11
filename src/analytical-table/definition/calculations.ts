@@ -1,7 +1,6 @@
-import { arrayDeduplicate } from "../array";
-import { compileTableFormula } from "../formulas";
-
-import { type AnalyticalCalculationPlan, type AnalyticalCalculationStep, type AnalyticalColumn, type AnalyticalValues } from "./types";
+import { arrayDeduplicate } from "../../array";
+import { compileTableFormula } from "../../formulas";
+import { type AnalyticalCalculationPlan, type AnalyticalCalculationStep, type AnalyticalColumn, type AnalyticalValues } from "../types";
 
 /** Проверяет граф зависимостей до расчёта строк и компилирует каждую формулу один раз. */
 export function createAnalyticalCalculationPlan<T>(
@@ -31,7 +30,7 @@ export function createAnalyticalCalculationPlan<T>(
 				columnId: id,
 				dependencies,
 				compute: (values) => {
-					const result = compiled.execute({ ...values });
+					const result = compiled.execute(values);
 					if (!result.ok) throw new Error(`Ошибка формулы столбца ${id}: ${result.reason}`);
 					return result.value;
 				}

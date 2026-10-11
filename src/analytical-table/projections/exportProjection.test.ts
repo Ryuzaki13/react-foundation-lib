@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAnalyticalTableModel, projectAnalyticalTableExport } from "./index";
+import { buildAnalyticalTableModel, projectAnalyticalTableExport } from "../index";
 
 const model = buildAnalyticalTableModel({
 	snapshot: {
 		rows: [
-			{ id: "root", values: { value: 2 } },
+			{ id: "root", values: { bucket: "a", value: 2 } },
 			{ id: "child", parentId: "root", values: { value: 1 } }
 		]
 	},
 	columns: [{ id: "value", label: "Значение", aggregate: "sum" }],
-	state: { grouping: [{ id: "by-value", keyColumnIds: ["value"] }] }
+	state: { grouping: [{ id: "by-bucket", keyColumnIds: ["bucket"] }] }
 });
 
 describe("проекция экспорта", () => {
@@ -44,5 +44,37 @@ describe("проекция экспорта", () => {
 		});
 		expect(result.rows.find((item) => item.id === "root")?.values).toEqual(["root: 2"]);
 		expect(result.rows.at(-1)).toMatchObject({ kind: "grand", values: ["2 единиц"] });
+	});
+	it("сохраняет привычный ID итога, когда он свободен", () => {
+		const result = projectAnalyticalTableExport({ model, includeGrandTotals: true });
+		expect(result.rows.at(-1)?.id).toBe("analytical-grand-total");
+	});
+	it("подбирает свободный ID итога независимо от области экспорта", () => {
+		const collisionModel = buildAnalyticalTableModel({
+			snapshot: {
+				rows: [
+					{ id: "root", values: { value: 3 } },
+					{ id: "analytical-grand-total", parentId: "root", values: { value: 1 } },
+					{ id: "analytical-grand-total:1", parentId: "root", values: { value: 2 } }
+				]
+			},
+			columns: [{ id: "value", aggregate: "sum" }]
+		});
+		for (const scope of ["all", "visible", "selected"] as const) {
+			const result = projectAnalyticalTableExport({
+				model: collisionModel,
+				scope,
+				selectedRowIds: ["root"],
+				includeGrandTotals: true
+			});
+			expect(result.rows.at(-1)).toMatchObject({ id: "analytical-grand-total:2", kind: "grand", values: [3] });
+			expect(new Set(result.rows.map((row) => row.id)).size).toBe(result.rows.length);
+		}
+		expect(projectAnalyticalTableExport({ model: collisionModel, includeGrandTotals: true }).rows.map((row) => row.id)).toEqual([
+			"root",
+			"analytical-grand-total",
+			"analytical-grand-total:1",
+			"analytical-grand-total:2"
+		]);
 	});
 });

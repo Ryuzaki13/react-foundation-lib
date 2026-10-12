@@ -68,6 +68,24 @@ import { formatDate, formatNumber } from "@ryuzaki13/react-foundation-lib/format
 
 ## Общие правила
 
+### Длительность в минутах
+
+`formatDurationMinutes(minutes)` показывает целые неотрицательные минуты с
+переходом к часам и суткам. Это продолжительность, а не дата: сутки равны
+24 часам независимо от часового пояса. Остатки сохраняются, включая нулевые.
+
+```ts
+import { formatDurationMinutes } from "@ryuzaki13/react-foundation-lib/formatters";
+
+formatDurationMinutes(59); // "59 мин"
+formatDurationMinutes(60); // "1 ч 0 мин"
+formatDurationMinutes(1565); // "1 дн 2 ч 5 мин"
+```
+
+Отрицательные, дробные, бесконечные и небезопасные значения вызывают
+`RangeError`. Неизвестное начало периода и SSR fallback принадлежат
+потребителю; formatter не читает часы и не создаёт таймеров.
+
 ### Formatter обычно не является validator-ом
 
 Функция может иметь fallback для невалидного значения, но это не делает данные валидными:

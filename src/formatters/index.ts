@@ -1,6 +1,7 @@
 export * from "./boolean";
 export * from "./formatName";
 export { formatFileSize } from "./formatFileSize";
+export { formatDurationMinutes } from "./formatDurationMinutes";
 export * from "./formatPhone";
 
 export * from "./date";

@@ -133,6 +133,10 @@
 			"types": "./dist/indexed-records/index.d.ts",
 			"import": "./dist/indexed-records/index.js"
 		},
+		"./indexed-records/schema": {
+			"types": "./dist/indexed-records/schema.d.ts",
+			"import": "./dist/indexed-records/schema.js"
+		},
 		"./media": {
 			"types": "./dist/media/index.d.ts",
 			"import": "./dist/media/index.js"

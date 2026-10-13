@@ -27,6 +27,7 @@ function isExternalPackage(id: string): boolean {
 function collectEntries(): Record<string, string> {
 	const sourceRoot = resolve("src");
 	const entries: Record<string, string> = {
+		"indexed-records/schema": resolve(sourceRoot, "indexed-records/schema.ts"),
 		"pwa/sw-cache-policy": resolve(sourceRoot, "pwa/swCachePolicy.ts")
 	};
 

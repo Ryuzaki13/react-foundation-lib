@@ -475,6 +475,8 @@ Callbacks устанавливаются в `QueryCache` и `MutationCache`. О�
 type AppQueryMeta = {
 	readonly persist?: boolean;
 	readonly sessionScoped?: boolean;
+	readonly sessionPersistence?: SessionQueryPersistencePolicy;
+	readonly [QUERY_RESTORED_DATA_PARSER]?: QueryRestoredDataParser;
 } & Record<string, unknown>;
 ```
 
@@ -493,6 +495,50 @@ queryOptions({
 
 `Record<string, unknown>` разрешает consumer-проекту добавлять собственную metadata. Infrastructure этого модуля читает
 `persist`, `sessionScoped` и явный `sessionPersistence` contract.
+
+### Проверка восстановленного значения
+
+`QueryRestoredDataParser` — синхронный callback `(data: unknown) => unknown`.
+Consumer проверяет недоверенную форму своего persisted snapshot и возвращает
+канонические data либо бросает ошибку. Callback задаётся symbol key, а не
+строковым свойством с функцией:
+
+```ts
+import { queryOptions } from "@tanstack/react-query";
+import { createSessionQueryPersistenceMeta, QUERY_RESTORED_DATA_PARSER } from "@ryuzaki13/react-foundation-lib/query-client";
+
+queryOptions({
+	queryKey: ["dictionary", "scope"],
+	queryFn: fetchDictionary,
+	meta: {
+		...createSessionQueryPersistenceMeta({ cacheName: "dictionary", maxEntries: 8, refetchOnRestore: false }),
+		[QUERY_RESTORED_DATA_PARSER]: parseDictionarySnapshot
+	}
+});
+```
+
+Parser вызывается один раз при фактическом чтении пригодной записи из IndexedDB,
+до передачи data в Query. Обычный network read, уже полученные Query data, SSR
+hydration, обход `entries` и garbage collection parser не запускают. Проверка
+network/SSR формы остаётся у соответствующих consumer boundaries.
+
+Истёкшие и несовместимые с buster записи удаляет обычный persister без дорогого
+parser. Ошибка parser удаляет только текущий storage key и запускает обычный
+queryFn; ошибка этого network read передаётся Query без подмены. `undefined` и
+Promise-like result не являются допустимым синхронным результатом parser.
+
+Parser не должен менять восстановленный объект. Он может вернуть новый
+проверенный неизменяемый снимок; инфраструктура копирует только оболочки
+persisted записи и её state, а записи каталога не обходит и не индексирует.
+Завершённая отмена или смена session scope не разрешает публикацию старого
+restore и не запускает его network fallback.
+Отмена не удаляет рабочую persisted запись. Поздние scheduled timestamp/refetch
+от предыдущего restore не возобновляют отменённую Query и не затрагивают новое
+чтение этой Query, даже если новый ответ сохранил ту же data identity.
+
+Symbol metadata сохраняется при `{ ...meta }`. Callback не входит в persisted
+payload и не сериализуется вместе с metadata при SSR. Query options consumer
+вновь подключают его в браузере; symbol key не превращается в строковый API.
 
 ### `persistedQueryMeta`
 
@@ -2485,13 +2531,15 @@ Profile tests подтверждают:
 
 ### Query metadata
 
-| Symbol                              | Вид      | Назначение                                               |
-| ----------------------------------- | -------- | -------------------------------------------------------- |
-| `AppQueryMeta`                      | type     | Public/session persistence и consumer metadata.          |
-| `SessionQueryPersistencePolicy`     | type     | Имя и bounded limit session cache.                       |
-| `persistedQueryMeta`                | const    | Opt-in public persistence marker.                        |
-| `sessionScopedQueryMeta`            | const    | Session reset marker без browser persistence.            |
-| `createSessionQueryPersistenceMeta` | function | Явный opt-in bounded persistence текущей server session. |
+| Symbol                              | Вид      | Назначение                                                 |
+| ----------------------------------- | -------- | ---------------------------------------------------------- |
+| `AppQueryMeta`                      | type     | Public/session persistence и consumer metadata.            |
+| `SessionQueryPersistencePolicy`     | type     | Имя и bounded limit session cache.                         |
+| `QueryRestoredDataParser`           | type     | Синхронная проверка restored data перед Query publication. |
+| `QUERY_RESTORED_DATA_PARSER`        | symbol   | Несериализуемый opt-in callback key в Query metadata.      |
+| `persistedQueryMeta`                | const    | Opt-in public persistence marker.                          |
+| `sessionScopedQueryMeta`            | const    | Session reset marker без browser persistence.              |
+| `createSessionQueryPersistenceMeta` | function | Явный opt-in bounded persistence текущей server session.   |
 
 ### Persistence project adapter
 

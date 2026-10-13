@@ -1,6 +1,9 @@
 import { experimental_createQueryPersister, type AsyncStorage, type PersistedQuery } from "@tanstack/query-persist-client-core";
-import { type Query, type QueryFunction, type QueryFunctionContext, type QueryKey } from "@tanstack/react-query";
+import { CancelledError, type Query, type QueryFunction, type QueryFunctionContext, type QueryKey } from "@tanstack/react-query";
 
+import { createQueryRestoreSchedulerGuard } from "./createQueryRestoreSchedulerGuard";
+import { createQueryRestoreStorage } from "./createQueryRestoreStorage";
+import { QUERY_RESTORED_DATA_PARSER } from "./queryMeta";
 import { getQueryPersistenceProjectAdapter } from "./queryPersistenceAdapter";
 
 const STORE_NAME = "queries";
@@ -316,7 +319,17 @@ export function createReactQueryPersister() {
 		refetchOnRestore: true,
 		filters: { predicate: shouldPersistQuery }
 	});
-	const sessionPersisters = new Map<string, ReturnType<typeof experimental_createQueryPersister<PersistedQuery>>>();
+	const sessionPersisters = new Map<
+		string,
+		Readonly<{
+			persister: ReturnType<typeof experimental_createQueryPersister<PersistedQuery>>;
+			storage: AsyncStorage<PersistedQuery>;
+			prefix: string;
+		}>
+	>();
+	// Token относится только к opt-in операции. WeakMap не удерживает удалённые
+	// Query и не хранит callbacks/data; поздний scheduler узнаёт новую операцию.
+	const restoreOperations = new WeakMap<Query, object>();
 
 	function getSessionPersister(
 		scope: SessionQueryPersistenceScope,
@@ -375,8 +388,9 @@ export function createReactQueryPersister() {
 				predicate: (query) => readSessionQueryPersistencePolicy(query)?.cacheName === cacheName
 			}
 		});
-		sessionPersisters.set(identity, persister);
-		return persister;
+		const entry = { persister, storage: boundedStorage, prefix };
+		sessionPersisters.set(identity, entry);
+		return entry;
 	}
 
 	return {
@@ -387,18 +401,74 @@ export function createReactQueryPersister() {
 			query: Query
 		): Promise<T> {
 			const policy = readSessionQueryPersistencePolicy(query);
-			if (!policy) return publicPersister.persisterFn(queryFn, context, query);
-
 			const scope = getSessionQueryPersistenceScope();
-			if (!scope) return Promise.resolve(queryFn(context));
+			if (policy && !scope) return Promise.resolve(queryFn(context));
+			const source =
+				policy && scope
+					? getSessionPersister(
+							scope,
+							policy.cacheName,
+							policy.maxEntries,
+							policy.refetchOnRestore,
+							policy.monotonicRevisionField
+						)
+					: { persister: publicPersister, storage: indexedDbStorage, prefix: getPersistencePrefix() };
+			const parser = query.meta?.[QUERY_RESTORED_DATA_PARSER];
+			if (parser === undefined) {
+				restoreOperations.delete(query);
+				return source.persister.persisterFn(queryFn, context, query);
+			}
+			if (typeof parser !== "function") throw new TypeError("Parser восстановленных Query data должен быть функцией.");
 
-			return getSessionPersister(
-				scope,
-				policy.cacheName,
-				policy.maxEntries,
-				policy.refetchOnRestore,
-				policy.monotonicRevisionField
-			).persisterFn(queryFn, context, query);
+			const operation = {};
+			restoreOperations.set(query, operation);
+			const assertCurrentRestore = () => {
+				if (
+					context.signal.aborted ||
+					restoreOperations.get(query) !== operation ||
+					(policy && getSessionQueryPersistenceScope()?.id !== scope?.id)
+				) {
+					throw new CancelledError({ revert: true });
+				}
+			};
+			const buster = getQueryPersistenceProjectAdapter().persistenceBuster ?? REACT_QUERY_PERSISTENCE_BUSTER;
+			// Adapter принадлежит одному обращению, а общий storage продолжает владеть
+			// monotonic writes и pruneQueue. Callback не сохраняется в session factory.
+			const restoreStorage = createQueryRestoreStorage({
+				storage: source.storage,
+				queryHash: query.queryHash,
+				prefix: source.prefix,
+				buster,
+				maxAge: REACT_QUERY_PERSISTENCE_MAX_AGE,
+				parser,
+				assertCurrentRestore
+			});
+			const restorePersister = experimental_createQueryPersister<PersistedQuery>({
+				storage: restoreStorage,
+				serialize: (stored) => stored,
+				deserialize: (stored) => stored,
+				prefix: source.prefix,
+				buster,
+				maxAge: REACT_QUERY_PERSISTENCE_MAX_AGE,
+				refetchOnRestore: policy?.refetchOnRestore ?? true,
+				filters: policy
+					? { predicate: (target) => readSessionQueryPersistencePolicy(target)?.cacheName === policy.cacheName }
+					: { predicate: shouldPersistQuery }
+			});
+			const result = await restorePersister.persisterFn(
+				(currentContext) => {
+					// Upstream превращает restore errors в обычный fallback. После cancel
+					// или смены сессии этот fallback не должен запускать старый queryFn.
+					assertCurrentRestore();
+					return queryFn(currentContext);
+				},
+				context,
+				createQueryRestoreSchedulerGuard({ query, assertCurrentRestore })
+			);
+			// Await внутри upstream открывает новую microtask boundary. Scope мог
+			// смениться уже после последней проверки в storage/parser.
+			assertCurrentRestore();
+			return result;
 		}
 	};
 }

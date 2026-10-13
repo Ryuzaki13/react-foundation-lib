@@ -1,5 +1,18 @@
 import { type QueryMeta } from "@tanstack/react-query";
 
+/**
+ * Проверяет недоверенное восстановленное значение до публикации в Query.
+ * Parser синхронно возвращает каноническую форму либо бросает ошибку: тогда
+ * повреждённая запись удаляется и обычный queryFn получает свежие данные.
+ */
+export type QueryRestoredDataParser = (data: unknown) => unknown;
+
+/**
+ * Symbol сохраняется при spread metadata, но не переносит callback в SSR wire
+ * или IndexedDB. Consumer вновь задаёт parser своими Query options в браузере.
+ */
+export const QUERY_RESTORED_DATA_PARSER = Symbol("query-restored-data-parser");
+
 export type SessionQueryPersistencePolicy = {
 	/** Устойчивое предметно независимое имя bounded-кэша внутри текущей сессии. */
 	readonly cacheName: string;
@@ -30,6 +43,8 @@ export type AppQueryMeta = {
 	readonly persist?: boolean;
 	readonly sessionScoped?: boolean;
 	readonly sessionPersistence?: SessionQueryPersistencePolicy;
+	/** Вызывается один раз только при фактическом чтении пригодной persisted записи. */
+	readonly [QUERY_RESTORED_DATA_PARSER]?: QueryRestoredDataParser;
 } & Record<string, unknown>;
 
 declare module "@tanstack/react-query" {

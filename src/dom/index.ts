@@ -1,4 +1,5 @@
 export * from "./downloadFile";
+export { installFaviconOverride } from "./installFaviconOverride";
 export * from "./getOrCreatePortalRoot";
 export { observeElementResize } from "./observeElementResize";
 export { captureScrollAnchor } from "./scroll-anchor/captureScrollAnchor";

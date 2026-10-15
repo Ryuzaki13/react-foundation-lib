@@ -49,6 +49,10 @@
 			"types": "./dist/binary/index.d.ts",
 			"import": "./dist/binary/index.js"
 		},
+		"./browser-notifications": {
+			"types": "./dist/browser-notifications/index.d.ts",
+			"import": "./dist/browser-notifications/index.js"
+		},
 		"./bounded-copy-stack": {
 			"types": "./dist/bounded-copy-stack/index.d.ts",
 			"import": "./dist/bounded-copy-stack/index.js"

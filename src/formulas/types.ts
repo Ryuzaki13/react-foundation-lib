@@ -12,6 +12,8 @@ export interface TableFormulaDefinition {
 	id: string;
 	name: string;
 	description: string;
+	/** Шаблон превью с позициями $n; описывает выражение для человека и не участвует в выполнении fn. */
+	expressionTemplate?: string;
 	args?: readonly string[];
 	keywords?: readonly string[];
 	fn: TableFormulaFn;

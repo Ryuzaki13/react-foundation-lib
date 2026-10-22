@@ -1,4 +1,5 @@
 export * from "./execute";
+export * from "./formatTableFormulaExpression";
 export * from "./registry";
 export * from "./validate";
 export type * from "./types";

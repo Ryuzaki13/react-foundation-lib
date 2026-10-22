@@ -1,12 +1,43 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { executeTableFormula } from "./execute";
 import { configureTableFormulaRegistry, createTableFormulaRegistry, getTableFormulaById, getTableFormulaList } from "./registry";
+import { type TableFormulaDefinition } from "./types";
+import { validateTableFormulaDependencies } from "./validate";
 
 afterEach(() => {
 	configureTableFormulaRegistry(createTableFormulaRegistry([]));
 });
 
 describe("table formula registry", () => {
+	it("сохраняет выполнение и валидацию определений с шаблоном и без него", () => {
+		const existingDefinition: TableFormulaDefinition = {
+			id: "sum",
+			name: "Сумма",
+			description: "Складывает значения.",
+			fn: (context) => context.num(0) + context.num(1)
+		};
+		const registry = createTableFormulaRegistry([
+			existingDefinition,
+			{ ...existingDefinition, id: "sum-preview", expressionTemplate: " $0 + $1 " }
+		]);
+		configureTableFormulaRegistry(registry);
+
+		expect(getTableFormulaById("sum")).not.toHaveProperty("expressionTemplate");
+		expect(getTableFormulaById("sum-preview")?.expressionTemplate).toBe(" $0 + $1 ");
+		for (const formulaId of ["sum", "sum-preview"]) {
+			expect(executeTableFormula({ formulaId, rowData: { A: 10, B: 5 }, keys: ["A", "B"] })).toEqual({ ok: true, value: 15 });
+			expect(validateTableFormulaDependencies({ formulaId, dependencies: ["A", "B"], availableColumnIds: ["A", "B"] })).toMatchObject(
+				{
+					ok: true,
+					errors: [],
+					warnings: [],
+					usage: { usedDependencyIndexes: [0, 1], usedDependencyIds: ["A", "B"], requiredDependencyCount: 2 }
+				}
+			);
+		}
+	});
+
 	it("нормализует определения и изолирует созданные реестры", () => {
 		const first = createTableFormulaRegistry([
 			{

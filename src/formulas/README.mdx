@@ -45,6 +45,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 - описывает типизированный контракт числовой формулы;
 - связывает dependency indexes с полями текущей строки;
+- формирует текстовое превью выражения с ID выбранных зависимостей;
 - создаёт нормализованный реестр формул host-приложения;
 - хранит один активный реестр в текущем экземпляре модуля;
 - выполняет формулы без выбрасывания их runtime-ошибок наружу;
@@ -81,6 +82,7 @@ import {
 	executeTableFormula,
 	getTableFormulaById,
 	getTableFormulaList,
+	formatTableFormulaExpression,
 	validateTableFormulaDependencies
 } from "@ryuzaki13/react-foundation-lib/formulas";
 
@@ -222,6 +224,7 @@ interface TableFormulaDefinition {
 	id: string;
 	name: string;
 	description: string;
+	expressionTemplate?: string;
 	args?: readonly string[];
 	keywords?: readonly string[];
 	fn: TableFormulaFn;
@@ -265,6 +268,33 @@ description: "100 * $0 / ($0 + $1)";
 ```
 
 Factory trim-ит строку, но не анализирует выражение. `$0`, `$1` — только принятая человеком нотация документации, а не parser syntax.
+
+### `expressionTemplate`
+
+Необязательный шаблон компактного превью. В отличие от `description`, он содержит только отображаемое выражение:
+
+```ts
+expressionTemplate: "$0 / $1";
+```
+
+Индекс `$n` соответствует позиции в упорядоченном списке зависимостей. Шаблон сохраняется буквально; registry, execution и validation не требуют его наличия. Ранее объявленные definitions без этого поля сохраняют прежний контракт.
+
+Шаблон служит описанием основной операции для человека. Он не заменяет `fn`, не исполняется и не обязан воспроизводить все защитные ветвления функции, например возврат нуля при нулевом делителе. За соответствие шаблона операции отвечает автор definition.
+
+### `formatTableFormulaExpression(expressionTemplate, dependencies)`
+
+Чистая функция подставляет ID зависимостей в позиции `$n` за один проход:
+
+```ts
+import { formatTableFormulaExpression } from "@ryuzaki13/react-foundation-lib/formulas";
+
+formatTableFormulaExpression("$0 / $1", ["FIELD_X", "FIELD_Y"]); // "FIELD_X / FIELD_Y"
+formatTableFormulaExpression("$0 / $1", ["FIELD_X"]); // "FIELD_X / $1"
+```
+
+Повторные вхождения заменяются, `$1` и `$10` различаются. Незаданный или пустой ID оставляет исходный маркер; пробелы и специальные символы в ID сохраняются. Подставленные ID не обрабатываются повторно, входной массив не изменяется. Операторы, скобки и остальной текст шаблона не анализируются.
+
+Пустая строка возвращается без изменений. Host UI самостоятельно выбирает сообщение для отсутствующего или пустого шаблона и отображает результат как текст.
 
 ### `args`
 
@@ -1035,7 +1065,7 @@ app composition / registries
 - TypeScript проверяет написанные definitions;
 - обычные unit-tests видят функцию напрямую.
 
-`description` может содержать формулу для человека, но runtime выполняет только `fn`, заранее включённую разработчиком в registry.
+`description` и `expressionTemplate` могут содержать формулу для человека, но runtime выполняет только `fn`, заранее включённую разработчиком в registry.
 
 ### Доверенный код всё равно требует дисциплины
 
@@ -1204,6 +1234,7 @@ Promise не является конечным number и даст `invalid_resul
 | `configureTableFormulaRegistry`    | Установить активный registry     | Полностью заменяет module-level registry                |
 | `getTableFormulaList`              | Получить ordered catalog         | Возвращает тот же readonly list                         |
 | `getTableFormulaById`              | Найти definition                 | Trim id; `undefined` для пустого/неизвестного           |
+| `formatTableFormulaExpression`     | Подставить ID в шаблон превью    | Сохраняет незаполненные `$n`; не исполняет выражение    |
 | `compileTableFormula`              | Подготовить reusable executor    | Фиксирует formula и копирует keys                       |
 | `executeTableFormula`              | Compile + один execute           | Возвращает controlled result, не бросает formula error  |
 | `validateTableFormulaDependencies` | Проверить mapping dependencies   | Дважды исполняет formula на synthetic data              |

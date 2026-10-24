@@ -1,6 +1,15 @@
 export type TableFormulaRowData = Record<string, unknown>;
 
+/**
+ * Позиционный аргумент формулы: ID поля строки либо конечная числовая константа.
+ *
+ * Константа занимает обычную позицию аргумента, но не создаёт зависимости от
+ * данных строки. Строковая форма сохраняет контракт существующих consumers.
+ */
+export type TableFormulaDependency = string | { readonly kind: "constant"; readonly value: number };
+
 export interface TableFormulaContext {
+	/** Возвращает ID только для аргумента-поля; у константы ключа строки нет. */
 	key: (index: number) => string | undefined;
 	value: (index: number) => unknown;
 	num: (index: number) => number;

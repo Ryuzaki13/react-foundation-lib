@@ -39,6 +39,20 @@ function dimensionField(id: string, overrides?: Partial<FormattersPipelineRuntim
 }
 
 describe("compileFormattersPipelineRuntime", () => {
+	it("компилирует поле с константой для обычной и итоговой строки", () => {
+		const constant: { kind: "constant"; value: number } = { kind: "constant", value: 10 };
+		const field = compileFormattersPipelineRuntime(
+			measureField("CALC", { formulaId: "sum", formulaDependencies: ["AMOUNT", constant] })
+		);
+		constant.value = 100;
+
+		for (const rowKind of ["plain", "group", "totals"] as const) {
+			const cell = formatPipelineDisplayValue({ field, rawValue: undefined, rowData: { AMOUNT: 20 }, rowKind });
+			expect(cell.value).toBe(formatTypedCellValue(30, field));
+			expect(field.formulaExecutor?.({ AMOUNT: 20 })).toEqual({ ok: true, value: 30 });
+		}
+	});
+
 	it("компилирует formula runtime для поля с валидной формулой и сохраняет identity", () => {
 		const field = measureField("MARKUP", {
 			formulaId: "sum",

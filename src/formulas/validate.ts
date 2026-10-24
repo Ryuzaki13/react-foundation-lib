@@ -1,10 +1,14 @@
 import { createTableFormulaContext } from "./execute";
+import { formatTableFormulaExpression } from "./formatTableFormulaExpression";
+import { isTableFormulaDependency } from "./isTableFormulaDependency";
 import { getTableFormulaById } from "./registry";
+import { type TableFormulaDependency } from "./types";
 
 type ValidationCode =
 	| "formula_not_found"
 	| "dependency_index_out_of_range"
 	| "dependency_not_available"
+	| "invalid_constant"
 	| "unused_dependencies"
 	| "formula_does_not_use_dependencies"
 	| "formula_runtime_error";
@@ -28,16 +32,17 @@ function toSortedArray(items: Set<number>): number[] {
 	return [...items].sort((left, right) => left - right);
 }
 
-function createSampleRowData(dependencies: readonly string[], multiplier: number): Record<string, unknown> {
-	return dependencies.reduce<Record<string, unknown>>((acc, dependencyId, index) => {
-		acc[dependencyId] = (index + 1) * multiplier;
+function createSampleRowData(dependencies: readonly TableFormulaDependency[], multiplier: number): Record<string, unknown> {
+	return dependencies.reduce<Record<string, unknown>>((acc, dependency, index) => {
+		// Константа сохраняет своё значение в каждом проходе и не создаёт виртуального поля строки.
+		if (typeof dependency === "string") acc[dependency] = (index + 1) * multiplier;
 		return acc;
 	}, {});
 }
 
 export function validateTableFormulaDependencies(args: {
 	formulaId: string | undefined;
-	dependencies?: readonly string[];
+	dependencies?: readonly TableFormulaDependency[];
 	availableColumnIds?: readonly string[];
 }): TableFormulaDependenciesValidationResult {
 	const errors: TableFormulaValidationMessage[] = [];
@@ -66,11 +71,19 @@ export function validateTableFormulaDependencies(args: {
 	}
 
 	const availableSet = new Set(availableColumnIds);
-	const missingDependencies = dependencies.filter((dependencyId) => !availableSet.has(dependencyId));
+	const missingDependencies = dependencies.filter((dependency) => typeof dependency === "string" && !availableSet.has(dependency));
 	if (missingDependencies.length > 0) {
 		errors.push({
 			code: "dependency_not_available",
 			message: `Не найдены среди доступных полей: ${missingDependencies.join(", ")}.`
+		});
+	}
+
+	const invalidConstantIndexes = dependencies.flatMap((dependency, index) => (isTableFormulaDependency(dependency) ? [] : [index]));
+	if (invalidConstantIndexes.length > 0) {
+		errors.push({
+			code: "invalid_constant",
+			message: `Ожидаются конечные числовые константы в позициях: ${invalidConstantIndexes.map((index) => `$${index}`).join(", ")}.`
 		});
 	}
 
@@ -123,7 +136,7 @@ export function validateTableFormulaDependencies(args: {
 	if (unusedDependencies.length > 0) {
 		warnings.push({
 			code: "unused_dependencies",
-			message: `Выбраны, но не используются формулой: ${unusedDependencies.join(", ")}.`
+			message: `Выбраны, но не используются формулой: ${unusedDependencies.map((dependency) => formatTableFormulaExpression("$0", [dependency])).join(", ")}.`
 		});
 	}
 
@@ -134,7 +147,9 @@ export function validateTableFormulaDependencies(args: {
 		});
 	}
 
-	const usedDependencyIds = sortedUsedIndexes.map((index) => dependencies[index]).filter(Boolean);
+	const usedDependencyIds = sortedUsedIndexes
+		.map((index) => dependencies[index])
+		.filter((dependency): dependency is string => typeof dependency === "string" && dependency !== "");
 
 	return {
 		ok: errors.length === 0,

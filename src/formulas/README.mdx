@@ -6,7 +6,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 Модуль `@ryuzaki13/react-foundation-lib/formulas` предоставляет безопасную инфраструктуру для заранее написанных клиентских формул таблицы.
 
-Формула получает значения других полей текущей строки, выполняет синхронный расчёт и возвращает конечное JavaScript-число. Например, она может вычислить сумму, разницу, отношение или процент для calculated-колонки.
+Формула получает значения полей текущей строки и числовые константы, выполняет синхронный расчёт и возвращает конечное JavaScript-число. Например, она может вычислить сумму, разницу, отношение или процент для calculated-колонки.
 
 ```text
 данные строки + упорядоченные зависимости
@@ -181,11 +181,16 @@ const rowData = {
 
 ### Зависимости и keys
 
-Dependencies — упорядоченный массив id полей:
+Dependencies — упорядоченный массив аргументов. Строка обозначает id поля, объект — конечную числовую константу:
 
 ```ts
-const keys = ["planned", "actual"];
+import { type TableFormulaDependency } from "@ryuzaki13/react-foundation-lib/formulas";
+
+const keys: readonly TableFormulaDependency[] = ["planned", "actual"];
+const scaledKeys: readonly TableFormulaDependency[] = ["planned", { kind: "constant", value: 100 }];
 ```
+
+`keys: ["planned", { kind: "constant", value: 100 }]` передаёт в `$0` значение поля, а в `$1` число `100`. Поля и константы можно смешивать, повторять и переставлять; константа не становится полем строки. Ноль, отрицательные и дробные числа допустимы. Строковый `"100"` обозначает ID поля, а не число. `NaN` и бесконечности отклоняются validator-ом; при исполнении дают `runtime_error`. Редактор отвечает за разбор пользовательского ввода до передачи числового значения в API.
 
 Позиция является частью контракта:
 
@@ -283,16 +288,18 @@ expressionTemplate: "$0 / $1";
 
 ### `formatTableFormulaExpression(expressionTemplate, dependencies)`
 
-Чистая функция подставляет ID зависимостей в позиции `$n` за один проход:
+Чистая функция подставляет ID полей и константы в позиции `$n` за один проход:
 
 ```ts
 import { formatTableFormulaExpression } from "@ryuzaki13/react-foundation-lib/formulas";
 
 formatTableFormulaExpression("$0 / $1", ["FIELD_X", "FIELD_Y"]); // "FIELD_X / FIELD_Y"
 formatTableFormulaExpression("$0 / $1", ["FIELD_X"]); // "FIELD_X / $1"
+formatTableFormulaExpression("$0 / $1", ["FIELD_X", { kind: "constant", value: 100 }]); // "FIELD_X / 100"
+formatTableFormulaExpression("$0 - $1", ["FIELD_X", { kind: "constant", value: -2.5 }]); // "FIELD_X - (-2.5)"
 ```
 
-Повторные вхождения заменяются, `$1` и `$10` различаются. Незаданный или пустой ID оставляет исходный маркер; пробелы и специальные символы в ID сохраняются. Подставленные ID не обрабатываются повторно, входной массив не изменяется. Операторы, скобки и остальной текст шаблона не анализируются.
+Повторные вхождения заменяются, `$1` и `$10` различаются. Незаданный, пустой или некорректный аргумент оставляет исходный маркер; пробелы и специальные символы в ID сохраняются. Отрицательное число отображается в скобках, чтобы сохранить смысл выражения. Подставленные ID не обрабатываются повторно, входной массив не изменяется. Операторы, скобки и остальной текст шаблона не анализируются.
 
 Пустая строка возвращается без изменений. Host UI самостоятельно выбирает сообщение для отсутствующего или пустого шаблона и отображает результат как текст.
 
@@ -369,7 +376,7 @@ ctx.key(-1); // undefined
 ctx.key(1.5); // undefined
 ```
 
-Допустим только целый неотрицательный index в пределах массива.
+Допустим только целый неотрицательный index в пределах массива. Для константы `key(index)` возвращает `undefined`: у неё нет ID поля, хотя сама позиция считается прочитанной instrumentation.
 
 Пустая строка технически может вернуться из `key`, если она была передана в `keys`, но `value` и `num` считают пустой key отсутствующим. Используйте только непустые dependency ids.
 
@@ -382,7 +389,7 @@ ctx.key(1.5); // undefined
 ctx.value(1); // "25"
 ```
 
-Для неправильного индекса, пустого key или отсутствующего свойства возвращается `undefined`.
+Для константы возвращается непосредственно её числовое значение. Для неправильного индекса, пустого key или отсутствующего свойства возвращается `undefined`.
 
 Используйте `value`, когда нужно отличать отсутствующее значение от нуля или применять собственный parser:
 
@@ -426,7 +433,7 @@ context.num(0); // 12.5
 context.num(1); // 4
 ```
 
-`keys` копируется при создании context. Изменение исходного массива после вызова не меняет mapping. `rowData` не копируется: context читает переданный объект.
+`keys`, включая значения объектов-констант, копируется при создании context. Изменение исходного массива или объекта константы после вызова не меняет mapping. Некорректная константа приводит к `TypeError` при ручном создании context. `rowData` не копируется: context читает переданный объект.
 
 ### Instrumentation
 
@@ -766,11 +773,11 @@ type CompileResult = { ok: true; execute: TableFormulaCompiledExecutor } | { ok:
 Compiler:
 
 - находит formula definition один раз;
-- копирует массив `keys`;
+- копирует массив `keys` и значения объектов-констант;
 - создаёт один context object;
 - возвращает executor `(rowData) => result`.
 
-Изменение исходного массива keys после compile не влияет на executor. Замена активного registry также не меняет уже найденную formula function.
+Изменение исходного массива keys или объекта константы после compile не влияет на executor. Замена активного registry также не меняет уже найденную formula function. При некорректной константе возвращается executor с прежней ошибкой `runtime_error`; форма compile-result не расширяется.
 
 ### Что происходит при каждом execute
 
@@ -840,7 +847,7 @@ interface TableFormulaDependenciesValidationResult {
 Validator:
 
 1. ищет formula в активном registry;
-2. проверяет, что каждый dependency id входит в `availableColumnIds`;
+2. проверяет, что каждый dependency id входит в `availableColumnIds`, а константа содержит конечное число;
 3. запускает formula на положительных synthetic values;
 4. запускает formula на отрицательных synthetic values;
 5. через instrumentation собирает прочитанные indexes;
@@ -855,6 +862,7 @@ Validator:
 | ------------------------------- | ----------------------------------------------------------- |
 | `formula_not_found`             | Formula id отсутствует в registry                           |
 | `dependency_not_available`      | Dependency id отсутствует среди доступных колонок           |
+| `invalid_constant`              | Константа не содержит конечное числовое значение             |
 | `dependency_index_out_of_range` | Formula прочитала index, для которого dependency не передан |
 
 ### Warnings
@@ -873,7 +881,7 @@ validation.usage.usedDependencyIds; // например ["planned", "actual"]
 validation.usage.requiredDependencyCount; // 2
 ```
 
-`requiredDependencyCount` равен `максимальный использованный index + 1`.
+`requiredDependencyCount` равен `максимальный использованный index + 1`. Константы учитываются в indexes и требуемом количестве аргументов, но отсутствуют в `usedDependencyIds`. Synthetic passes меняют только значения полей; значения констант остаются заданными в конфигурации.
 
 Это полезно редактору:
 
@@ -884,7 +892,7 @@ validation.usage.requiredDependencyCount; // 2
 
 ### `availableColumnIds` нужно передавать явно
 
-По умолчанию список доступных колонок пуст. Если передать dependencies, но не передать `availableColumnIds`, каждый dependency будет считаться недоступным:
+По умолчанию список доступных колонок пуст. Если передать аргументы-поля, но не передать `availableColumnIds`, каждое поле будет считаться недоступным. Константы не проверяются на присутствие в этом списке:
 
 ```ts
 validateTableFormulaDependencies({
@@ -1217,7 +1225,7 @@ Promise не является конечным number и даст `invalid_resul
 
 ### Хранить function в JSON
 
-Сохраняйте только `formulaId` и dependency ids. Function определяется доверенным application bundle.
+Сохраняйте только `formulaId` и сериализуемые аргументы: dependency ids и объекты числовых констант. Function определяется доверенным application bundle.
 
 ### Путать table formula и row-based formatter
 
@@ -1244,6 +1252,7 @@ Promise не является конечным number и даст `invalid_resul
 | Тип                                        | Назначение                                 |
 | ------------------------------------------ | ------------------------------------------ |
 | `TableFormulaRowData`                      | Строка `Record<string, unknown>`           |
+| `TableFormulaDependency`                   | ID поля либо объект конечной числовой константы |
 | `TableFormulaContext`                      | Методы `key`, `value`, `num`               |
 | `TableFormulaFn`                           | Синхронная function `context → number`     |
 | `TableFormulaDefinition`                   | Metadata и function одной formula          |
@@ -1270,6 +1279,7 @@ Promise не является конечным number и даст `invalid_resul
 | `formula_not_found`                 | error    |
 | `dependency_index_out_of_range`     | error    |
 | `dependency_not_available`          | error    |
+| `invalid_constant`                  | error    |
 | `unused_dependencies`               | warning  |
 | `formula_does_not_use_dependencies` | warning  |
 | `formula_runtime_error`             | warning  |

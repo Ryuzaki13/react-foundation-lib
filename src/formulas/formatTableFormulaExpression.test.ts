@@ -4,6 +4,23 @@ import { formatTableFormulaExpression } from "./formatTableFormulaExpression";
 
 describe("formatTableFormulaExpression", () => {
 	it.each([
+		["$0 / $1", ["VALUE", { kind: "constant", value: 100 }], "VALUE / 100"],
+		["$0 / $1", [{ kind: "constant", value: 100 }, "VALUE"], "100 / VALUE"],
+		[
+			"$0 + $1",
+			[
+				{ kind: "constant", value: 0 },
+				{ kind: "constant", value: 0 }
+			],
+			"0 + 0"
+		],
+		["$0 - $1", ["VALUE", { kind: "constant", value: -2.5 }], "VALUE - (-2.5)"],
+		["$0 / $1", ["VALUE", { kind: "constant", value: Number.NaN }], "VALUE / $1"]
+	] as const)("форматирует константы в %s", (template, dependencies, expected) => {
+		expect(formatTableFormulaExpression(template, dependencies)).toBe(expected);
+	});
+
+	it.each([
 		["$0 / $1", ["FIELD_X", "FIELD_Y"], "FIELD_X / FIELD_Y"],
 		["$0 / $1", ["FIELD_Y", "FIELD_X"], "FIELD_Y / FIELD_X"],
 		["$0 / $1", ["FIELD_X"], "FIELD_X / $1"],

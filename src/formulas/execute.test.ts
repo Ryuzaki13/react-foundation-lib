@@ -35,6 +35,28 @@ beforeEach(() => {
 });
 
 describe("createTableFormulaV2Context", () => {
+	it("читает константы по позиции без ключей строки и фиксирует их значения", () => {
+		const constant: { kind: "constant"; value: number } = { kind: "constant", value: -2.5 };
+		const onReadIndex = vi.fn();
+		const onOutOfRangeIndex = vi.fn();
+		const ctx = createTableFormulaContext({
+			rowData: { A: "10" },
+			keys: ["A", constant, { kind: "constant", value: 0 }],
+			instrumentation: { onReadIndex, onOutOfRangeIndex }
+		});
+		constant.value = 100;
+
+		expect(ctx.key(0)).toBe("A");
+		expect(ctx.key(1)).toBeUndefined();
+		expect(ctx.value(1)).toBe(-2.5);
+		expect(ctx.num(1)).toBe(-2.5);
+		expect(ctx.value(2)).toBe(0);
+		expect(ctx.num(2)).toBe(0);
+		expect(onReadIndex).toHaveBeenCalledWith(1);
+		expect(onReadIndex).toHaveBeenCalledWith(2);
+		expect(onOutOfRangeIndex).not.toHaveBeenCalled();
+	});
+
 	it("формирует ctx на основе rowData и keys", () => {
 		const onReadIndex = vi.fn();
 		const onOutOfRangeIndex = vi.fn();
@@ -63,6 +85,32 @@ describe("createTableFormulaV2Context", () => {
 });
 
 describe("executeTableFormula", () => {
+	it.each([
+		["ratio", ["A", { kind: "constant", value: 100 }], 0.5],
+		["ratio", [{ kind: "constant", value: 100 }, "A"], 2],
+		["sum", ["A", { kind: "constant", value: 0 }], 50],
+		[
+			"sum",
+			[
+				{ kind: "constant", value: -2.5 },
+				{ kind: "constant", value: -2.5 }
+			],
+			-5
+		],
+		["sum", ["A", "A"], 100]
+	] as const)("передаёт поля и константы в %s с сохранением порядка и повторов", (formulaId, keys, value) => {
+		expect(executeTableFormula({ formulaId, keys, rowData: { A: 50 } })).toEqual({ ok: true, value });
+	});
+
+	it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+		"отклоняет не конечную константу %s без подмены нулём",
+		(value) => {
+			const keys = [{ kind: "constant", value }, "A"] as const;
+			expect(executeTableFormula({ formulaId: "sum", keys, rowData: { A: 10 } })).toEqual({ ok: false, reason: "runtime_error" });
+			expect(() => createTableFormulaContext({ keys, rowData: {} })).toThrow(TypeError);
+		}
+	);
+
 	it("выполняет формулы активного реестра и защищает деление на ноль", () => {
 		expect(executeTableFormula({ formulaId: "sum", rowData: { A: 10, B: 5 }, keys: ["A", "B"] })).toEqual({
 			ok: true,
@@ -98,6 +146,17 @@ describe("executeTableFormula", () => {
 });
 
 describe("compileTableFormula", () => {
+	it("сохраняет значения констант независимо от последующего изменения исходного объекта", () => {
+		const constant: { kind: "constant"; value: number } = { kind: "constant", value: 10 };
+		const compiled = compileTableFormula({ formulaId: "sum", keys: ["A", constant] });
+		constant.value = 100;
+
+		expect(compiled.ok).toBe(true);
+		if (!compiled.ok) return;
+		expect(compiled.execute({ A: 2 })).toEqual({ ok: true, value: 12 });
+		expect(compiled.execute({ A: 5 })).toEqual({ ok: true, value: 15 });
+	});
+
 	it("компилирует формулу и переиспользует контекст между вызовами", () => {
 		const compiled = compileTableFormula({
 			formulaId: "ratio",

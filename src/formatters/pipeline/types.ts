@@ -1,4 +1,5 @@
-import type { TableFormulaCompiledExecutor, TableFormulaRowData } from "../../formulas";
+import { type TableFormulaCompiledExecutor, type TableFormulaDependency, type TableFormulaRowData } from "../../formulas";
+
 import type { ColumnRole, ODataMetaType } from "../../odata-service";
 import type { State } from "../../types";
 import type { ThresholdDefinition } from "../valueState/types";
@@ -396,7 +397,7 @@ export type FormattersPipelineRuntimeField = FormattersPipelineTypedValueContext
 	/** Идентификатор формулы из реестра `shared/lib/formulas`. */
 	formulaId?: string;
 	/** Индексные зависимости формулы в порядке, в котором их читает `ctx.num(index)`. */
-	formulaDependencies?: readonly string[];
+	formulaDependencies?: readonly TableFormulaDependency[];
 	/** Признак чисто вычисляемого поля без безопасного fallback к raw value. */
 	purelyDerived?: boolean;
 	/** Признак, что нулевое значение после вычисления нужно скрывать как пустое. */

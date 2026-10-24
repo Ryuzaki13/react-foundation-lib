@@ -125,6 +125,7 @@ npm run pack:dry-run
 | `/form`                | [`form/README.mdx`](./src/form/README.mdx)                                     |
 | `/formatters`          | [`formatters/README.mdx`](./src/formatters/README.mdx) и его предметные README |
 | `/formulas`            | [`formulas/README.mdx`](./src/formulas/README.mdx)                             |
+| `/value-transformers`  | [Преобразования числовых значений](./src/value-transformers/README.md)        |
 | `/hooks`               | [`hooks/README.mdx`](./src/hooks/README.mdx)                                   |
 | `/http`                | [`http/README.mdx`](./src/http/README.mdx)                                     |
 | `/media`               | [`media/README.mdx`](./src/media/README.mdx)                                   |

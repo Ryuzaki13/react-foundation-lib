@@ -29,7 +29,7 @@ import type { RowRecord } from "@ryuzaki13/react-foundation-lib/types";
 
 | Entry point                                               | Что может потребоваться в host-проекте                                                                           |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `formatters`, `array`                                     | Обычно не требуют дополнительных runtime-зависимостей.                                                           |
+| `formatters`, `array`, `promise`                          | Обычно не требуют дополнительных runtime-зависимостей.                                                           |
 | `utils`, `hooks`, `binary`, `dom`, `copy`, `media`, `pwa` | `react`: `utils` экспортирует React helpers, `binary` — `useBinaryFile`, остальные entrypoints содержат hooks.   |
 | `query-client`, `error-report`                            | `@tanstack/react-query`, `@tanstack/query-persist-client-core`, `@tanstack/query-broadcast-client-experimental`. |
 | `odata-service`                                           | `zod`, `zustand`, `immer`, `react`; `unwrapODataQueryResult` типизирован вокруг `@tanstack/react-query`.         |
@@ -101,7 +101,7 @@ npm run pack:dry-run
 
 ## Полный каталог документации
 
-Каждый публичный subpath из `package.json#exports` покрыт русскоязычным MDX-руководством. Документы `tree-table` и `pwa/sw-cache-policy` намеренно объединены с ближайшим владельцем, чтобы правила одного сценария не расходились между файлами.
+Каждый публичный subpath из `package.json#exports` покрыт русскоязычным руководством. Документы `tree-table` и `pwa/sw-cache-policy` намеренно объединены с ближайшим владельцем, чтобы правила одного сценария не расходились между файлами.
 
 | Публичный import path  | Подробная документация                                                         |
 | ---------------------- | ------------------------------------------------------------------------------ |
@@ -133,6 +133,7 @@ npm run pack:dry-run
 | `/number-scale`        | [`number-scale/README.mdx`](./src/number-scale/README.mdx)                     |
 | `/odata-service`       | [`odata-service/README.mdx`](./src/odata-service/README.mdx)                   |
 | `/presets`             | [`presets/README.mdx`](./src/presets/README.mdx)                               |
+| `/promise`             | [Управляемое ожидание через Promise](./src/promise/README.md)                  |
 | `/pwa`                 | [`pwa/README.mdx`](./src/pwa/README.mdx)                                       |
 | `/pwa/sw-cache-policy` | Раздел cache policy в [`pwa/README.mdx`](./src/pwa/README.mdx)                 |
 | `/query-client`        | [`query-client/README.mdx`](./src/query-client/README.mdx)                     |

@@ -161,6 +161,10 @@
 			"types": "./dist/presets/index.d.ts",
 			"import": "./dist/presets/index.js"
 		},
+		"./promise": {
+			"types": "./dist/promise/index.d.ts",
+			"import": "./dist/promise/index.js"
+		},
 		"./pwa": {
 			"types": "./dist/pwa/index.d.ts",
 			"import": "./dist/pwa/index.js"

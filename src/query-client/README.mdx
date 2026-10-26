@@ -462,7 +462,7 @@ Callbacks устанавливаются в `QueryCache` и `MutationCache`. О�
 `createQueryClient` вызывает `createReactQueryPersister`.
 
 - Если `indexedDB` доступен, `persisterFn` становится default query persister.
-- Если `indexedDB` отсутствует, client создаётся без persister.
+- Если `indexedDB` отсутствует или чтение глобального свойства запрещено браузером, client создаётся без persister.
 - Даже с persister сохраняются только opt-in query.
 
 ## Query metadata
@@ -802,7 +802,8 @@ type Options = {
 
 Если explicit `indexedDB` не передан, используется `globalThis.indexedDB`.
 
-Если factory отсутствует, возвращается `undefined`:
+Если factory отсутствует или чтение `globalThis.indexedDB` выбрасывает ошибку
+(например, `SecurityError` из-за политики браузера), возвращается `undefined`:
 
 ```ts
 const storage = createIndexedDbQueryStorage();
@@ -811,6 +812,8 @@ if (!storage) {
 	console.info("IndexedDB недоступен, persistence отключена");
 }
 ```
+
+Явно переданная factory используется без обращения к глобальному свойству.
 
 ### Default database и object store
 
@@ -858,7 +861,8 @@ if (storage) {
 
 ### Ошибки IndexedDB
 
-Storage не скрывает ошибки. Promise отклоняется, если:
+Отказ получения глобальной factory отключает persistence до создания storage.
+После получения factory storage не скрывает ошибки операций. Promise отклоняется, если:
 
 - database open заблокирован;
 - browser отказал в storage;

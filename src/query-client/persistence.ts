@@ -51,10 +51,16 @@ export type IndexedDbQueryStorage<TStorageValue> = AsyncStorage<TStorageValue> &
 	) => Promise<TResult>;
 };
 
-function resolveIndexedDbFactory(factory?: IDBFactory) {
+function resolveIndexedDbFactory(factory?: IDBFactory): IDBFactory | undefined {
 	if (factory) return factory;
-	if (typeof globalThis.indexedDB === "undefined") return undefined;
-	return globalThis.indexedDB;
+	try {
+		return globalThis.indexedDB;
+	} catch {
+		// Сам getter может выбросить SecurityError из-за политики браузера.
+		// Недоступный необязательный кэш не должен срывать создание QueryClient;
+		// ошибки операций уже полученной фабрики по-прежнему передаются потребителю.
+		return undefined;
+	}
 }
 
 function requestToPromise<T>(request: IDBRequest<T>) {

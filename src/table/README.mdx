@@ -394,7 +394,7 @@ const orderColumns = [
 ] satisfies TableColumnDef<Order>[];
 ```
 
-Число `24` в `meta.width` означает `24em`, а не `24px`. Runtime px-ширины resize хранятся отдельно в `TableColumnSizingState`.
+Число `24` в `meta.width` означает `24em`, а не `24px`. Размеры resize хранятся отдельно в `TableColumnSizingState`; по умолчанию это px, при явном выборе единицы поддерживаются em.
 
 ### 3. Вычислите selection
 
@@ -538,7 +538,7 @@ const fullNameColumn: TableColumnDef<Person, string> = {
 
 ```ts
 interface TableColumnMeta {
-	width?: number | "auto" | `${number}%`;
+	width?: number | "auto" | `${number}%` | `${number}px` | `${number}em`;
 	align?: "left" | "center" | "right";
 	mergeDuplicates?: boolean;
 	formatting?: TableColumnFormattingMeta;
@@ -547,13 +547,15 @@ interface TableColumnMeta {
 
 #### `width`
 
-| Значение | Смысл                                   |
-| -------- | --------------------------------------- |
-| `12`     | `12em` в декларативной metadata колонки |
-| `"auto"` | автоматическая CSS-ширина               |
-| `"25%"`  | процентная CSS-ширина                   |
+| Значение   | Смысл                                   |
+| ---------- | --------------------------------------- |
+| `12`       | `12em` в декларативной metadata колонки |
+| `"auto"`   | автоматическая CSS-ширина               |
+| `"25%"`    | процентная CSS-ширина                   |
+| `"120px"`  | фиксированная ширина в px               |
+| `"12.5em"` | явная относительная ширина              |
 
-Это не то же самое, что `TableColumnSizingState`: sizing state хранит число пикселей, полученное от resize runtime.
+Это не то же самое, что `TableColumnSizingState`: sizing state хранит размеры resize runtime в выбранной единице (`px` по умолчанию, `em` при явном включении).
 
 #### `align`
 
@@ -904,12 +906,33 @@ if (nextOrder) {
 
 Не смешивайте:
 
-| Представление            | Пример                  | Единица             |
-| ------------------------ | ----------------------- | ------------------- |
-| `TableColumnMeta.width`  | `12`, `"auto"`, `"25%"` | число означает `em` |
-| `TableColumnSizingState` | `{ amount: 160 }`       | число означает px   |
+| Представление            | Пример                  | Единица                              |
+| ------------------------ | ----------------------- | ------------------------------------ |
+| `TableColumnMeta.width`  | `12`, `"auto"`, `"25%"` | число означает `em`                  |
+| `TableColumnSizingState` | `{ amount: 160 }`       | px по умолчанию; em при явном выборе |
 
-Helpers этого раздела работают со вторым представлением — px sizing state.
+Helpers этого раздела работают со вторым представлением. Необязательный аргумент `unit: TableColumnSizingUnit` выбирает `"px"` (по умолчанию) или `"em"`. Единица должна совпадать у нормализации, UI и сохранённого профиля; изменение единицы не конвертирует существующие числа.
+
+Для `em` минимальная ширина по умолчанию равна `DEFAULT_TABLE_COLUMN_MIN_WIDTH_EM` (`4em`); размеры и явно переданный minimum сохраняют до четырёх знаков после запятой:
+
+```ts
+normalizeTableColumnWidth(12.345678, undefined, "em"); // 12.3456
+normalizeTableColumnSizing({ name: 20.5 }, undefined, "em"); // { name: 20.5 }
+patchTableColumnWidth({ name: 20.5 }, "amount", 10.25, undefined, "em");
+// { name: 20.5, amount: 10.25 }
+```
+
+### `resolveTableColumnsWidth`
+
+Суммирует определённые ширины видимых колонок в `em` и `px`, сохраняя CSS-единицы для SSR и масштабирования шрифта:
+
+```ts
+resolveTableColumnsWidth(["20em", "10.5em"]); // "calc(20em + 10.5em)"
+resolveTableColumnsWidth(["20em", "120px"]); // "calc(20em + 120px)"
+resolveTableColumnsWidth(["auto", "20em"]); // undefined
+```
+
+Пустой набор, проценты и неподдерживаемые значения возвращают `undefined`: для них общей шириной управляет браузер. Результат предназначен для `width` таблицы с `table-layout: fixed`.
 
 ### `DEFAULT_TABLE_COLUMN_MIN_WIDTH`
 
@@ -927,7 +950,7 @@ normalizeTableColumnWidth(12); // 60
 normalizeTableColumnWidth(Number.NaN, 80); // 80
 ```
 
-Алгоритм:
+Алгоритм для единицы `px`:
 
 1. Проверяет `minWidth`.
 2. Если minimum не finite или не больше нуля, использует `60`.
@@ -2773,14 +2796,17 @@ it("не активирует строку по клику на кнопку", (
 
 ### Column sizing
 
-| API                              | Вид      | Назначение                             |
-| -------------------------------- | -------- | -------------------------------------- |
-| `TableColumnSizingState`         | type     | `Record<columnId, widthPx>`            |
-| `DEFAULT_TABLE_COLUMN_MIN_WIDTH` | constant | default minimum `60` px                |
-| `normalizeTableColumnWidth`      | function | finite integer width не меньше minimum |
-| `normalizeTableColumnSizing`     | function | очищает весь sizing state              |
-| `patchTableColumnWidth`          | function | immutable add/update одной ширины      |
-| `removeTableColumnWidth`         | function | immutable delete одной ширины          |
+| API                                 | Вид      | Назначение                                    |
+| ----------------------------------- | -------- | --------------------------------------------- |
+| `TableColumnSizingState`            | type     | `Record<columnId, width>` в выбранной единице |
+| `TableColumnSizingUnit`             | type     | `"px"` или `"em"`                             |
+| `DEFAULT_TABLE_COLUMN_MIN_WIDTH_EM` | constant | default minimum `4em`                         |
+| `resolveTableColumnsWidth`          | function | сумма определённых ширин колонок в CSS        |
+| `DEFAULT_TABLE_COLUMN_MIN_WIDTH`    | constant | default minimum `60` px                       |
+| `normalizeTableColumnWidth`         | function | размер в выбранной единице не меньше minimum  |
+| `normalizeTableColumnSizing`        | function | очищает весь sizing state                     |
+| `patchTableColumnWidth`             | function | immutable add/update одной ширины             |
+| `removeTableColumnWidth`            | function | immutable delete одной ширины                 |
 
 ### Row selection
 
@@ -2935,7 +2961,7 @@ const column = {
 };
 ```
 
-Здесь `120em`, а не `120px`. Resize px храните в `TableColumnSizingState`.
+Здесь `120em`, а не `120px`. Размеры resize храните в `TableColumnSizingState`, сохраняя выбранную единицу.
 
 ### Считать `normalizeTableColumnOrder` полным restore
 

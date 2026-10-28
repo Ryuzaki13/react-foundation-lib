@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	DEFAULT_TABLE_COLUMN_MIN_WIDTH,
+	DEFAULT_TABLE_COLUMN_MIN_WIDTH_EM,
 	normalizeTableColumnSizing,
 	normalizeTableColumnWidth,
 	patchTableColumnWidth,
@@ -34,5 +35,19 @@ describe("table column sizing", () => {
 
 		expect(patched).toEqual({ A: 120, B: 96 });
 		expect(removeTableColumnWidth(patched, "A")).toEqual({ B: 96 });
+	});
+
+	it("сохраняет дробные em и применяет относительную нижнюю границу", () => {
+		expect(normalizeTableColumnWidth(12.345678, undefined, "em")).toBe(12.3456);
+		expect(normalizeTableColumnWidth(1, undefined, "em")).toBe(DEFAULT_TABLE_COLUMN_MIN_WIDTH_EM);
+		expect(normalizeTableColumnWidth(Number.NaN, 2.5, "em")).toBe(2.5);
+		expect(normalizeTableColumnSizing({ A: 12.5, B: Number.NaN, C: 1 }, undefined, "em")).toEqual({ A: 12.5, C: 4 });
+	});
+
+	it("изменяет одну относительную ширину без потери дробных размеров остальных колонок", () => {
+		const sizing = patchTableColumnWidth({ A: 10.125, B: 8.5 }, "B", 9.75, undefined, "em");
+
+		expect(sizing).toEqual({ A: 10.125, B: 9.75 });
+		expect(removeTableColumnWidth(sizing, "B")).toEqual({ A: 10.125 });
 	});
 });

@@ -100,7 +100,7 @@ export interface TableColumnMeta {
 	 *
 	 * Строка используется как CSS-значение, число трактуется как `em`.
 	 */
-	width?: number | "auto" | `${number}%`;
+	width?: number | "auto" | `${number}%` | `${number}px` | `${number}em`;
 
 	/**
 	 * Выравнивание содержимого заголовка и ячеек.

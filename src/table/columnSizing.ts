@@ -1,17 +1,32 @@
+/** Числа sizing-state используют единицу, явно выбранную потребителем; по умолчанию это px. */
 export type TableColumnSizingState = Record<string, number>;
 
-export const DEFAULT_TABLE_COLUMN_MIN_WIDTH = 60;
+/** Единица сохранённого размера не зависит от экранных координат pointer/keyboard events. */
+export type TableColumnSizingUnit = "px" | "em";
 
-export function normalizeTableColumnWidth(px: number, minWidth: number = DEFAULT_TABLE_COLUMN_MIN_WIDTH): number {
-	const normalizedMinWidth = Number.isFinite(minWidth) && minWidth > 0 ? Math.floor(minWidth) : DEFAULT_TABLE_COLUMN_MIN_WIDTH;
-	const normalizedWidth = Number.isFinite(px) ? Math.floor(px) : normalizedMinWidth;
+export const DEFAULT_TABLE_COLUMN_MIN_WIDTH = 60;
+export const DEFAULT_TABLE_COLUMN_MIN_WIDTH_EM = 4;
+
+/**
+ * Нормализует размер в выбранной единице. Для px сохраняется целочисленный контракт,
+ * для em остаются четыре знака, чтобы resize не округлялся до целого размера шрифта.
+ */
+export function normalizeTableColumnWidth(width: number, minWidth?: number, unit: TableColumnSizingUnit = "px"): number {
+	const defaultMinWidth = unit === "em" ? DEFAULT_TABLE_COLUMN_MIN_WIDTH_EM : DEFAULT_TABLE_COLUMN_MIN_WIDTH;
+	const precision = unit === "em" ? 10_000 : 1;
+	const normalizedMinWidth =
+		typeof minWidth === "number" && Number.isFinite(minWidth) && minWidth > 0
+			? Math.floor(minWidth * precision) / precision
+			: defaultMinWidth;
+	const normalizedWidth = Number.isFinite(width) ? Math.floor(width * precision) / precision : normalizedMinWidth;
 
 	return Math.max(normalizedMinWidth, normalizedWidth);
 }
 
 export function normalizeTableColumnSizing(
 	state: Readonly<Record<string, number>> | undefined,
-	minWidth: number = DEFAULT_TABLE_COLUMN_MIN_WIDTH
+	minWidth?: number,
+	unit: TableColumnSizingUnit = "px"
 ): TableColumnSizingState {
 	const nextState: TableColumnSizingState = {};
 
@@ -20,7 +35,7 @@ export function normalizeTableColumnSizing(
 			continue;
 		}
 
-		nextState[columnId] = normalizeTableColumnWidth(width, minWidth);
+		nextState[columnId] = normalizeTableColumnWidth(width, minWidth, unit);
 	}
 
 	return nextState;
@@ -30,15 +45,16 @@ export function patchTableColumnWidth(
 	state: Readonly<Record<string, number>>,
 	columnId: string,
 	width: number,
-	minWidth: number = DEFAULT_TABLE_COLUMN_MIN_WIDTH
+	minWidth?: number,
+	unit: TableColumnSizingUnit = "px"
 ): TableColumnSizingState {
 	if (columnId.trim().length === 0) {
-		return normalizeTableColumnSizing(state, minWidth);
+		return normalizeTableColumnSizing(state, minWidth, unit);
 	}
 
 	return {
-		...normalizeTableColumnSizing(state, minWidth),
-		[columnId]: normalizeTableColumnWidth(width, minWidth)
+		...normalizeTableColumnSizing(state, minWidth, unit),
+		[columnId]: normalizeTableColumnWidth(width, minWidth, unit)
 	};
 }
 

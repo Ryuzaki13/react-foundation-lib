@@ -1,6 +1,7 @@
 export * from "./columnLayout";
 export * from "./columnOrder";
 export * from "./columnSizing";
+export { resolveTableColumnsWidth } from "./resolveTableColumnsWidth";
 export * from "./cellSelection";
 export * from "./odataAdapter";
 export * from "./selection";

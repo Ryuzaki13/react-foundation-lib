@@ -3,7 +3,7 @@ import { compileTableFormula, executeTableFormula } from "./execute";
 import type { TableFormulaCompiledExecutor, TableFormulaExecutionResult } from "./execute";
 import type { TableFormulaRowData } from "./types";
 
-// npx vitest run src/shared/lib/formulas/perf.runtime.test.ts
+// pnpm run test src/formulas/perf.runtime.test.ts
 
 export interface TableFormulaRuntimePerfResult {
 	iterations: number;

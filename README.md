@@ -47,20 +47,32 @@ import type { RowRecord } from "@ryuzaki13/react-foundation-lib/types";
 
 ## Проверка пакета
 
+Для разработки используется `pnpm@12.4.1`, закреплённый в `package.json#packageManager`.
+После установки этой версии pnpm зависимости устанавливаются по `pnpm-lock.yaml`:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
 Основные команды разработки:
 
 ```bash
-npm run lint
-npm run typecheck
-npm run test
-npm run build
+pnpm run lint
+pnpm run typecheck
+pnpm run test
+pnpm run build
 ```
 
 Перед публикацией можно проверить полный npm-артефакт:
 
 ```bash
-npm run pack:dry-run
+pnpm run pack:dry-run
 ```
+
+Команда `pack:dry-run` выполняет полную проверку и вызывает `npm pack --dry-run`:
+для упаковки и публикации через semantic-release сохраняется npm.
+Сборочный скрипт нативного `unrs-resolver`, используемого ESLint, разрешён явно
+в `pnpm-workspace.yaml`.
 
 ## Содержание
 

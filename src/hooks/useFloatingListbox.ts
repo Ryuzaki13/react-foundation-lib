@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
 	autoPlacement,
@@ -10,7 +10,9 @@ import {
 	size as floatingSize,
 	useDismiss,
 	useFloating,
+	type UseFloatingReturn,
 	useInteractions,
+	type UseInteractionsReturn,
 	useRole
 } from "@floating-ui/react";
 
@@ -103,6 +105,30 @@ interface UseFloatingListboxParams<T> {
 	resolveFloatingSize?: FloatingListboxSizeResolver;
 }
 
+/**
+ * Форма результата использует публичные типы Floating UI: декларации пакета не
+ * должны раскрывать пути его транзитивных зависимостей в конкретной установке.
+ */
+type UseFloatingListboxResult<T> = Pick<UseFloatingReturn, "refs" | "context" | "floatingStyles"> &
+	Pick<UseInteractionsReturn, "getFloatingProps"> & {
+		open: boolean;
+		setOpen: (open: boolean) => void;
+		activeIndex: number;
+		setReference: UseFloatingReturn["refs"]["setReference"];
+		setFloating: UseFloatingReturn["refs"]["setFloating"];
+		setOptionRef: (index: number, node: HTMLElement | null) => void;
+		close: () => void;
+		openList: () => void;
+		openWithIndex: (nextIndex: number) => void;
+		toggleOpen: () => void;
+		selectOption: (option: T) => void;
+		selectActiveOption: () => void;
+		handleReferenceKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+		handleFloatingKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+		getOptionId: (listId: string, index: number) => string;
+		getActiveOptionId: (listId: string) => string | undefined;
+	};
+
 export function useFloatingListbox<T>({
 	options,
 	selectedIndex,
@@ -118,7 +144,7 @@ export function useFloatingListbox<T>({
 	allowOpenWithoutOptions = false,
 	restoreFocusOnClose = true,
 	resolveFloatingSize
-}: UseFloatingListboxParams<T>) {
+}: UseFloatingListboxParams<T>): UseFloatingListboxResult<T> {
 	const optionRefs = useRef<Array<HTMLElement | null>>([]);
 	const [internalOpen, setInternalOpen] = useState(false);
 	const resolvedOpen = open ?? internalOpen;

@@ -4,6 +4,7 @@ import { parseAbapBoolean } from "../formatters/boolean/parseAbapBoolean";
 import { formatDateAsAbapDate } from "../formatters/date/formatDate";
 import { parseDate } from "../formatters/date/parseDate";
 import { parseNumber } from "../formatters/number/parseNumber";
+import { getBaseTypeFromScalarType } from "../metadata/scalarTypeClassification";
 
 import { ODataDateFormat } from "./dateUtils";
 import { odataTypeSchemas } from "./schema";
@@ -281,31 +282,11 @@ const formatters: FormatterRecord = {
 	}
 };
 
-export function getBaseTypeFromODataType<T extends ODataMetaType>(type: T): BaseMetaType {
-	switch (type) {
-		case "boolean":
-			return "boolean";
-
-		case "int":
-		case "long":
-		case "float":
-		case "decimal":
-		case "double":
-		case "byte":
-			return "number";
-
-		case "datetime":
-		case "datetimeOffset":
-		case "time":
-			return "date";
-
-		default:
-			return "string";
-	}
-}
+// Опубликованное OData-имя использует общую классификацию без второй реализации.
+export { getBaseTypeFromScalarType as getBaseTypeFromODataType } from "../metadata/scalarTypeClassification";
 
 export function getFormattersFor<T extends ODataMetaType>(type: T): ODataFormatterDescription[] {
-	const group = formatters[getBaseTypeFromODataType(type)];
+	const group = formatters[getBaseTypeFromScalarType(type)];
 	if (!group) return [];
 
 	return Object.entries(group).map(([id, fmt]) => ({
@@ -328,7 +309,7 @@ export function getFormattersForBaseType<T extends BaseMetaType>(type: T): OData
 }
 
 export function getFormatter<T extends ODataMetaType>(type: T, id: string) {
-	return formatters[getBaseTypeFromODataType(type)]?.[id];
+	return formatters[getBaseTypeFromScalarType(type)]?.[id];
 }
 
 export function getFormatterForBaseType<T extends BaseMetaType>(type: T, id: string) {

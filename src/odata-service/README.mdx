@@ -101,6 +101,36 @@ host entity / feature / widget
 
 ## Импорт
 
+### Граница протокольного и общего кода
+
+`odata-service` сохраняет прежний опубликованный набор функций и типов. Внутри
+пакета парсер OData, схемы, литералы URL, сериализация фильтров/сортировок и
+хранилище коллекций отделены от скалярных метаданных, базовых типов контролов и
+классификации полей. Этим общим кодом владеет `src/metadata`.
+
+Это приватные модули. Патч не добавляет новые публичные точки входа:
+существующие имена продолжают экспортироваться через `odata-service` и ссылаются
+на единственную реализацию общего владельца.
+Общие `formatters`, `error-report`, `excel`, `table` и `analytical-table` не
+загружают реализацию OData.
+
+`buildSeparatedArrays`, `findCollectionPairs` и типы коллекций «код — текст» остаются
+в `odata-service`: они обслуживают справочные OData-коллекции. Работа с массивом
+сама по себе не делает такую функцию общей ответственностью `array`.
+Нормализация OData-ввода, `defaultControlTypeValue` и фабрики OData-форматтеров
+также остаются у OData-владельца. Их назначение у текущих потребителей
+не меняется из-за внешне общей формы функции.
+
+`getFormatterForBaseType` и `getFormattersForBaseType` остаются частью реестра
+форматтеров OData. Их результаты содержат литералы OData/ABAP и не заменяются
+обычным отображением строки, числа или даты. Допустимые значения `ODataMetaType`
+и свойства существующих контрактов метаданных, Excel и pipeline не меняются.
+
+Регрессионный `src/metadata/bundleBoundary.test.ts` проверяет свежую сборку
+всех точек входа пакета, включая общие и динамические чанки. Критерий — отсутствие
+модулей реализации OData в достижимом графе общих точек входа; имя сгенерированного
+чанка или слово `odata` внутри пресетов дат не является доказательством зависимости.
+
 Для полного entrypoint также разрешите совместимые peer dependencies, если package manager не сделал этого автоматически:
 
 ```bash
@@ -2580,7 +2610,12 @@ beforeEach(() => {
 До:
 
 ```ts
-import { buildSeparatedArrays, findCollectionPairs, ODataDateFormat, useODataCollectionStore } from "@ryuzaki13/react-foundation-lib/odata-service";
+import {
+	buildSeparatedArrays,
+	findCollectionPairs,
+	ODataDateFormat,
+	useODataCollectionStore
+} from "@ryuzaki13/react-foundation-lib/odata-service";
 ```
 
 После:

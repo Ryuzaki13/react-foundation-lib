@@ -1,5 +1,5 @@
 import { compileTableFormula } from "../../formulas";
-import { getBaseTypeFromODataType } from "../../odata-service";
+import { getBaseTypeFromScalarType } from "../../metadata/scalarTypeClassification";
 import { isSafe } from "../../validators";
 import { formatDate, getDatePreset, parseDate } from "../date";
 import { normalizeLeadingZeros } from "../normalizeLeadingZeros";
@@ -47,7 +47,7 @@ export function formatTypedCellValue(
 ): string {
 	if (!isSafe(value)) return "";
 
-	const baseType = getBaseTypeFromODataType(column.type);
+	const baseType = getBaseTypeFromScalarType(column.type);
 
 	if (baseType === "number") {
 		const normalizedPresetName = config?.numberPresetName?.trim();

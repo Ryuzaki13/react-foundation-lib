@@ -1,15 +1,21 @@
+import {
+	type BooleanMetaType,
+	type ColumnRole,
+	type DateMetaType,
+	type IntegerMetaType,
+	type NumericMetaType,
+	type ScalarMetaType,
+	type StringMetaType
+} from "../metadata/metadataTypes";
 import { type BaseType, type InputType } from "../types";
 
-/**
- * Базовые типы с которыми работают UI компоненты.
- */
-export type BaseMetaType = "string" | "number" | "boolean" | "date";
+export { type BaseMetaType, type ColumnRole } from "../metadata/metadataTypes";
 
-export type ODataBooleanType = "boolean";
-export type ODataNumericType = "byte" | "int" | "long" | "float" | "decimal" | "double";
-export type ODataIntegerType = Extract<ODataNumericType, "byte" | "int" | "long">;
-export type ODataDateType = "datetime" | "datetimeOffset" | "time";
-export type ODataStringType = "string" | "guid" | "binary";
+export type ODataBooleanType = BooleanMetaType;
+export type ODataNumericType = NumericMetaType;
+export type ODataIntegerType = IntegerMetaType;
+export type ODataDateType = DateMetaType;
+export type ODataStringType = StringMetaType;
 
 export type BaseMethod = "GET" | "POST" | "PUT" | "DELETE";
 export type ODataOperationMethod = "create" | "update" | "delete" | "read" | "query" | "fi";
@@ -17,7 +23,7 @@ export type ODataOperationMethod = "create" | "update" | "delete" | "read" | "qu
 /**
  * Типы данных сервисов OData (параметры, поля)
  */
-export type ODataMetaType = ODataBooleanType | ODataNumericType | ODataDateType | ODataStringType;
+export type ODataMetaType = ScalarMetaType;
 
 export type ODataFormatterFn = (...args: unknown[]) => string;
 export type ODataFormatterDescription = {
@@ -144,8 +150,6 @@ export type EntityParameterProperty = EntityPropertyBaseWithType & {
 	/** Тип параметра в терминах SAP */
 	parameter?: string;
 };
-
-export type ColumnRole = "measure" | "dimension";
 
 /**
  * Свойство колонки сущности

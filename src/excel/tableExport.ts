@@ -5,14 +5,8 @@ import {
 	type FormattersPipelineConfig,
 	type FormattersPipelineTypedValueFormatConfig
 } from "../formatters/pipeline";
-import {
-	isODataBooleanType,
-	isODataDateType,
-	isODataIntegerType,
-	isODataNumericType,
-	type ColumnRole,
-	type ODataMetaType
-} from "../odata-service";
+import { type ColumnRole, type ScalarMetaType } from "../metadata/metadataTypes";
+import { isScalarBooleanType, isScalarDateType, isScalarIntegerType, isScalarNumericType } from "../metadata/scalarTypeClassification";
 
 import { downloadExcelFile, downloadExcelWorkbook, type ExcelCellStyle, type ExcelColumn, type ExcelRow } from "./excel";
 
@@ -21,7 +15,7 @@ export type TableExcelColumnDescriptor = {
 	header: string;
 	width?: number;
 	role?: ColumnRole;
-	odataType?: ODataMetaType;
+	odataType?: ScalarMetaType;
 	clientOnly?: boolean;
 	formattersPipeline?: FormattersPipelineConfig;
 };
@@ -84,9 +78,9 @@ function resolveTypedValueFormatConfig(
 
 export function resolveTableExcelColumnType(descriptor: TableExcelColumnDescriptor): ExcelColumn["type"] {
 	if (descriptor.clientOnly) return Number;
-	if (isODataDateType(descriptor.odataType)) return Date;
-	if (isODataBooleanType(descriptor.odataType)) return Boolean;
-	if (isODataNumericType(descriptor.odataType)) return Number;
+	if (isScalarDateType(descriptor.odataType)) return Date;
+	if (isScalarBooleanType(descriptor.odataType)) return Boolean;
+	if (isScalarNumericType(descriptor.odataType)) return Number;
 	if (descriptor.role === "measure") return Number;
 	return String;
 }
@@ -94,7 +88,7 @@ export function resolveTableExcelColumnType(descriptor: TableExcelColumnDescript
 function resolveNumberPresetName(descriptor: TableExcelColumnDescriptor): string {
 	const configuredPresetName = resolveTypedValueFormatConfig(descriptor.formattersPipeline)?.numberPresetName?.trim();
 	if (configuredPresetName && getNumberPreset(configuredPresetName)) return configuredPresetName;
-	if (isODataIntegerType(descriptor.odataType)) return "integer";
+	if (isScalarIntegerType(descriptor.odataType)) return "integer";
 	return "decimal";
 }
 

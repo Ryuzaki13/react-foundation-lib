@@ -36,6 +36,14 @@ import { formatDateAsDate } from "@ryuzaki13/react-foundation-lib";
 
 `react-foundation-lib` не создаёт бизнес-правила, не хранит backend snapshot и не заменяет API- или UI-пакеты.
 
+Общие точки входа `formatters`, `error-report`, `excel`, `table` и
+`analytical-table` не зависят от реализации `odata-service`. Скалярными метаданными
+владеет приватный `src/metadata`; OData-адаптер зависит от него наравне с
+общими сценариями. Этот каталог не является новой публичной точкой входа. Прежние
+экспорты OData сохраняются, а парсер, схемы, литералы и хранилище коллекций
+остаются у протокольного владельца. Подробная граница описана в
+[OData Service](./odata-service/README.mdx#граница-протокольного-и-общего-кода).
+
 ## Среда выполнения и peer dependencies
 
 Большинство pure helpers не требуют React. Entry point с React hook, DOM, browser storage или Service Worker должен вызываться только в браузерном runtime и по правилам React hooks. Совместимые peer dependencies должны быть разрешены host-проектом для используемого entrypoint.

@@ -1,8 +1,7 @@
 import { type TableFormulaCompiledExecutor, type TableFormulaDependency, type TableFormulaRowData } from "../../formulas";
-
-import type { ColumnRole, ODataMetaType } from "../../odata-service";
-import type { State } from "../../types";
-import type { ThresholdDefinition } from "../valueState/types";
+import { type ColumnRole, type ScalarMetaType } from "../../metadata/metadataTypes";
+import { type State } from "../../types";
+import { type ThresholdDefinition } from "../valueState/types";
 
 /**
  * Идентификаторы поддерживаемых форматтеров pipeline.
@@ -379,7 +378,7 @@ export type FormattersPipelineExecutor = {
  */
 export type FormattersPipelineTypedValueContext = {
 	role: ColumnRole;
-	type: ODataMetaType;
+	type: ScalarMetaType;
 };
 
 /**

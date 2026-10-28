@@ -1,0 +1,41 @@
+/** Коды диагностики сохраняют единый источник для сообщений валидации и их runtime-потребителей. */
+export const PIPELINE_VALIDATION_CONFIG_NOT_DEFINED = "config_not_defined";
+export const PIPELINE_VALIDATION_UNSUPPORTED_VERSION = "unsupported_version";
+export const PIPELINE_VALIDATION_GRAPH_OR_PLAN_REQUIRED = "graph_or_plan_required";
+export const PIPELINE_VALIDATION_NODE_ID_DUPLICATE = "node_id_duplicate";
+export const PIPELINE_VALIDATION_EDGE_ID_DUPLICATE = "edge_id_duplicate";
+export const PIPELINE_VALIDATION_EDGE_NODE_NOT_FOUND = "edge_node_not_found";
+export const PIPELINE_VALIDATION_SOURCE_COUNT_INVALID = "source_count_invalid";
+export const PIPELINE_VALIDATION_SINK_COUNT_INVALID = "sink_count_invalid";
+export const PIPELINE_VALIDATION_SOURCE_INCOMING_INVALID = "source_incoming_invalid";
+export const PIPELINE_VALIDATION_SINK_OUTGOING_INVALID = "sink_outgoing_invalid";
+export const PIPELINE_VALIDATION_NODE_DEGREE_INVALID = "node_degree_invalid";
+export const PIPELINE_VALIDATION_PATH_BROKEN = "path_broken";
+export const PIPELINE_VALIDATION_PATH_CYCLE_DETECTED = "path_cycle_detected";
+export const PIPELINE_VALIDATION_PATH_DISCONNECTED_NODES = "path_disconnected_nodes";
+export const PIPELINE_VALIDATION_STEP_ID_DUPLICATE = "step_id_duplicate";
+export const PIPELINE_VALIDATION_STEP_RESOLVE_VALUE_STATE_MULTIPLE = "step_resolve_value_state_multiple";
+export const PIPELINE_VALIDATION_STEP_TYPED_VALUE_FORMAT_MULTIPLE = "step_typed_value_format_multiple";
+export const PIPELINE_VALIDATION_STEP_ROW_BASED_OVERRIDE_MULTIPLE = "step_row_based_override_multiple";
+export const PIPELINE_VALIDATION_STEP_NORMALIZE_LEADING_ZEROS_MULTIPLE = "step_normalize_leading_zeros_multiple";
+export const PIPELINE_VALIDATION_STEP_TYPED_BEFORE_VALUE_STATE = "step_typed_before_value_state";
+export const PIPELINE_VALIDATION_STEP_ROW_BASED_OVERRIDE_FIELD_KEY_EMPTY = "step_row_based_override_field_key_empty";
+export const PIPELINE_VALIDATION_STEP_ROW_BASED_OVERRIDE_FORMULA_ID_EMPTY = "step_row_based_override_formula_id_empty";
+export const PIPELINE_VALIDATION_STEP_ROW_BASED_OVERRIDE_FORMULA_NOT_FOUND = "step_row_based_override_formula_not_found";
+export const PIPELINE_VALIDATION_STEP_ROW_BASED_OVERRIDE_DEPENDENCY_INDEX_OUT_OF_RANGE =
+	"step_row_based_override_dependency_index_out_of_range";
+export const PIPELINE_VALIDATION_STEP_ROW_BASED_OVERRIDE_UNUSED_DEPENDENCIES = "step_row_based_override_unused_dependencies";
+export const PIPELINE_VALIDATION_STEP_ROW_BASED_OVERRIDE_FORMULA_DOES_NOT_USE_DEPENDENCIES =
+	"step_row_based_override_formula_does_not_use_dependencies";
+export const PIPELINE_VALIDATION_STEP_ROW_BASED_OVERRIDE_FORMULA_RUNTIME_ERROR = "step_row_based_override_formula_runtime_error";
+export const PIPELINE_VALIDATION_STEP_VALUE_STATE_FORMULA_ID_EMPTY = "step_value_state_formula_id_empty";
+export const PIPELINE_VALIDATION_STEP_VALUE_STATE_FORMULA_NOT_FOUND = "step_value_state_formula_not_found";
+export const PIPELINE_VALIDATION_STEP_VALUE_STATE_DEPENDENCY_ID_EMPTY = "step_value_state_dependency_id_empty";
+export const PIPELINE_VALIDATION_STEP_VALUE_STATE_DEPENDENCY_INDEX_OUT_OF_RANGE = "step_value_state_dependency_index_out_of_range";
+export const PIPELINE_VALIDATION_STEP_VALUE_STATE_UNUSED_DEPENDENCIES = "step_value_state_unused_dependencies";
+export const PIPELINE_VALIDATION_STEP_VALUE_STATE_FORMULA_DOES_NOT_USE_DEPENDENCIES = "step_value_state_formula_does_not_use_dependencies";
+export const PIPELINE_VALIDATION_STEP_VALUE_STATE_FORMULA_RUNTIME_ERROR = "step_value_state_formula_runtime_error";
+export const PIPELINE_VALIDATION_STEP_THRESHOLD_STATES_COUNT_INVALID = "step_threshold_states_count_invalid";
+export const PIPELINE_VALIDATION_STEP_VALUE_HIDDEN_WITHOUT_ICON = "step_value_hidden_without_icon";
+export const PIPELINE_VALIDATION_STEP_TYPED_VALUE_FORMAT_PRESET_EMPTY = "step_typed_value_format_preset_empty";
+export const PIPELINE_VALIDATION_STEP_TYPED_VALUE_FORMAT_PRESET_NOT_FOUND = "step_typed_value_format_preset_not_found";

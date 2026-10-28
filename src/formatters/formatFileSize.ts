@@ -1,4 +1,5 @@
 import { formatNumber, NUMBER_FORMAT_DEFAULTS, type NumberFormatPreset } from "./number";
+import { COMPACT_ROUNDING_MODE_ROUND } from "./number/numberFormatConstants";
 
 const FILE_SIZE_BASE = 1024;
 /** Двоичные единицы соответствуют File.size и серверным лимитам в байтах. */
@@ -9,7 +10,7 @@ const FILE_SIZE_PRESET: NumberFormatPreset = {
 	compact: {
 		minCompactValue: 1,
 		maxDecimals: 2,
-		roundingMode: "round",
+		roundingMode: COMPACT_ROUNDING_MODE_ROUND,
 		units: [
 			{ value: FILE_SIZE_BASE ** 5, suffix: "ПиБ" },
 			{ value: FILE_SIZE_BASE ** 4, suffix: "ТиБ" },

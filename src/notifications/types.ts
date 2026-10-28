@@ -1,4 +1,12 @@
-export type NotificationType = "error" | "warning" | "info" | "success";
+import {
+	type NOTIFICATION_TYPE_ERROR,
+	type NOTIFICATION_TYPE_INFO,
+	type NOTIFICATION_TYPE_SUCCESS,
+	type NOTIFICATION_TYPE_WARNING
+} from "./notificationTypeConstants";
+
+export type NotificationType =
+	typeof NOTIFICATION_TYPE_ERROR | typeof NOTIFICATION_TYPE_WARNING | typeof NOTIFICATION_TYPE_INFO | typeof NOTIFICATION_TYPE_SUCCESS;
 
 export type NotificationTone = "neutral" | NotificationType;
 

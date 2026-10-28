@@ -2,16 +2,28 @@ import { createTableFormulaContext } from "./execute";
 import { formatTableFormulaExpression } from "./formatTableFormulaExpression";
 import { isTableFormulaDependency } from "./isTableFormulaDependency";
 import { getTableFormulaById } from "./registry";
+import {
+	TABLE_FORMULA_NOT_FOUND,
+	TABLE_FORMULA_DEPENDENCY_INDEX_OUT_OF_RANGE,
+	TABLE_FORMULA_DEPENDENCY_NOT_AVAILABLE,
+	TABLE_FORMULA_INVALID_CONSTANT,
+	TABLE_FORMULA_UNUSED_DEPENDENCIES,
+	TABLE_FORMULA_DOES_NOT_USE_DEPENDENCIES,
+	TABLE_FORMULA_VALIDATION_RUNTIME_ERROR
+} from "./tableFormulaConstants";
 import { type TableFormulaDependency } from "./types";
 
+/** Положительная и отрицательная пробы выявляют обращения к зависимостям в разных ветках формулы. */
+const FORMULA_VALIDATION_PROBE_VALUE = 100;
+
 type ValidationCode =
-	| "formula_not_found"
-	| "dependency_index_out_of_range"
-	| "dependency_not_available"
-	| "invalid_constant"
-	| "unused_dependencies"
-	| "formula_does_not_use_dependencies"
-	| "formula_runtime_error";
+	| typeof TABLE_FORMULA_NOT_FOUND
+	| typeof TABLE_FORMULA_DEPENDENCY_INDEX_OUT_OF_RANGE
+	| typeof TABLE_FORMULA_DEPENDENCY_NOT_AVAILABLE
+	| typeof TABLE_FORMULA_INVALID_CONSTANT
+	| typeof TABLE_FORMULA_UNUSED_DEPENDENCIES
+	| typeof TABLE_FORMULA_DOES_NOT_USE_DEPENDENCIES
+	| typeof TABLE_FORMULA_VALIDATION_RUNTIME_ERROR;
 
 export interface TableFormulaValidationMessage {
 	code: ValidationCode;
@@ -54,7 +66,7 @@ export function validateTableFormulaDependencies(args: {
 
 	if (!formula) {
 		errors.push({
-			code: "formula_not_found",
+			code: TABLE_FORMULA_NOT_FOUND,
 			message: "Формула не найдена в реестре."
 		});
 
@@ -74,7 +86,7 @@ export function validateTableFormulaDependencies(args: {
 	const missingDependencies = dependencies.filter((dependency) => typeof dependency === "string" && !availableSet.has(dependency));
 	if (missingDependencies.length > 0) {
 		errors.push({
-			code: "dependency_not_available",
+			code: TABLE_FORMULA_DEPENDENCY_NOT_AVAILABLE,
 			message: `Не найдены среди доступных полей: ${missingDependencies.join(", ")}.`
 		});
 	}
@@ -82,7 +94,7 @@ export function validateTableFormulaDependencies(args: {
 	const invalidConstantIndexes = dependencies.flatMap((dependency, index) => (isTableFormulaDependency(dependency) ? [] : [index]));
 	if (invalidConstantIndexes.length > 0) {
 		errors.push({
-			code: "invalid_constant",
+			code: TABLE_FORMULA_INVALID_CONSTANT,
 			message: `Ожидаются конечные числовые константы в позициях: ${invalidConstantIndexes.map((index) => `$${index}`).join(", ")}.`
 		});
 	}
@@ -112,22 +124,22 @@ export function validateTableFormulaDependencies(args: {
 	};
 
 	// Несколько прогонов повышают шанс увидеть обращения к индексам в разных ветках формулы.
-	runValidationPass(createSampleRowData(dependencies, 100));
-	runValidationPass(createSampleRowData(dependencies, -100));
+	runValidationPass(createSampleRowData(dependencies, FORMULA_VALIDATION_PROBE_VALUE));
+	runValidationPass(createSampleRowData(dependencies, -FORMULA_VALIDATION_PROBE_VALUE));
 
 	const sortedUsedIndexes = toSortedArray(usedIndexes);
 	const requiredDependencyCount = sortedUsedIndexes.length > 0 ? sortedUsedIndexes[sortedUsedIndexes.length - 1] + 1 : 0;
 
 	if (outOfRangeIndexes.size > 0) {
 		errors.push({
-			code: "dependency_index_out_of_range",
+			code: TABLE_FORMULA_DEPENDENCY_INDEX_OUT_OF_RANGE,
 			message: `Формула обращается к несуществующим индексам. Минимально требуется зависимостей: ${requiredDependencyCount}, выбрано: ${dependencies.length}.`
 		});
 	}
 
 	if (sortedUsedIndexes.length === 0) {
 		warnings.push({
-			code: "formula_does_not_use_dependencies",
+			code: TABLE_FORMULA_DOES_NOT_USE_DEPENDENCIES,
 			message: "Формула не использует dependencies."
 		});
 	}
@@ -135,14 +147,14 @@ export function validateTableFormulaDependencies(args: {
 	const unusedDependencies = dependencies.filter((_, index) => !usedIndexes.has(index));
 	if (unusedDependencies.length > 0) {
 		warnings.push({
-			code: "unused_dependencies",
+			code: TABLE_FORMULA_UNUSED_DEPENDENCIES,
 			message: `Выбраны, но не используются формулой: ${unusedDependencies.map((dependency) => formatTableFormulaExpression("$0", [dependency])).join(", ")}.`
 		});
 	}
 
 	if (runtimeErrorCount > 0) {
 		warnings.push({
-			code: "formula_runtime_error",
+			code: TABLE_FORMULA_VALIDATION_RUNTIME_ERROR,
 			message: "На тестовых данных формула завершилась с ошибкой."
 		});
 	}

@@ -1,5 +1,11 @@
 import { type QueryMeta } from "@tanstack/react-query";
 
+import {
+	SESSION_QUERY_CACHE_MAX_ENTRIES,
+	SESSION_QUERY_CACHE_NAME_PATTERN,
+	SESSION_QUERY_REVISION_FIELD_PATTERN
+} from "./sessionPersistenceConstants";
+
 /**
  * Проверяет недоверенное восстановленное значение до публикации в Query.
  * Parser синхронно возвращает каноническую форму либо бросает ошибку: тогда
@@ -66,17 +72,17 @@ export const sessionScopedQueryMeta = { sessionScoped: true } as const satisfies
  */
 export function createSessionQueryPersistenceMeta(policy: SessionQueryPersistencePolicy) {
 	const cacheName = policy.cacheName.trim();
-	if (!/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(cacheName)) {
+	if (!SESSION_QUERY_CACHE_NAME_PATTERN.test(cacheName)) {
 		throw new Error("Имя session query cache должно содержать только строчные латинские буквы, цифры, _ и -");
 	}
-	if (!Number.isSafeInteger(policy.maxEntries) || policy.maxEntries < 1 || policy.maxEntries > 5_000) {
+	if (!Number.isSafeInteger(policy.maxEntries) || policy.maxEntries < 1 || policy.maxEntries > SESSION_QUERY_CACHE_MAX_ENTRIES) {
 		throw new Error("Лимит session query cache должен быть целым числом от 1 до 5000");
 	}
 	if (policy.refetchOnRestore !== undefined && typeof policy.refetchOnRestore !== "boolean") {
 		throw new Error("Политика refetch после восстановления должна быть boolean");
 	}
 	const monotonicRevisionField = policy.monotonicRevisionField?.trim();
-	if (monotonicRevisionField !== undefined && !/^[A-Za-z][A-Za-z0-9_]{0,63}$/u.test(monotonicRevisionField)) {
+	if (monotonicRevisionField !== undefined && !SESSION_QUERY_REVISION_FIELD_PATTERN.test(monotonicRevisionField)) {
 		throw new Error("Имя поля монотонной ревизии должно быть JavaScript-идентификатором длиной до 64 символов");
 	}
 

@@ -1,5 +1,12 @@
 import { type AnalyticalModelRow, type AnalyticalTableModel } from "../types";
 
+import {
+	type ANALYTICAL_EXPORT_SCOPE_ALL,
+	type ANALYTICAL_EXPORT_SCOPE_VISIBLE,
+	type ANALYTICAL_EXPORT_SCOPE_SELECTED,
+	type ANALYTICAL_EXPORT_ROW_KIND_GRAND
+} from "./analyticalExportConstants";
+
 export type AnalyticalExportColumn<TOriginal = unknown> = Readonly<{
 	id: string;
 	label?: string;
@@ -10,7 +17,12 @@ export type AnalyticalExportColumn<TOriginal = unknown> = Readonly<{
 
 export type AnalyticalExportHeader = Readonly<{ id: string; label: string }>;
 
-export type AnalyticalExportRow = Readonly<{ id: string; level: number; kind: "data" | "group" | "grand"; values: readonly unknown[] }>;
+export type AnalyticalExportRow = Readonly<{
+	id: string;
+	level: number;
+	kind: AnalyticalModelRow["kind"] | typeof ANALYTICAL_EXPORT_ROW_KIND_GRAND;
+	values: readonly unknown[];
+}>;
 
 export type AnalyticalExportProjection = Readonly<{
 	columns: readonly AnalyticalExportHeader[];
@@ -20,7 +32,7 @@ export type AnalyticalExportProjection = Readonly<{
 export type ProjectAnalyticalTableExportOptions<TOriginal = unknown> = Readonly<{
 	model: AnalyticalTableModel<TOriginal>;
 	columns?: readonly AnalyticalExportColumn<TOriginal>[];
-	scope?: "all" | "visible" | "selected";
+	scope?: typeof ANALYTICAL_EXPORT_SCOPE_ALL | typeof ANALYTICAL_EXPORT_SCOPE_VISIBLE | typeof ANALYTICAL_EXPORT_SCOPE_SELECTED;
 	selectedRowIds?: readonly string[];
 	includeGroups?: boolean;
 	includeGrandTotals?: boolean;

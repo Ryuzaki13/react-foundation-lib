@@ -1,5 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
+import { MEDIA_QUERY_CHANGE_EVENT } from "./mediaQueryConstants";
+
 type UseMediaQueryOptions = {
 	readonly ssrFallback?: boolean;
 };
@@ -18,8 +20,8 @@ function subscribeMediaQuery(query: string, listener: () => void): () => void {
 	const mql = window.matchMedia(query);
 
 	if (typeof mql.addEventListener === "function") {
-		mql.addEventListener("change", listener);
-		return () => mql.removeEventListener("change", listener);
+		mql.addEventListener(MEDIA_QUERY_CHANGE_EVENT, listener);
+		return () => mql.removeEventListener(MEDIA_QUERY_CHANGE_EVENT, listener);
 	}
 
 	mql.addListener(listener);

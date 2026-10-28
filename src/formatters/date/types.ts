@@ -1,25 +1,49 @@
+import {
+	type DATE_FORMAT_STYLE_SHORT,
+	type DATE_FORMAT_STYLE_MEDIUM,
+	type DATE_FORMAT_STYLE_LONG,
+	type DATE_FORMAT_PRECISION_DAY,
+	type DATE_FORMAT_PRECISION_MONTH,
+	type DATE_FORMAT_PRECISION_YEAR
+} from "./dateFormatConstants";
+import {
+	type DATE_INPUT_SOURCE_DATE_OBJECT,
+	type DATE_INPUT_SOURCE_TIMESTAMP,
+	type DATE_INPUT_SOURCE_ODATA_TICKS,
+	type DATE_INPUT_SOURCE_ODATA_LITERAL,
+	type DATE_INPUT_SOURCE_ABAP_COMPACT,
+	type DATE_INPUT_SOURCE_ABAP_TIMESTAMP,
+	type DATE_INPUT_SOURCE_ABAP_DOTTED,
+	type DATE_INPUT_SOURCE_SLASH_DATE,
+	type DATE_INPUT_SOURCE_ISO_LOCAL,
+	type DATE_INPUT_SOURCE_ISO_ZONED,
+	type DATE_INPUT_SOURCE_ISO_DURATION,
+	type PARSED_DATE_KIND_DATE_TIME,
+	type PARSED_DATE_KIND_DURATION
+} from "./dateValueConstants";
+
 /**
  * Формат результата для источника даты.
  */
 export type DateInputSource =
-	| "date-object"
-	| "timestamp"
-	| "odata-ticks"
-	| "odata-literal"
-	| "abap-compact"
-	| "abap-timestamp"
-	| "abap-dotted"
-	| "slash-date"
-	| "iso-local"
-	| "iso-zoned"
-	| "iso-duration"
+	| typeof DATE_INPUT_SOURCE_DATE_OBJECT
+	| typeof DATE_INPUT_SOURCE_TIMESTAMP
+	| typeof DATE_INPUT_SOURCE_ODATA_TICKS
+	| typeof DATE_INPUT_SOURCE_ODATA_LITERAL
+	| typeof DATE_INPUT_SOURCE_ABAP_COMPACT
+	| typeof DATE_INPUT_SOURCE_ABAP_TIMESTAMP
+	| typeof DATE_INPUT_SOURCE_ABAP_DOTTED
+	| typeof DATE_INPUT_SOURCE_SLASH_DATE
+	| typeof DATE_INPUT_SOURCE_ISO_LOCAL
+	| typeof DATE_INPUT_SOURCE_ISO_ZONED
+	| typeof DATE_INPUT_SOURCE_ISO_DURATION
 	| "native-date-parse";
 
 /**
  * Результат парсинга календарной даты/времени.
  */
 export interface ParsedDateTimeValue {
-	kind: "date-time";
+	kind: typeof PARSED_DATE_KIND_DATE_TIME;
 	source: DateInputSource;
 	date: Date;
 }
@@ -28,8 +52,8 @@ export interface ParsedDateTimeValue {
  * Результат парсинга длительности ISO-8601.
  */
 export interface ParsedDurationValue {
-	kind: "duration";
-	source: "iso-duration";
+	kind: typeof PARSED_DATE_KIND_DURATION;
+	source: typeof DATE_INPUT_SOURCE_ISO_DURATION;
 	durationMs: number;
 }
 
@@ -48,12 +72,12 @@ export type DateFormatPattern = string;
 /**
  * Базовые уровни детализации, совпадающие с семейством Intl dateStyle/timeStyle.
  */
-export type DateFormatStyle = "short" | "medium" | "long";
+export type DateFormatStyle = typeof DATE_FORMAT_STYLE_SHORT | typeof DATE_FORMAT_STYLE_MEDIUM | typeof DATE_FORMAT_STYLE_LONG;
 
 /**
  * Точность отображения календарной даты.
  */
-export type DateFormatPrecision = "day" | "month" | "year";
+export type DateFormatPrecision = typeof DATE_FORMAT_PRECISION_DAY | typeof DATE_FORMAT_PRECISION_MONTH | typeof DATE_FORMAT_PRECISION_YEAR;
 
 /**
  * Предустановка форматирования даты.

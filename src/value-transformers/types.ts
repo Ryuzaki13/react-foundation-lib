@@ -1,3 +1,5 @@
+import { type VALUE_TRANSFORMER_NOT_FOUND, type VALUE_TRANSFORMER_RUNTIME_ERROR } from "./valueTransformerConstants";
+
 /**
  * Синхронное преобразование одного исходного значения в числовое значение.
  *
@@ -17,9 +19,10 @@ export type ValueTransformerDefinition = Readonly<{
 
 /** Ошибка механизма отделена от значения, которое решила вернуть сама функция. */
 export type ValueTransformerExecutionResult =
-	{ ok: true; value: number | null | undefined } | { ok: false; reason: "transformer_not_found" | "runtime_error" };
+	| { ok: true; value: number | null | undefined }
+	| { ok: false; reason: typeof VALUE_TRANSFORMER_NOT_FOUND | typeof VALUE_TRANSFORMER_RUNTIME_ERROR };
 
 export type ValueTransformerCompiledExecutor = (value: unknown) => ValueTransformerExecutionResult;
 
 export type ValueTransformerCompileResult =
-	{ ok: true; execute: ValueTransformerCompiledExecutor } | { ok: false; reason: "transformer_not_found" };
+	{ ok: true; execute: ValueTransformerCompiledExecutor } | { ok: false; reason: typeof VALUE_TRANSFORMER_NOT_FOUND };

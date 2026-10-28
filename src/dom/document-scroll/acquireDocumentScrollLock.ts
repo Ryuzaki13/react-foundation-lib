@@ -1,4 +1,18 @@
+import { DOM_INSTANT_SCROLL_BEHAVIOR } from "../domScrollConstants";
+
 import { attachDocumentTouchScrollGuard } from "./attachDocumentTouchScrollGuard";
+
+// Имена принадлежащих lock CSS-свойств общие для снимка, применения и восстановления.
+const OVERFLOW_PROPERTY = "overflow";
+const OVERFLOW_X_PROPERTY = "overflow-x";
+const OVERFLOW_Y_PROPERTY = "overflow-y";
+const POSITION_PROPERTY = "position";
+const TOP_PROPERTY = "top";
+const LEFT_PROPERTY = "left";
+const WIDTH_PROPERTY = "width";
+const BOX_SIZING_PROPERTY = "box-sizing";
+const PADDING_RIGHT_PROPERTY = "padding-right";
+const HIDDEN_OVERFLOW_VALUE = "hidden";
 
 type InlineProperty = Readonly<{ name: string; value: string; priority: string }>;
 
@@ -34,19 +48,19 @@ export function acquireDocumentScrollLock(documentTarget: Document, compensateSc
 	if (!lock) {
 		const rootStyle = documentTarget.documentElement.style;
 		const bodyStyle = body.style;
-		const rootProperties = captureProperties(rootStyle, ["overflow", "overflow-x", "overflow-y"]);
+		const rootProperties = captureProperties(rootStyle, [OVERFLOW_PROPERTY, OVERFLOW_X_PROPERTY, OVERFLOW_Y_PROPERTY]);
 		const bodyProperties = captureProperties(bodyStyle, [
-			"position",
-			"top",
-			"left",
-			"width",
-			"overflow",
-			"overflow-x",
-			"overflow-y",
-			"box-sizing",
-			"padding-right"
+			POSITION_PROPERTY,
+			TOP_PROPERTY,
+			LEFT_PROPERTY,
+			WIDTH_PROPERTY,
+			OVERFLOW_PROPERTY,
+			OVERFLOW_X_PROPERTY,
+			OVERFLOW_Y_PROPERTY,
+			BOX_SIZING_PROPERTY,
+			PADDING_RIGHT_PROPERTY
 		]);
-		const originalPadding = captureProperties(bodyStyle, ["padding-right"]);
+		const originalPadding = captureProperties(bodyStyle, [PADDING_RIGHT_PROPERTY]);
 		const scrollX = view.scrollX;
 		const scrollY = view.scrollY;
 		const scrollbarWidth = Math.max(0, view.innerWidth - documentTarget.documentElement.clientWidth);
@@ -54,27 +68,27 @@ export function acquireDocumentScrollLock(documentTarget: Document, compensateSc
 		const leases = new Map<symbol, boolean>();
 
 		// Fixed body нужен и при iOS visual-viewport pan: одного overflow hidden недостаточно.
-		rootStyle.setProperty("overflow", "hidden");
-		bodyStyle.setProperty("position", "fixed");
-		bodyStyle.setProperty("top", `${-scrollY}px`);
-		bodyStyle.setProperty("left", `${-scrollX}px`);
-		bodyStyle.setProperty("width", "100%");
-		bodyStyle.setProperty("overflow", "hidden");
-		bodyStyle.setProperty("box-sizing", "border-box");
+		rootStyle.setProperty(OVERFLOW_PROPERTY, HIDDEN_OVERFLOW_VALUE);
+		bodyStyle.setProperty(POSITION_PROPERTY, "fixed");
+		bodyStyle.setProperty(TOP_PROPERTY, `${-scrollY}px`);
+		bodyStyle.setProperty(LEFT_PROPERTY, `${-scrollX}px`);
+		bodyStyle.setProperty(WIDTH_PROPERTY, "100%");
+		bodyStyle.setProperty(OVERFLOW_PROPERTY, HIDDEN_OVERFLOW_VALUE);
+		bodyStyle.setProperty(BOX_SIZING_PROPERTY, "border-box");
 		const releaseTouchGuard = attachDocumentTouchScrollGuard(documentTarget);
 
 		lock = {
 			leases,
 			updateCompensation: () => {
 				if (scrollbarWidth > 0 && [...leases.values()].some(Boolean)) {
-					bodyStyle.setProperty("padding-right", `${computedPadding + scrollbarWidth}px`);
+					bodyStyle.setProperty(PADDING_RIGHT_PROPERTY, `${computedPadding + scrollbarWidth}px`);
 				} else restoreProperties(bodyStyle, originalPadding);
 			},
 			restore: () => {
 				releaseTouchGuard();
 				restoreProperties(rootStyle, rootProperties);
 				restoreProperties(bodyStyle, bodyProperties);
-				view.scrollTo({ left: scrollX, top: scrollY, behavior: "instant" });
+				view.scrollTo({ left: scrollX, top: scrollY, behavior: DOM_INSTANT_SCROLL_BEHAVIOR });
 			}
 		};
 		locks.set(documentTarget, lock);

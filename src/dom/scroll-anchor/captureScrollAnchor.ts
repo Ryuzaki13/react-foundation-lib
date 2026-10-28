@@ -1,4 +1,8 @@
+import { DOM_INSTANT_SCROLL_BEHAVIOR } from "../domScrollConstants";
+
 import { type CapturedScrollAnchor } from "./scrollAnchorTypes";
+
+const OVERFLOW_ANCHOR_PROPERTY = "overflow-anchor";
 
 // Один scroll host не может одновременно компенсировать один и тот же prepend дважды.
 const activeAnchors = new WeakMap<HTMLElement, CapturedScrollAnchor>();
@@ -14,18 +18,18 @@ export function captureScrollAnchor(viewport: HTMLElement | null, anchor: HTMLEl
 	activeAnchors.get(viewport)?.release();
 	const initialOffset =
 		anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - viewport.clientTop + viewport.scrollTop;
-	const initialStyle = viewport.style.getPropertyValue("overflow-anchor");
-	const initialPriority = viewport.style.getPropertyPriority("overflow-anchor");
+	const initialStyle = viewport.style.getPropertyValue(OVERFLOW_ANCHOR_PROPERTY);
+	const initialPriority = viewport.style.getPropertyPriority(OVERFLOW_ANCHOR_PROPERTY);
 	let active = true;
 
 	// Native anchoring иначе успеет компенсировать prepend до restore и приведёт к двойному сдвигу.
-	viewport.style.setProperty("overflow-anchor", "none", "important");
+	viewport.style.setProperty(OVERFLOW_ANCHOR_PROPERTY, "none", "important");
 	// В браузере без этого CSS-свойства native anchoring тоже отсутствует: сравниваем фактически принятый стиль.
-	const ownedStyle = viewport.style.getPropertyValue("overflow-anchor");
-	const ownedPriority = viewport.style.getPropertyPriority("overflow-anchor");
+	const ownedStyle = viewport.style.getPropertyValue(OVERFLOW_ANCHOR_PROPERTY);
+	const ownedPriority = viewport.style.getPropertyPriority(OVERFLOW_ANCHOR_PROPERTY);
 	const ownsStyle = () =>
-		viewport.style.getPropertyValue("overflow-anchor") === ownedStyle &&
-		viewport.style.getPropertyPriority("overflow-anchor") === ownedPriority;
+		viewport.style.getPropertyValue(OVERFLOW_ANCHOR_PROPERTY) === ownedStyle &&
+		viewport.style.getPropertyPriority(OVERFLOW_ANCHOR_PROPERTY) === ownedPriority;
 
 	const operation: CapturedScrollAnchor = {
 		release() {
@@ -34,8 +38,8 @@ export function captureScrollAnchor(viewport: HTMLElement | null, anchor: HTMLEl
 			activeAnchors.delete(viewport);
 			// Не затираем новое решение host, если он сам изменил свойство во время ожидания.
 			if (!ownsStyle()) return;
-			if (initialStyle) viewport.style.setProperty("overflow-anchor", initialStyle, initialPriority);
-			else viewport.style.removeProperty("overflow-anchor");
+			if (initialStyle) viewport.style.setProperty(OVERFLOW_ANCHOR_PROPERTY, initialStyle, initialPriority);
+			else viewport.style.removeProperty(OVERFLOW_ANCHOR_PROPERTY);
 		},
 		restore() {
 			if (!active) return false;
@@ -46,7 +50,7 @@ export function captureScrollAnchor(viewport: HTMLElement | null, anchor: HTMLEl
 				const delta = currentOffset - initialOffset;
 				// Content-space delta не отменяет ручную прокрутку между запросом и commit.
 				// Instant не наследует CSS smooth; горизонтальная позиция остаётся неизменной.
-				if (delta !== 0) viewport.scrollBy({ top: delta, behavior: "instant" });
+				if (delta !== 0) viewport.scrollBy({ top: delta, behavior: DOM_INSTANT_SCROLL_BEHAVIOR });
 				return true;
 			} finally {
 				operation.release();

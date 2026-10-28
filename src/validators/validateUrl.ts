@@ -1,3 +1,6 @@
+/** Предельная длина остаётся прежней частью текущей проверки URL. */
+const URL_MAX_LENGTH = 2048;
+
 /**
  * Проверяет корректность URL
  * @param url - проверяемый URL
@@ -17,7 +20,7 @@ export const validateUrl = (url: string) => {
 		new URL(urlToCheck);
 
 		// Дополнительные проверки
-		if (url.length > 2048) {
+		if (url.length > URL_MAX_LENGTH) {
 			return {
 				isValid: false,
 				error: "URL слишком длинный"

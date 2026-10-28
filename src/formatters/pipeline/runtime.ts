@@ -1,8 +1,11 @@
 import { compileTableFormula, type TableFormulaCompiledExecutor, type TableFormulaRowData } from "../../formulas";
+import { TABLE_FORMULA_NOT_FOUND } from "../../formulas/tableFormulaConstants";
+import { VALUE_STATE_NONE } from "../../types/valueStateConstants";
 import { isZeroValue } from "../number";
 import { toSafeString } from "../strings";
 
 import { compileFormattersPipelineExecutor, formatTypedCellValue } from "./execute";
+import { PIPELINE_ICON_POSITION_LEFT, PIPELINE_ROW_KIND_GROUP, PIPELINE_ROW_KIND_TOTALS } from "./formattersPipelineConstants";
 
 import type {
 	FormatPipelineDisplayValueArgs,
@@ -17,15 +20,15 @@ type ResolvedPipelineSourceValue = {
 	shouldRenderEmpty: boolean;
 };
 
-const missingFormulaExecutor: TableFormulaCompiledExecutor = () => ({ ok: false, reason: "formula_not_found" });
+const missingFormulaExecutor: TableFormulaCompiledExecutor = () => ({ ok: false, reason: TABLE_FORMULA_NOT_FOUND });
 
 function createDefaultDisplayValue(value: unknown, overflowTooltip: boolean): FormattersPipelineDisplayValue {
 	return {
 		value,
-		state: "none",
+		state: VALUE_STATE_NONE,
 		showIcon: false,
 		showValue: true,
-		iconPosition: "left",
+		iconPosition: PIPELINE_ICON_POSITION_LEFT,
 		overflowTooltip
 	};
 }
@@ -99,8 +102,8 @@ function executePipelineFormatting<TField extends FormattersPipelineRuntimeField
 		rowData: args.rowData,
 		valueStateFormulaRowData: args.valueStateFormulaRowData,
 		rowKind: args.rowKind,
-		isGroupRow: args.rowKind === "group",
-		isTotalsRow: args.rowKind === "totals",
+		isGroupRow: args.rowKind === PIPELINE_ROW_KIND_GROUP,
+		isTotalsRow: args.rowKind === PIPELINE_ROW_KIND_TOTALS,
 		rowLevel: args.rowLevel ?? 0,
 		groupingIds: args.groupingIds ?? [],
 		columnId: field.id

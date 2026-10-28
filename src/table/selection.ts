@@ -1,8 +1,13 @@
-import { RowSelectionState } from "@tanstack/react-table";
+import { type RowSelectionState } from "@tanstack/react-table";
 
-import { TableSelectionMode } from "./types";
+import { TABLE_SELECTION_MODE_MULTI, TABLE_SELECTION_MODE_NONE, TABLE_SELECTION_MODE_SINGLE } from "./tableSelectionConstants";
+import { type TableSelectionMode } from "./types";
 
-const TABLE_SELECTION_MODES: ReadonlySet<TableSelectionMode> = new Set(["none", "single", "multi"]);
+const TABLE_SELECTION_MODES: ReadonlySet<TableSelectionMode> = new Set([
+	TABLE_SELECTION_MODE_NONE,
+	TABLE_SELECTION_MODE_SINGLE,
+	TABLE_SELECTION_MODE_MULTI
+]);
 
 /**
  * Возвращает только активные идентификаторы выбранных строк.
@@ -24,7 +29,7 @@ export function areTableRowSelectionsEqual(left: RowSelectionState, right: RowSe
 }
 
 /** Нормализует неизвестное значение режима выбора строк на внешней config-boundary. */
-export function normalizeTableSelectionMode(value: unknown, fallback: TableSelectionMode = "none"): TableSelectionMode {
+export function normalizeTableSelectionMode(value: unknown, fallback: TableSelectionMode = TABLE_SELECTION_MODE_NONE): TableSelectionMode {
 	return typeof value === "string" && TABLE_SELECTION_MODES.has(value as TableSelectionMode) ? (value as TableSelectionMode) : fallback;
 }
 
@@ -36,14 +41,14 @@ export function pruneTableRowSelection(
 	availableRowIds: readonly string[],
 	selectionMode: TableSelectionMode
 ): RowSelectionState {
-	if (selectionMode === "none") {
+	if (selectionMode === TABLE_SELECTION_MODE_NONE) {
 		return {};
 	}
 
 	const availableRowIdSet = new Set(availableRowIds);
 	const selectedRowIds = getSelectedRowIds(selection).filter((rowId) => availableRowIdSet.has(rowId));
 
-	if (selectionMode === "single") {
+	if (selectionMode === TABLE_SELECTION_MODE_SINGLE) {
 		const lastSelectedRowId = selectedRowIds.at(-1);
 
 		return lastSelectedRowId ? { [lastSelectedRowId]: true } : {};
@@ -61,11 +66,11 @@ export function pruneTableRowSelection(
  * - `multi` переключает строку как toggle.
  */
 export function toggleTableRowSelection(selection: RowSelectionState, rowId: string, selectionMode: TableSelectionMode): RowSelectionState {
-	if (selectionMode === "none") {
+	if (selectionMode === TABLE_SELECTION_MODE_NONE) {
 		return {};
 	}
 
-	if (selectionMode === "single") {
+	if (selectionMode === TABLE_SELECTION_MODE_SINGLE) {
 		const selectedRowIds = getSelectedRowIds(selection);
 		return selectedRowIds.length === 1 && selectedRowIds[0] === rowId ? selection : { [rowId]: true };
 	}

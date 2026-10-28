@@ -1,4 +1,5 @@
 import { addCalendarDays, createCalendarDate, getStartOfDay } from "./calendarDate";
+import { CALENDAR_LAST_SECOND, CALENDAR_DAYS_PER_WEEK, CALENDAR_LAST_HOUR, CALENDAR_LAST_MINUTE } from "./calendarDateConstants";
 
 const EDUCATION_DATE_KEY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const EDUCATION_TIME_KEY_RE = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
@@ -88,7 +89,11 @@ export function createEducationDateTime(dateKey: EducationDateKey, timeKey: stri
 	const hours = Number(match[1]);
 	const minutes = Number(match[2]);
 	const seconds = Number(match[3] ?? 0);
-	if (!isValidTimePart(hours, 23) || !isValidTimePart(minutes, 59) || !isValidTimePart(seconds, 59)) {
+	if (
+		!isValidTimePart(hours, CALENDAR_LAST_HOUR) ||
+		!isValidTimePart(minutes, CALENDAR_LAST_MINUTE) ||
+		!isValidTimePart(seconds, CALENDAR_LAST_SECOND)
+	) {
 		return null;
 	}
 
@@ -130,7 +135,7 @@ export function isEducationDateInCurrentYear(value: Date, now: Date = new Date()
  */
 export function getEducationWeekStartDate(value: Date): Date {
 	const date = getStartOfDay(value);
-	const dayOfWeek = (date.getDay() + 6) % 7;
+	const dayOfWeek = (date.getDay() + 6) % CALENDAR_DAYS_PER_WEEK;
 	const daysToMonday = dayOfWeek === 6 ? 1 : -dayOfWeek;
 
 	return addCalendarDays(date, daysToMonday);

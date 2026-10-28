@@ -1,4 +1,5 @@
 import { TABLE_DOCUMENT_MAX_CELLS, type TableDocument, type TableDocumentPosition, type TableDocumentRange } from "./tableDocument";
+import { TABLE_DOCUMENT_VERSION } from "./tableDocumentConstants";
 
 /** Проверяет пересечение двух включительных прямоугольников полной сетки. */
 export function tableDocumentRangesIntersect(a: TableDocumentRange, b: TableDocumentRange): boolean {
@@ -11,7 +12,7 @@ export function tableDocumentRangesIntersect(a: TableDocumentRange, b: TableDocu
 export function assertTableDocument<T>(document: TableDocument<T>): void {
 	const height = document.rows.length;
 	const width = document.columns.length;
-	if (document.version !== 1 || !height || !width || height * width > TABLE_DOCUMENT_MAX_CELLS)
+	if (document.version !== TABLE_DOCUMENT_VERSION || !height || !width || height * width > TABLE_DOCUMENT_MAX_CELLS)
 		throw new Error("Недопустимый размер таблицы.");
 	if (!Number.isInteger(document.headerRowCount) || document.headerRowCount < 0 || document.headerRowCount > height)
 		throw new Error("Некорректное число строк заголовка.");

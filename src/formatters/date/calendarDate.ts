@@ -1,3 +1,5 @@
+import { CALENDAR_LAST_SECOND, CALENDAR_LAST_HOUR, CALENDAR_LAST_MINUTE, CALENDAR_DAYS_PER_WEEK } from "./calendarDateConstants";
+
 /**
  * Создаёт календарную дату без timezone-семантики.
  *
@@ -19,7 +21,15 @@ export function getStartOfDay(date: Date): Date {
  * Нормализует дату к концу суток без timezone-сдвига.
  */
 export function getEndOfDay(date: Date): Date {
-	return createCalendarDate(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 0);
+	return createCalendarDate(
+		date.getFullYear(),
+		date.getMonth(),
+		date.getDate(),
+		CALENDAR_LAST_HOUR,
+		CALENDAR_LAST_MINUTE,
+		CALENDAR_LAST_SECOND,
+		0
+	);
 }
 
 /**
@@ -44,9 +54,11 @@ export function getStartOfYear(date: Date): Date {
  * в формате `Date.getDay()`: 0 — воскресенье, 1 — понедельник.
  */
 export function getStartOfWeek(date: Date, weekStartsOn = 1): Date {
-	const normalizedWeekStart = Number.isInteger(weekStartsOn) ? ((weekStartsOn % 7) + 7) % 7 : 1;
+	const normalizedWeekStart = Number.isInteger(weekStartsOn)
+		? ((weekStartsOn % CALENDAR_DAYS_PER_WEEK) + CALENDAR_DAYS_PER_WEEK) % CALENDAR_DAYS_PER_WEEK
+		: 1;
 	const start = getStartOfDay(date);
-	const offset = (start.getDay() - normalizedWeekStart + 7) % 7;
+	const offset = (start.getDay() - normalizedWeekStart + CALENDAR_DAYS_PER_WEEK) % CALENDAR_DAYS_PER_WEEK;
 
 	return addCalendarDays(start, -offset);
 }

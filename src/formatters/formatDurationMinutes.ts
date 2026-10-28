@@ -1,7 +1,8 @@
 import { formatNumberAsInteger } from "./number";
 
 const MINUTES_PER_HOUR = 60;
-const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR;
 
 /**
  * Форматирует целые неотрицательные минуты как длительность, а не календарную дату.
@@ -14,7 +15,7 @@ export function formatDurationMinutes(minutes: number): string {
 
 	const remainder = `${formatNumberAsInteger(minutes % MINUTES_PER_HOUR)} мин`;
 	if (minutes < MINUTES_PER_HOUR) return remainder;
-	const hours = `${formatNumberAsInteger(Math.floor(minutes / MINUTES_PER_HOUR) % 24)} ч`;
+	const hours = `${formatNumberAsInteger(Math.floor(minutes / MINUTES_PER_HOUR) % HOURS_PER_DAY)} ч`;
 	if (minutes < MINUTES_PER_DAY) return `${hours} ${remainder}`;
 	return `${formatNumberAsInteger(Math.floor(minutes / MINUTES_PER_DAY))} дн ${hours} ${remainder}`;
 }

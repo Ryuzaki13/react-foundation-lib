@@ -1,5 +1,11 @@
 import { isTableFormulaDependency } from "./isTableFormulaDependency";
 import { getTableFormulaById } from "./registry";
+import {
+	TABLE_FORMULA_DEPENDENCY_KIND_CONSTANT,
+	TABLE_FORMULA_NOT_FOUND,
+	TABLE_FORMULA_INVALID_RESULT,
+	TABLE_FORMULA_RUNTIME_ERROR
+} from "./tableFormulaConstants";
 import { type TableFormulaContext, type TableFormulaDependency, type TableFormulaRowData } from "./types";
 
 type TableFormulaContextInstrumentation = {
@@ -19,7 +25,7 @@ function snapshotDependencies(dependencies: readonly TableFormulaDependency[]): 
 		}
 
 		// Снимок не должен меняться при последующем редактировании исходной конфигурации.
-		return typeof dependency === "string" ? dependency : { kind: "constant", value: dependency.value };
+		return typeof dependency === "string" ? dependency : { kind: TABLE_FORMULA_DEPENDENCY_KIND_CONSTANT, value: dependency.value };
 	});
 }
 
@@ -69,7 +75,7 @@ export type TableFormulaExecutionResult =
 	  }
 	| {
 			ok: false;
-			reason: "formula_not_found" | "invalid_result" | "runtime_error";
+			reason: typeof TABLE_FORMULA_NOT_FOUND | typeof TABLE_FORMULA_INVALID_RESULT | typeof TABLE_FORMULA_RUNTIME_ERROR;
 	  };
 
 export type TableFormulaCompiledExecutor = (rowData: TableFormulaRowData) => TableFormulaExecutionResult;
@@ -81,7 +87,7 @@ type CompileTableFormulaResult =
 	  }
 	| {
 			ok: false;
-			reason: "formula_not_found";
+			reason: typeof TABLE_FORMULA_NOT_FOUND;
 	  };
 
 export function compileTableFormula(args: {
@@ -90,7 +96,7 @@ export function compileTableFormula(args: {
 }): CompileTableFormulaResult {
 	const formula = getTableFormulaById(args.formulaId);
 	if (!formula) {
-		return { ok: false, reason: "formula_not_found" };
+		return { ok: false, reason: TABLE_FORMULA_NOT_FOUND };
 	}
 
 	let keys: TableFormulaDependency[];
@@ -98,7 +104,7 @@ export function compileTableFormula(args: {
 		keys = snapshotDependencies(args.keys ?? []);
 	} catch {
 		// Ошибка новых входов проходит через прежний execution-result, без успешного расчёта с нулём.
-		return { ok: true, execute: () => ({ ok: false, reason: "runtime_error" }) };
+		return { ok: true, execute: () => ({ ok: false, reason: TABLE_FORMULA_RUNTIME_ERROR }) };
 	}
 	let rowDataRef: TableFormulaRowData = {};
 	const context: TableFormulaContext = {
@@ -129,12 +135,12 @@ export function compileTableFormula(args: {
 			try {
 				const value = formula.fn(context);
 				if (!Number.isFinite(value)) {
-					return { ok: false, reason: "invalid_result" };
+					return { ok: false, reason: TABLE_FORMULA_INVALID_RESULT };
 				}
 
 				return { ok: true, value };
 			} catch {
-				return { ok: false, reason: "runtime_error" };
+				return { ok: false, reason: TABLE_FORMULA_RUNTIME_ERROR };
 			}
 		}
 	};

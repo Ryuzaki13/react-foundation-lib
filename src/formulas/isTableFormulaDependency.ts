@@ -1,3 +1,4 @@
+import { TABLE_FORMULA_DEPENDENCY_KIND_CONSTANT } from "./tableFormulaConstants";
 import { type TableFormulaDependency } from "./types";
 
 /** Проверяет внешний аргумент без приведения пустых строк или нечисловых значений к нулю. */
@@ -6,6 +7,10 @@ export function isTableFormulaDependency(value: unknown): value is TableFormulaD
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
 
 	return (
-		"kind" in value && value.kind === "constant" && "value" in value && typeof value.value === "number" && Number.isFinite(value.value)
+		"kind" in value &&
+		value.kind === TABLE_FORMULA_DEPENDENCY_KIND_CONSTANT &&
+		"value" in value &&
+		typeof value.value === "number" &&
+		Number.isFinite(value.value)
 	);
 }

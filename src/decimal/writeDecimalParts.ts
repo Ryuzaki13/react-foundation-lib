@@ -1,3 +1,4 @@
+import { CANONICAL_DECIMAL_ZERO } from "./decimalConstants";
 import { resolveDecimalMaxLength } from "./resolveDecimalMaxLength";
 
 import type { DecimalOptions, DecimalParts } from "./types";
@@ -7,7 +8,7 @@ export function writeDecimalParts(parts: DecimalParts, options?: DecimalOptions)
 	const maxLength = resolveDecimalMaxLength(options);
 
 	if (parts.coefficient === 0n) {
-		return "0";
+		return CANONICAL_DECIMAL_ZERO;
 	}
 
 	const negative = parts.coefficient < 0n;

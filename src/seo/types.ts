@@ -1,4 +1,15 @@
-export type SeoContentType = "WebSite" | "WebPage" | "Article" | "NewsArticle";
+import {
+	type SEO_CONTENT_TYPE_WEBSITE,
+	type SEO_CONTENT_TYPE_WEB_PAGE,
+	type SEO_CONTENT_TYPE_ARTICLE,
+	type SEO_CONTENT_TYPE_NEWS_ARTICLE
+} from "./seoContentTypeConstants";
+
+export type SeoContentType =
+	| typeof SEO_CONTENT_TYPE_WEBSITE
+	| typeof SEO_CONTENT_TYPE_WEB_PAGE
+	| typeof SEO_CONTENT_TYPE_ARTICLE
+	| typeof SEO_CONTENT_TYPE_NEWS_ARTICLE;
 
 export type SeoImage = {
 	url: string;

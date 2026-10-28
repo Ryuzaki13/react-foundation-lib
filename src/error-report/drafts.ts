@@ -3,7 +3,14 @@ import { formatDateAsODataDatetime } from "../formatters";
 
 import { getErrorReportBreadcrumbs } from "./breadcrumbs";
 import { getErrorReportCaptureOptions } from "./captureOptions";
+import { ERROR_REPORT_VALUE_POLICY_VERBATIM } from "./capturePolicyConstants";
 import { getErrorReportClientEnvironment, getErrorReportEnvironment, isErrorReportingEnabled } from "./environment";
+import { ERROR_REPORT_UTC_MAX_LENGTH, ERROR_REPORT_SOURCE_MAX_LENGTH } from "./errorReportCaptureLimits";
+import {
+	ERROR_REPORT_SCOPE_DRAFT_FAILED_REASON,
+	ERROR_REPORT_SCOPE_CONTEXT,
+	ERROR_REPORT_STATUS_PENDING
+} from "./errorReportContractConstants";
 import {
 	canUseErrorReportBrowserStorage,
 	getErrorReportSessionId,
@@ -30,7 +37,7 @@ function nowUtc() {
 function getLocationSnapshot() {
 	if (typeof window === "undefined") return undefined;
 
-	const verbatim = getErrorReportCaptureOptions().valuePolicy === "verbatim";
+	const verbatim = getErrorReportCaptureOptions().valuePolicy === ERROR_REPORT_VALUE_POLICY_VERBATIM;
 	return {
 		pathname: window.location.pathname,
 		origin: window.location.origin,
@@ -51,7 +58,7 @@ function getViewportSnapshot() {
 
 function sanitizeFailedReason(value: string | undefined) {
 	if (!value) return undefined;
-	const sanitizedValue = sanitizeErrorReportValue(value, { scope: "draft-failed-reason", source: "delivery" });
+	const sanitizedValue = sanitizeErrorReportValue(value, { scope: ERROR_REPORT_SCOPE_DRAFT_FAILED_REASON, source: "delivery" });
 	return typeof sanitizedValue === "string" ? sanitizedValue : undefined;
 }
 
@@ -66,7 +73,12 @@ export function updateErrorReportDraft(reportId: string, patch: ErrorReportDraft
 	const next = {
 		...current,
 		...patch,
-		sentUtc: "sentUtc" in patch ? (patch.sentUtc ? sanitizeDiagnosticText(patch.sentUtc, 64) : undefined) : current.sentUtc,
+		sentUtc:
+			"sentUtc" in patch
+				? patch.sentUtc
+					? sanitizeDiagnosticText(patch.sentUtc, ERROR_REPORT_UTC_MAX_LENGTH)
+					: undefined
+				: current.sentUtc,
 		failedReason: "failedReason" in patch ? sanitizeFailedReason(patch.failedReason) : current.failedReason
 	};
 	const parsed = parseErrorReportDraft(next);
@@ -103,7 +115,7 @@ export function captureErrorReportDraft(args: {
 		sessionId,
 		createdUtc,
 		category: args.category,
-		source: sanitizeDiagnosticText(args.source, 256),
+		source: sanitizeDiagnosticText(args.source, ERROR_REPORT_SOURCE_MAX_LENGTH),
 		error: args.error,
 		environment: getErrorReportEnvironment(),
 		client: getErrorReportClientEnvironment(),
@@ -116,14 +128,14 @@ export function captureErrorReportDraft(args: {
 		// Между завершением diagnostics и capture мог сработать browser opt-out.
 		persistedQueries: canUseErrorReportBrowserStorage() ? args.persistedQueries : undefined,
 		breadcrumbs: getErrorReportBreadcrumbs(),
-		context: sanitizeDetail(args.context, { scope: "context", source: args.source })
+		context: sanitizeDetail(args.context, { scope: ERROR_REPORT_SCOPE_CONTEXT, source: args.source })
 	} satisfies ErrorReportPayload);
 	const draft: ErrorReportDraft = {
 		reportId,
 		sessionId,
 		createdUtc,
 		category: args.category,
-		status: "pending",
+		status: ERROR_REPORT_STATUS_PENDING,
 		payload
 	};
 	const parsed = parseErrorReportDraft(draft);

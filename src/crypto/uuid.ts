@@ -1,3 +1,13 @@
+import { HEXADECIMAL_RADIX } from "./hexadecimalConstants";
+
+// Позиции полей и фиксированные биты относятся к UUID v4, а не к случайным данным.
+const UUID_BYTE_LENGTH = 16;
+const UUID_BYTE_VALUE_COUNT = 256;
+const UUID_VERSION_FIELD_INDEX = 6;
+const UUID_VARIANT_FIELD_INDEX = 8;
+const UUID_V4_VERSION_BITS = 0x40;
+const UUID_RFC4122_VARIANT_BITS = 0x80;
+
 /**
  * UUID v4 (RFC 4122)
  */
@@ -6,17 +16,17 @@ export function uuidv4(): string {
 		return crypto.randomUUID();
 	}
 
-	const bytes = new Uint8Array(16);
+	const bytes = new Uint8Array(UUID_BYTE_LENGTH);
 	crypto.getRandomValues(bytes);
 
 	// Версия 4
-	bytes[6] = (bytes[6] & 0x0f) | 0x40;
+	bytes[UUID_VERSION_FIELD_INDEX] = (bytes[UUID_VERSION_FIELD_INDEX] & 0x0f) | UUID_V4_VERSION_BITS;
 	// Вариант RFC 4122
-	bytes[8] = (bytes[8] & 0x3f) | 0x80;
+	bytes[UUID_VARIANT_FIELD_INDEX] = (bytes[UUID_VARIANT_FIELD_INDEX] & 0x3f) | UUID_RFC4122_VARIANT_BITS;
 
-	const hex = new Array<string>(256);
-	for (let i = 0; i < 256; i++) {
-		hex[i] = (i + 0x100).toString(16).slice(1);
+	const hex = new Array<string>(UUID_BYTE_VALUE_COUNT);
+	for (let i = 0; i < UUID_BYTE_VALUE_COUNT; i++) {
+		hex[i] = (i + UUID_BYTE_VALUE_COUNT).toString(HEXADECIMAL_RADIX).slice(1);
 	}
 
 	return (

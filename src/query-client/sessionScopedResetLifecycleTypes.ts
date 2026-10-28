@@ -1,5 +1,7 @@
+import { type SESSION_QUERY_RESET_COMPLETED, type SESSION_QUERY_RESET_FAILED } from "./sessionScopedResetConstants";
+
 /** Результат retirement и самого reset; ошибки остаются в отклонённом Promise вызывающего кода. */
-export type SessionScopedQueryResetOutcome = Readonly<{ status: "completed" | "failed" }>;
+export type SessionScopedQueryResetOutcome = Readonly<{ status: typeof SESSION_QUERY_RESET_COMPLETED | typeof SESSION_QUERY_RESET_FAILED }>;
 
 /** Техническая граница внешних session-bound ресурсов, без знания auth или содержимого Query. */
 export type SessionScopedQueryResetLifecycle = Readonly<{

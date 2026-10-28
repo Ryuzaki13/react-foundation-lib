@@ -1,3 +1,4 @@
+import { CANONICAL_DECIMAL_ZERO } from "./decimalConstants";
 import { resolveDecimalMaxLength } from "./resolveDecimalMaxLength";
 
 import type { DecimalOptions } from "./types";
@@ -17,5 +18,5 @@ export function normalizeDecimal(value: string, options?: DecimalOptions): strin
 	const fractional = fraction.replace(/0+$/u, "");
 	const magnitude = fractional ? `${whole}.${fractional}` : whole;
 
-	return negative && magnitude !== "0" ? `-${magnitude}` : magnitude;
+	return negative && magnitude !== CANONICAL_DECIMAL_ZERO ? `-${magnitude}` : magnitude;
 }

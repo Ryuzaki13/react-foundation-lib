@@ -1,6 +1,16 @@
 import { uuidv4 } from "../crypto";
 import { isRecord } from "../validators";
 
+import {
+	QUERY_CACHE_ACTION_INVALIDATE,
+	QUERY_CACHE_EVENT_UPDATED,
+	QUERY_INVALIDATION_MESSAGE_TYPE,
+	QUERY_REFETCH_ACTIVE,
+	type QUERY_REFETCH_NONE,
+	type QUERY_REFETCH_INACTIVE,
+	type QUERY_REFETCH_ALL
+} from "./queryCacheEventConstants";
+
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 export type QueryInvalidationBroadcastOptions = {
@@ -9,7 +19,8 @@ export type QueryInvalidationBroadcastOptions = {
 	/** Ограничивает как исходящие, так и входящие Query keys. */
 	readonly matchesQuery: (queryKey: QueryKey) => boolean;
 	/** Определяет, какие queries получающей вкладки будут перезапрошены сразу. */
-	readonly refetchType?: "none" | "active" | "inactive" | "all";
+	readonly refetchType?:
+		typeof QUERY_REFETCH_NONE | typeof QUERY_REFETCH_ACTIVE | typeof QUERY_REFETCH_INACTIVE | typeof QUERY_REFETCH_ALL;
 };
 
 export type InstalledQueryInvalidationBroadcast = {
@@ -19,13 +30,18 @@ export type InstalledQueryInvalidationBroadcast = {
 };
 
 type QueryInvalidationWireMessage = {
-	readonly type: "query.invalidate";
+	readonly type: typeof QUERY_INVALIDATION_MESSAGE_TYPE;
 	readonly senderId: string;
 	readonly queryKey: QueryKey;
 };
 
 function isQueryInvalidationWireMessage(value: unknown): value is QueryInvalidationWireMessage {
-	return isRecord(value) && value.type === "query.invalidate" && typeof value.senderId === "string" && Array.isArray(value.queryKey);
+	return (
+		isRecord(value) &&
+		value.type === QUERY_INVALIDATION_MESSAGE_TYPE &&
+		typeof value.senderId === "string" &&
+		Array.isArray(value.queryKey)
+	);
 }
 
 /**
@@ -47,11 +63,12 @@ export function installQueryInvalidationBroadcast(
 
 	const broadcast = (queryKey: QueryKey) => {
 		if (closed || !options.matchesQuery(queryKey)) return;
-		channel.postMessage({ type: "query.invalidate", senderId, queryKey } satisfies QueryInvalidationWireMessage);
+		channel.postMessage({ type: QUERY_INVALIDATION_MESSAGE_TYPE, senderId, queryKey } satisfies QueryInvalidationWireMessage);
 	};
 
 	const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-		if (applyingRemoteInvalidation || event.type !== "updated" || event.action.type !== "invalidate") return;
+		if (applyingRemoteInvalidation || event.type !== QUERY_CACHE_EVENT_UPDATED || event.action.type !== QUERY_CACHE_ACTION_INVALIDATE)
+			return;
 		broadcast(event.query.queryKey);
 	});
 
@@ -69,7 +86,7 @@ export function installQueryInvalidationBroadcast(
 			void queryClient.invalidateQueries({
 				queryKey: message.queryKey,
 				exact: true,
-				refetchType: options.refetchType ?? "active"
+				refetchType: options.refetchType ?? QUERY_REFETCH_ACTIVE
 			});
 		} finally {
 			applyingRemoteInvalidation = false;

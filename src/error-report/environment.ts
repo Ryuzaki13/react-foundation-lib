@@ -1,3 +1,4 @@
+import { ERROR_REPORT_MODE_DEVELOPMENT, ERROR_REPORT_MODE_PRODUCTION } from "./errorReportContractConstants";
 type ErrorReportEnvironmentOptions = {
 	isDev?: boolean;
 };
@@ -13,7 +14,9 @@ export function isErrorReportingEnabled(options: ErrorReportEnvironmentOptions =
 }
 
 export function getErrorReportEnvironment() {
-	const mode: "development" | "production" = __DEV__ ? "development" : "production";
+	const mode: typeof ERROR_REPORT_MODE_DEVELOPMENT | typeof ERROR_REPORT_MODE_PRODUCTION = __DEV__
+		? ERROR_REPORT_MODE_DEVELOPMENT
+		: ERROR_REPORT_MODE_PRODUCTION;
 
 	return {
 		mode,

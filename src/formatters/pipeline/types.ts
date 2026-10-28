@@ -1,17 +1,43 @@
 import { type TableFormulaCompiledExecutor, type TableFormulaDependency, type TableFormulaRowData } from "../../formulas";
 import { type ColumnRole, type ScalarMetaType } from "../../metadata/metadataTypes";
 import { type State } from "../../types";
+import { type VALUE_STATE_EMPTY, type VALUE_STATE_NONE } from "../../types/valueStateConstants";
 import { type ThresholdDefinition } from "../valueState/types";
+import { type VALUE_STATE_RESOLVER_KIND_FIXED, type VALUE_STATE_RESOLVER_KIND_THRESHOLD } from "../valueState/valueStateResolverConstants";
+
+import {
+	type FORMATTERS_PIPELINE_VERSION,
+	type PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS,
+	type PIPELINE_FORMATTER_ROW_BASED_OVERRIDE,
+	type PIPELINE_FORMATTER_RESOLVE_VALUE_STATE,
+	type PIPELINE_FORMATTER_TYPED_VALUE_FORMAT,
+	type PIPELINE_ICON_POSITION_LEFT,
+	type PIPELINE_ICON_POSITION_RIGHT,
+	type PIPELINE_OVERRIDE_MODE_FIELD,
+	type PIPELINE_OVERRIDE_MODE_FORMULA,
+	type PIPELINE_STATE_SOURCE_VALUE,
+	type PIPELINE_NODE_SOURCE,
+	type PIPELINE_NODE_SINK,
+	type PIPELINE_ROW_KIND_PLAIN,
+	type PIPELINE_ROW_KIND_TREE,
+	type PIPELINE_ROW_KIND_GROUP,
+	type PIPELINE_ROW_KIND_TOTALS,
+	type PIPELINE_STATE_SOURCE_FORMULA
+} from "./formattersPipelineConstants";
 
 /**
  * Идентификаторы поддерживаемых форматтеров pipeline.
  */
-export type FormattersPipelineFormatterId = "normalizeLeadingZeros" | "rowBasedOverride" | "resolveValueState" | "typedValueFormat";
+export type FormattersPipelineFormatterId =
+	| typeof PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS
+	| typeof PIPELINE_FORMATTER_ROW_BASED_OVERRIDE
+	| typeof PIPELINE_FORMATTER_RESOLVE_VALUE_STATE
+	| typeof PIPELINE_FORMATTER_TYPED_VALUE_FORMAT;
 
 /**
  * Позиция иконки относительно текстового значения.
  */
-export type FormattersPipelineIconPosition = "left" | "right";
+export type FormattersPipelineIconPosition = typeof PIPELINE_ICON_POSITION_LEFT | typeof PIPELINE_ICON_POSITION_RIGHT;
 
 /**
  * Настройки отображения иконки для форматтера состояния.
@@ -26,7 +52,7 @@ export type FormattersPipelineValueStateIconSettings = {
  * Конфигурация резолвера фиксированных значений.
  */
 export type FormattersPipelineFixedValueStateConfig = {
-	kind: "fixed";
+	kind: typeof VALUE_STATE_RESOLVER_KIND_FIXED;
 	entries: Record<string, State>;
 	fallbackState?: State;
 };
@@ -35,7 +61,7 @@ export type FormattersPipelineFixedValueStateConfig = {
  * Конфигурация порогового резолвера.
  */
 export type FormattersPipelineThresholdValueStateConfig = {
-	kind: "threshold";
+	kind: typeof VALUE_STATE_RESOLVER_KIND_THRESHOLD;
 	thresholds: Array<number | ThresholdDefinition>;
 	states: State[];
 	invalidState?: State;
@@ -58,7 +84,7 @@ export type FormattersPipelineNormalizeLeadingZerosConfig = {
  * Настройки форматтера `rowBasedOverride` (подмена по полю строки).
  */
 export type FormattersPipelineRowBasedOverrideFieldConfig = {
-	mode: "field";
+	mode: typeof PIPELINE_OVERRIDE_MODE_FIELD;
 	fieldKey: string;
 	fallbackToRaw?: boolean;
 };
@@ -67,7 +93,7 @@ export type FormattersPipelineRowBasedOverrideFieldConfig = {
  * Настройки форматтера `rowBasedOverride` (подмена через формулу отдельного реестра).
  */
 export type FormattersPipelineRowBasedOverrideFormulaConfig = {
-	mode: "formula";
+	mode: typeof PIPELINE_OVERRIDE_MODE_FORMULA;
 	formulaId: string;
 	dependencyIds?: string[];
 	fallbackToRaw?: boolean;
@@ -84,7 +110,7 @@ export type FormattersPipelineRowBasedOverrideConfig =
  */
 export type FormattersPipelineNormalizeLeadingZerosNode = {
 	id: string;
-	type: "normalizeLeadingZeros";
+	type: typeof PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS;
 	position: {
 		x: number;
 		y: number;
@@ -97,7 +123,7 @@ export type FormattersPipelineNormalizeLeadingZerosNode = {
  */
 export type FormattersPipelineRowBasedOverrideNode = {
 	id: string;
-	type: "rowBasedOverride";
+	type: typeof PIPELINE_FORMATTER_ROW_BASED_OVERRIDE;
 	position: {
 		x: number;
 		y: number;
@@ -107,7 +133,7 @@ export type FormattersPipelineRowBasedOverrideNode = {
 
 /** Состояние определяется по текущему значению на входе шага. */
 export type FormattersPipelineValueStateValueSource = {
-	kind: "value";
+	kind: typeof PIPELINE_STATE_SOURCE_VALUE;
 };
 
 /**
@@ -117,7 +143,7 @@ export type FormattersPipelineValueStateValueSource = {
  * используется только для состояния и иконки, без подмены значения ячейки.
  */
 export type FormattersPipelineValueStateFormulaSource = {
-	kind: "formula";
+	kind: typeof PIPELINE_STATE_SOURCE_FORMULA;
 	formulaId: string;
 	dependencyIds: string[];
 };
@@ -137,7 +163,7 @@ export type FormattersPipelineResolveValueStateConfig = {
  */
 export type FormattersPipelineResolveValueStateNode = {
 	id: string;
-	type: "resolveValueState";
+	type: typeof PIPELINE_FORMATTER_RESOLVE_VALUE_STATE;
 	position: {
 		x: number;
 		y: number;
@@ -171,7 +197,7 @@ export type FormattersPipelineTypedValueFormatConfig = {
  */
 export type FormattersPipelineTypedValueFormatNode = {
 	id: string;
-	type: "typedValueFormat";
+	type: typeof PIPELINE_FORMATTER_TYPED_VALUE_FORMAT;
 	position: {
 		x: number;
 		y: number;
@@ -184,7 +210,7 @@ export type FormattersPipelineTypedValueFormatNode = {
  */
 export type FormattersPipelineSourceNode = {
 	id: string;
-	type: "source";
+	type: typeof PIPELINE_NODE_SOURCE;
 	position: {
 		x: number;
 		y: number;
@@ -196,7 +222,7 @@ export type FormattersPipelineSourceNode = {
  */
 export type FormattersPipelineSinkNode = {
 	id: string;
-	type: "sink";
+	type: typeof PIPELINE_NODE_SINK;
 	position: {
 		x: number;
 		y: number;
@@ -241,7 +267,7 @@ export type FormattersPipelineGraph = {
  */
 export type FormattersPipelineNormalizeLeadingZerosStep = {
 	id: string;
-	type: "normalizeLeadingZeros";
+	type: typeof PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS;
 	config?: FormattersPipelineNormalizeLeadingZerosConfig;
 };
 
@@ -250,7 +276,7 @@ export type FormattersPipelineNormalizeLeadingZerosStep = {
  */
 export type FormattersPipelineRowBasedOverrideStep = {
 	id: string;
-	type: "rowBasedOverride";
+	type: typeof PIPELINE_FORMATTER_ROW_BASED_OVERRIDE;
 	config: FormattersPipelineRowBasedOverrideConfig;
 };
 
@@ -259,7 +285,7 @@ export type FormattersPipelineRowBasedOverrideStep = {
  */
 export type FormattersPipelineResolveValueStateStep = {
 	id: string;
-	type: "resolveValueState";
+	type: typeof PIPELINE_FORMATTER_RESOLVE_VALUE_STATE;
 	config: FormattersPipelineResolveValueStateConfig;
 };
 
@@ -268,7 +294,7 @@ export type FormattersPipelineResolveValueStateStep = {
  */
 export type FormattersPipelineTypedValueFormatStep = {
 	id: string;
-	type: "typedValueFormat";
+	type: typeof PIPELINE_FORMATTER_TYPED_VALUE_FORMAT;
 	config?: FormattersPipelineTypedValueFormatConfig;
 };
 
@@ -297,7 +323,8 @@ export type FormattersPipelinePlan = {
  * `rowBasedOverride` работает для обычных, tree- и analytical group-строк,
  * но не применяется к totals-строкам.
  */
-export type FormattersPipelineRowKind = "plain" | "tree" | "group" | "totals";
+export type FormattersPipelineRowKind =
+	typeof PIPELINE_ROW_KIND_PLAIN | typeof PIPELINE_ROW_KIND_TREE | typeof PIPELINE_ROW_KIND_GROUP | typeof PIPELINE_ROW_KIND_TOTALS;
 
 /**
  * Конфигурация pipeline колонки.
@@ -307,7 +334,7 @@ export type FormattersPipelineRowKind = "plain" | "tree" | "group" | "totals";
  * - облегчённого линейного плана для runtime (`plan`).
  */
 export type FormattersPipelineConfig = {
-	version: 1;
+	version: typeof FORMATTERS_PIPELINE_VERSION;
 	graph?: FormattersPipelineGraph;
 	plan?: FormattersPipelinePlan;
 };
@@ -349,7 +376,7 @@ export type FormattersPipelineExecutionContext = {
 /**
  * Иконка, которая может быть показана рядом со значением.
  */
-export type FormattersPipelineValueIcon = Exclude<State, "" | "none">;
+export type FormattersPipelineValueIcon = Exclude<State, typeof VALUE_STATE_EMPTY | typeof VALUE_STATE_NONE>;
 
 /**
  * Результат исполнения pipeline.

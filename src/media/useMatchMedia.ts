@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from "react";
 
+import { BREAKPOINT_MOBILE, BREAKPOINT_TABLET, BREAKPOINT_LAPTOP } from "./breakpointConstants";
 import { BREAKPOINTS_EM, type Breakpoint, type MediaMatches } from "./breakpoints";
 import { getCurrentFontSize } from "./getCurrentFontSize";
+import { MEDIA_QUERY_CHANGE_EVENT } from "./mediaQueryConstants";
 
 /**
  * Публичный снимок состояния, который возвращает хук/store.
@@ -14,8 +16,8 @@ type MatchMediaSnapshot = {
 
 function subscribeMql(mql: MediaQueryList, cb: () => void) {
 	if ("addEventListener" in mql) {
-		mql.addEventListener("change", cb);
-		return () => mql.removeEventListener("change", cb);
+		mql.addEventListener(MEDIA_QUERY_CHANGE_EVENT, cb);
+		return () => mql.removeEventListener(MEDIA_QUERY_CHANGE_EVENT, cb);
 	}
 	// Safari legacy
 	// @ts-expect-error legacy api
@@ -47,7 +49,7 @@ const DEFAULT_MATCHES: MediaMatches = {
 
 const DEFAULT_SNAPSHOT: MatchMediaSnapshot = {
 	matches: DEFAULT_MATCHES,
-	activeBreakpoint: "laptop"
+	activeBreakpoint: BREAKPOINT_LAPTOP
 };
 
 /**
@@ -75,9 +77,9 @@ const listeners = new Set<() => void>();
  * Выбирает один активный брейкпоинт по приоритету: mobile -> tablet -> laptop.
  */
 function getActiveBreakpoint(matches: MediaMatches): Breakpoint {
-	if (matches.mobile) return "mobile";
-	if (matches.tablet) return "tablet";
-	return "laptop";
+	if (matches.mobile) return BREAKPOINT_MOBILE;
+	if (matches.tablet) return BREAKPOINT_TABLET;
+	return BREAKPOINT_LAPTOP;
 }
 
 /**

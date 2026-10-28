@@ -1,5 +1,6 @@
 import { getValueTransformerById } from "./registry";
 import { type ValueTransformerCompileResult, type ValueTransformerExecutionResult } from "./types";
+import { VALUE_TRANSFORMER_NOT_FOUND, VALUE_TRANSFORMER_RUNTIME_ERROR } from "./valueTransformerConstants";
 
 /**
  * Фиксирует доверенную функцию один раз для многократной обработки значений.
@@ -9,7 +10,7 @@ import { type ValueTransformerCompileResult, type ValueTransformerExecutionResul
  */
 export function compileValueTransformer(args: { transformerId: string | undefined }): ValueTransformerCompileResult {
 	const definition = getValueTransformerById(args.transformerId);
-	if (!definition) return { ok: false, reason: "transformer_not_found" };
+	if (!definition) return { ok: false, reason: VALUE_TRANSFORMER_NOT_FOUND };
 	const fn = definition.fn;
 
 	return {
@@ -18,7 +19,7 @@ export function compileValueTransformer(args: { transformerId: string | undefine
 			try {
 				return { ok: true, value: fn(value) };
 			} catch {
-				return { ok: false, reason: "runtime_error" };
+				return { ok: false, reason: VALUE_TRANSFORMER_RUNTIME_ERROR };
 			}
 		}
 	};

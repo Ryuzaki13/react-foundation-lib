@@ -1,7 +1,31 @@
-/**
- * Парсер метаданных OData V2
- */
+/** Парсер метаданных OData V2. */
 
+import { MIME_TYPE_XML } from "../file/mimeTypeConstants";
+import {
+	SCALAR_ROLE_DIMENSION,
+	SCALAR_ROLE_MEASURE,
+	SCALAR_TYPE_BINARY,
+	SCALAR_TYPE_BOOLEAN,
+	SCALAR_TYPE_BYTE,
+	SCALAR_TYPE_DATETIME,
+	SCALAR_TYPE_DATETIME_OFFSET,
+	SCALAR_TYPE_DECIMAL,
+	SCALAR_TYPE_DOUBLE,
+	SCALAR_TYPE_FLOAT,
+	SCALAR_TYPE_GUID,
+	SCALAR_TYPE_INT,
+	SCALAR_TYPE_LONG,
+	SCALAR_TYPE_STRING,
+	SCALAR_TYPE_TIME
+} from "../metadata/scalarTypeConstants";
+
+import {
+	ODATA_COLUMN_SEMANTIC_CODE,
+	ODATA_COLUMN_SEMANTIC_NONE,
+	ODATA_COLUMN_SEMANTIC_TEXT,
+	ODATA_RESULT_NAVIGATION_RESULTS,
+	ODATA_RESULT_NAVIGATION_SET
+} from "./odataMetadataConstants";
 import {
 	EntityColumnProperty,
 	EntityMetadata,
@@ -10,6 +34,22 @@ import {
 	ODataMetaType,
 	ServiceMetadata
 } from "./types";
+
+// Имя атрибута повторяется при чтении EntitySet и FunctionImport.
+const EDMX_ENTITY_SET_ATTRIBUTE = "EntitySet";
+
+// Имена атрибутов и wire-значения EDMX не зависят от места чтения XML.
+const EDMX_ATTRIBUTE_NAME = "Name";
+const EDMX_ATTRIBUTE_TYPE = "Type";
+const EDMX_ATTRIBUTE_MAX_LENGTH = "MaxLength";
+const EDMX_ATTRIBUTE_PRECISION = "Precision";
+const EDMX_ATTRIBUTE_SCALE = "Scale";
+const EDMX_ATTRIBUTE_SAP_LABEL = "sap:label";
+const EDMX_ATTRIBUTE_NULLABLE = "Nullable";
+const EDMX_BOOLEAN_FALSE = "false";
+const EDMX_COUNT_UPPER = "CNT";
+const EDMX_COUNT_LOWER = "cnt";
+const EDMX_UNKNOWN_PARAMETER = "(unknown)";
 
 const TEXT_SUFFIX_REGEXP = /^(.+)(_txt|_text|_t)$/i;
 export const FORCED_CODE_TEXT_IDS: ReadonlySet<string> = new Set(["ZDIV", "ZCFO1"]);
@@ -24,7 +64,7 @@ type AssociationSetMetadata = {
 };
 
 type ResultNavigationMetadata = {
-	name: "Set" | "Results";
+	name: typeof ODATA_RESULT_NAVIGATION_SET | typeof ODATA_RESULT_NAVIGATION_RESULTS;
 	targetEntitySet?: string;
 };
 
@@ -96,31 +136,31 @@ function normalizeColumns(columns: EntityColumnProperty[]): EntityColumnProperty
 	}
 
 	for (const column of columns) {
-		if (column.role === "measure") {
-			column.semanticType = "none";
+		if (column.role === SCALAR_ROLE_MEASURE) {
+			column.semanticType = ODATA_COLUMN_SEMANTIC_NONE;
 			column.linkedColumnId = undefined;
 			continue;
 		}
 
-		column.role = "dimension";
+		column.role = SCALAR_ROLE_DIMENSION;
 		column.sortable = true;
 		column.filterable = true;
-		column.semanticType = TEXT_SUFFIX_REGEXP.test(column.id) ? "text" : "code";
+		column.semanticType = TEXT_SUFFIX_REGEXP.test(column.id) ? ODATA_COLUMN_SEMANTIC_TEXT : ODATA_COLUMN_SEMANTIC_CODE;
 
 		const linkedColumnId = resolveColumnIdByCaseInsensitive(columnsByIdUpper, column.linkedColumnId);
 		column.linkedColumnId = linkedColumnId && linkedColumnId !== column.id ? linkedColumnId : undefined;
 	}
 
 	for (const column of columns) {
-		if (column.role !== "dimension" || column.semanticType !== "code") continue;
+		if (column.role !== SCALAR_ROLE_DIMENSION || column.semanticType !== ODATA_COLUMN_SEMANTIC_CODE) continue;
 
 		let textColumnId = column.linkedColumnId;
 		if (textColumnId) {
 			const linkedColumn = columnsById[textColumnId];
-			if (!linkedColumn || linkedColumn.role !== "dimension") {
+			if (!linkedColumn || linkedColumn.role !== SCALAR_ROLE_DIMENSION) {
 				textColumnId = undefined;
 			} else {
-				linkedColumn.semanticType = "text";
+				linkedColumn.semanticType = ODATA_COLUMN_SEMANTIC_TEXT;
 			}
 		}
 
@@ -137,30 +177,30 @@ function normalizeColumns(columns: EntityColumnProperty[]): EntityColumnProperty
 
 		if (textColumnId) {
 			const textColumn = columnsById[textColumnId];
-			if (textColumn && textColumn.role === "dimension") {
-				textColumn.semanticType = "text";
+			if (textColumn && textColumn.role === SCALAR_ROLE_DIMENSION) {
+				textColumn.semanticType = ODATA_COLUMN_SEMANTIC_TEXT;
 				textColumn.linkedColumnId = column.id;
 			}
 		}
 	}
 
 	for (const column of columns) {
-		if (column.role !== "dimension" || column.semanticType !== "text") continue;
+		if (column.role !== SCALAR_ROLE_DIMENSION || column.semanticType !== ODATA_COLUMN_SEMANTIC_TEXT) continue;
 
 		let codeColumnId = column.linkedColumnId;
 		if (codeColumnId) {
 			const linkedColumn = columnsById[codeColumnId];
-			if (!linkedColumn || linkedColumn.role !== "dimension") {
+			if (!linkedColumn || linkedColumn.role !== SCALAR_ROLE_DIMENSION) {
 				codeColumnId = undefined;
 			} else {
-				linkedColumn.semanticType = "code";
+				linkedColumn.semanticType = ODATA_COLUMN_SEMANTIC_CODE;
 			}
 		}
 
 		if (!codeColumnId) {
 			const match = column.id.match(TEXT_SUFFIX_REGEXP);
 			const bySuffixCodeId = resolveColumnIdByCaseInsensitive(columnsByIdUpper, match?.[1]);
-			if (bySuffixCodeId && columnsById[bySuffixCodeId]?.role === "dimension") {
+			if (bySuffixCodeId && columnsById[bySuffixCodeId]?.role === SCALAR_ROLE_DIMENSION) {
 				codeColumnId = bySuffixCodeId;
 			}
 		}
@@ -169,8 +209,8 @@ function normalizeColumns(columns: EntityColumnProperty[]): EntityColumnProperty
 
 		if (codeColumnId) {
 			const codeColumn = columnsById[codeColumnId];
-			if (codeColumn && codeColumn.role === "dimension") {
-				codeColumn.semanticType = "code";
+			if (codeColumn && codeColumn.role === SCALAR_ROLE_DIMENSION) {
+				codeColumn.semanticType = ODATA_COLUMN_SEMANTIC_CODE;
 				if (!codeColumn.linkedColumnId) {
 					codeColumn.linkedColumnId = column.id;
 				}
@@ -187,32 +227,32 @@ function normalizeColumns(columns: EntityColumnProperty[]): EntityColumnProperty
 function mapEdmToServiceType(edm: string): ODataMetaType {
 	switch (edm) {
 		case "Edm.String":
-			return "string";
+			return SCALAR_TYPE_STRING;
 		case "Edm.Guid":
-			return "guid";
+			return SCALAR_TYPE_GUID;
 		case "Edm.Boolean":
-			return "boolean";
+			return SCALAR_TYPE_BOOLEAN;
 		case "Edm.Int16":
 		case "Edm.Int32":
-			return "int";
+			return SCALAR_TYPE_INT;
 		case "Edm.Int64":
-			return "long";
+			return SCALAR_TYPE_LONG;
 		case "Edm.Single":
-			return "float";
+			return SCALAR_TYPE_FLOAT;
 		case "Edm.Decimal":
-			return "decimal";
+			return SCALAR_TYPE_DECIMAL;
 		case "Edm.Double":
-			return "double";
+			return SCALAR_TYPE_DOUBLE;
 		case "Edm.DateTime":
-			return "datetime";
+			return SCALAR_TYPE_DATETIME;
 		case "Edm.DateTimeOffset":
-			return "datetimeOffset";
+			return SCALAR_TYPE_DATETIME_OFFSET;
 		case "Edm.Time":
-			return "time";
+			return SCALAR_TYPE_TIME;
 		case "Edm.Binary":
-			return "binary";
+			return SCALAR_TYPE_BINARY;
 		case "Edm.Byte":
-			return "byte";
+			return SCALAR_TYPE_BYTE;
 		default:
 			throw new Error(`Неподдерживаемый тип данных ${edm}`);
 	}
@@ -222,23 +262,23 @@ function mapEdmToServiceType(edm: string): ODataMetaType {
  * Создает свойство параметра из XML-элемента.
  */
 function createParameterProperty(element: Element): EntityParameterProperty {
-	const name = element.getAttribute("Name")!;
-	const edmType = element.getAttribute("Type") || "";
+	const name = element.getAttribute(EDMX_ATTRIBUTE_NAME)!;
+	const edmType = element.getAttribute(EDMX_ATTRIBUTE_TYPE) || "";
 	const mapped = mapEdmToServiceType(edmType);
 
-	const maxLength = element.hasAttribute("MaxLength") ? Number(element.getAttribute("MaxLength")) : undefined;
-	const precision = element.hasAttribute("Precision") ? Number(element.getAttribute("Precision")) : undefined;
-	const scale = element.hasAttribute("Scale") ? Number(element.getAttribute("Scale")) : undefined;
-	const label = element.getAttribute("sap:label") || undefined;
+	const maxLength = element.hasAttribute(EDMX_ATTRIBUTE_MAX_LENGTH) ? Number(element.getAttribute(EDMX_ATTRIBUTE_MAX_LENGTH)) : undefined;
+	const precision = element.hasAttribute(EDMX_ATTRIBUTE_PRECISION) ? Number(element.getAttribute(EDMX_ATTRIBUTE_PRECISION)) : undefined;
+	const scale = element.hasAttribute(EDMX_ATTRIBUTE_SCALE) ? Number(element.getAttribute(EDMX_ATTRIBUTE_SCALE)) : undefined;
+	const label = element.getAttribute(EDMX_ATTRIBUTE_SAP_LABEL) || undefined;
 	const parameter = element.getAttribute("sap:parameter") || undefined;
-	const nullable = element.getAttribute("Nullable") !== "false" ? true : undefined;
+	const nullable = element.getAttribute(EDMX_ATTRIBUTE_NULLABLE) !== EDMX_BOOLEAN_FALSE ? true : undefined;
 
 	return {
 		id: name,
 		label: label ?? name,
 		type: mapped,
 		originalType: edmType,
-		...(mapped === "string" && maxLength === 1 ? { abapBooleanLike: true } : {}),
+		...(mapped === SCALAR_TYPE_STRING && maxLength === 1 ? { abapBooleanLike: true } : {}),
 		...(maxLength !== undefined && { maxLength }),
 		...(precision !== undefined && { precision }),
 		...(scale !== undefined && { scale }),
@@ -255,10 +295,10 @@ function createColumnProperty(element: Element): EntityColumnProperty {
 	const baseProps = createParameterProperty(element);
 
 	const linkedColumnId = element.getAttribute("sap:text") || undefined;
-	const sortable = element.getAttribute("sap:sortable") !== "false";
-	const filterable = element.getAttribute("sap:filterable") !== "false";
-	const role = element.getAttribute("sap:aggregation-role") === "measure" ? "measure" : "dimension";
-	const label = element.getAttribute("sap:label") || undefined;
+	const sortable = element.getAttribute("sap:sortable") !== EDMX_BOOLEAN_FALSE;
+	const filterable = element.getAttribute("sap:filterable") !== EDMX_BOOLEAN_FALSE;
+	const role = element.getAttribute("sap:aggregation-role") === SCALAR_ROLE_MEASURE ? SCALAR_ROLE_MEASURE : SCALAR_ROLE_DIMENSION;
+	const label = element.getAttribute(EDMX_ATTRIBUTE_SAP_LABEL) || undefined;
 
 	// Убираем свойства, специфичные только для параметров.
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -268,7 +308,7 @@ function createColumnProperty(element: Element): EntityColumnProperty {
 		...columnProps,
 		...(linkedColumnId !== undefined && { linkedColumnId }),
 		...(label !== undefined && { label }),
-		semanticType: "none",
+		semanticType: ODATA_COLUMN_SEMANTIC_NONE,
 		sortable,
 		filterable,
 		role
@@ -279,26 +319,26 @@ function createColumnProperty(element: Element): EntityColumnProperty {
  * Фильтрует свойства, исключая служебные.
  */
 function propertyFilter(element: Element): boolean {
-	const name = element.getAttribute("Name");
-	const typeName = element.getAttribute("Type") || "";
+	const name = element.getAttribute(EDMX_ATTRIBUTE_NAME);
+	const typeName = element.getAttribute(EDMX_ATTRIBUTE_TYPE) || "";
 
 	if (!name) return false;
 	if (!isScalarEdmPropertyType(typeName)) return false;
 
-	return !([/*"ID", "Id", "id",*/ "CNT", "cnt"].includes(name) || /_F$/i.test(name));
+	return !([/*"ID", "Id", "id",*/ EDMX_COUNT_UPPER, EDMX_COUNT_LOWER].includes(name) || /_F$/i.test(name));
 }
 
 /**
  * Фильтрует свойства для колонок, исключая служебные.
  */
 function columnPropertyFilter(element: Element): boolean {
-	const name = element.getAttribute("Name");
-	const typeName = element.getAttribute("Type") || "";
+	const name = element.getAttribute(EDMX_ATTRIBUTE_NAME);
+	const typeName = element.getAttribute(EDMX_ATTRIBUTE_TYPE) || "";
 
 	if (!name) return false;
 	if (!isScalarEdmPropertyType(typeName)) return false;
 
-	return !(["CNT", "cnt"].includes(name) || /_F$/i.test(name));
+	return !([EDMX_COUNT_UPPER, EDMX_COUNT_LOWER].includes(name) || /_F$/i.test(name));
 }
 
 function getProperties(element: Element): Element[] {
@@ -330,7 +370,7 @@ function getParametersPropertiesWithKey(entity: Element): EntityParameterPropert
 
 	return properties.map((property) => {
 		const param = createParameterProperty(property);
-		if (keys.find((key) => key.getAttribute("Name") === param.id)) {
+		if (keys.find((key) => key.getAttribute(EDMX_ATTRIBUTE_NAME) === param.id)) {
 			param.mandatory = true;
 		}
 		return param;
@@ -355,18 +395,18 @@ function extractQualifiedNameShortName(value?: string | null): string | undefine
 function createFunctionImportParameterProperty(element: Element): EntityParameterProperty {
 	const mode = element.getAttribute("Mode");
 	if (mode && mode !== "In") {
-		const name = element.getAttribute("Name") || "(unknown)";
+		const name = element.getAttribute(EDMX_ATTRIBUTE_NAME) || EDMX_UNKNOWN_PARAMETER;
 		throw new Error(`FunctionImport parameter '${name}' uses unsupported Mode='${mode}'`);
 	}
 
-	const typeName = element.getAttribute("Type") || "";
+	const typeName = element.getAttribute(EDMX_ATTRIBUTE_TYPE) || "";
 	if (!isScalarEdmPropertyType(typeName)) {
-		const name = element.getAttribute("Name") || "(unknown)";
+		const name = element.getAttribute(EDMX_ATTRIBUTE_NAME) || EDMX_UNKNOWN_PARAMETER;
 		throw new Error(`FunctionImport parameter '${name}' uses unsupported Type='${typeName}'`);
 	}
 
 	const parameter = createParameterProperty(element);
-	if (element.getAttribute("Nullable") === "false") {
+	if (element.getAttribute(EDMX_ATTRIBUTE_NULLABLE) === EDMX_BOOLEAN_FALSE) {
 		parameter.mandatory = true;
 	}
 
@@ -375,7 +415,7 @@ function createFunctionImportParameterProperty(element: Element): EntityParamete
 
 function buildEntityTypeByName(entityNodes: Element[]): Record<string, Element> {
 	return entityNodes.reduce<Record<string, Element>>((acc, entity) => {
-		const entityName = entity.getAttribute("Name");
+		const entityName = entity.getAttribute(EDMX_ATTRIBUTE_NAME);
 		if (entityName) {
 			acc[entityName] = entity;
 		}
@@ -387,7 +427,7 @@ function buildEntitySetToEntityTypeMap(xml: Document): Record<string, string> {
 	const entitySets = Array.from(xml.getElementsByTagName("EntitySet"));
 
 	return entitySets.reduce<Record<string, string>>((acc, entitySet) => {
-		const entitySetName = entitySet.getAttribute("Name");
+		const entitySetName = entitySet.getAttribute(EDMX_ATTRIBUTE_NAME);
 		const entityType = extractQualifiedNameShortName(entitySet.getAttribute("EntityType"));
 		if (!entitySetName || !entityType) return acc;
 
@@ -406,7 +446,7 @@ function buildAssociationSetByName(xml: Document): Record<string, AssociationSet
 		const ends = Array.from(associationSet.getElementsByTagName("End"))
 			.map((end) => {
 				const role = end.getAttribute("Role");
-				const entitySet = end.getAttribute("EntitySet");
+				const entitySet = end.getAttribute(EDMX_ENTITY_SET_ATTRIBUTE);
 				if (!role || !entitySet) return undefined;
 				return { role, entitySet };
 			})
@@ -429,8 +469,8 @@ function findResultNavigation(
 	associationSetByName: Record<string, AssociationSetMetadata>
 ): ResultNavigationMetadata | undefined {
 	for (const navigationProperty of getNavigationProperties(entityType)) {
-		const navigationName = navigationProperty.getAttribute("Name");
-		if (navigationName !== "Set" && navigationName !== "Results") {
+		const navigationName = navigationProperty.getAttribute(EDMX_ATTRIBUTE_NAME);
+		if (navigationName !== ODATA_RESULT_NAVIGATION_SET && navigationName !== ODATA_RESULT_NAVIGATION_RESULTS) {
 			continue;
 		}
 
@@ -507,7 +547,7 @@ function getActionForKeyIds(actionFor: string | undefined, entityTypeByName: Rec
 
 	return new Set(
 		getKeys(entityType)
-			.map((key) => key.getAttribute("Name"))
+			.map((key) => key.getAttribute(EDMX_ATTRIBUTE_NAME))
 			.filter((value): value is string => Boolean(value))
 	);
 }
@@ -517,8 +557,8 @@ function parseFunctionImport(
 	entitySetToEntityTypeMap: Record<string, string>,
 	entityTypeByName: Record<string, Element>
 ): FunctionImportMetadata {
-	const name = element.getAttribute("Name") || "";
-	const entitySet = element.getAttribute("EntitySet") || undefined;
+	const name = element.getAttribute(EDMX_ATTRIBUTE_NAME) || "";
+	const entitySet = element.getAttribute(EDMX_ENTITY_SET_ATTRIBUTE) || undefined;
 	const actionFor = element.getAttribute("sap:action-for") || undefined;
 	const actionForKeyIds = getActionForKeyIds(actionFor, entityTypeByName);
 	const parameters = Array.from(element.getElementsByTagName("Parameter")).map((parameterElement) => {
@@ -531,7 +571,7 @@ function parseFunctionImport(
 
 	return {
 		name,
-		title: element.getAttribute("sap:label") || "",
+		title: element.getAttribute(EDMX_ATTRIBUTE_SAP_LABEL) || "",
 		httpMethod: (element.getAttribute("m:HttpMethod") as FunctionImportMetadata["httpMethod"] | null) || undefined,
 		parameters: parameters.length ? parameters : undefined,
 		returnType: element.getAttribute("ReturnType") || "",
@@ -546,7 +586,7 @@ function parseFunctionImport(
  */
 export function parseServiceMetadata(xmlText: string): ServiceMetadata {
 	const parser = new DOMParser();
-	const xml = parser.parseFromString(xmlText, "application/xml");
+	const xml = parser.parseFromString(xmlText, MIME_TYPE_XML);
 	const entityNodes = Array.from(xml.getElementsByTagName("EntityType"));
 	const functionImportNodes = Array.from(xml.getElementsByTagName("FunctionImport"));
 	const entitySetToEntityTypeMap = buildEntitySetToEntityTypeMap(xml);
@@ -569,7 +609,7 @@ export function parseServiceMetadata(xmlText: string): ServiceMetadata {
 
 		const resultNavigation = findResultNavigation(entityType, associationSetByName);
 		const columnsEntityType = resolveColumnsEntityType(entityType, resultNavigation, entitySetToEntityTypeMap, entityTypeByName);
-		const title = entityType.getAttribute("sap:label") || columnsEntityType.getAttribute("sap:label") || "";
+		const title = entityType.getAttribute(EDMX_ATTRIBUTE_SAP_LABEL) || columnsEntityType.getAttribute(EDMX_ATTRIBUTE_SAP_LABEL) || "";
 		const columns = getColumnsProperties(columnsEntityType);
 		const parameters = resolveEntityParameters(entityType, entityTypeName, resultNavigation);
 

@@ -2,6 +2,9 @@ import { z } from "zod";
 
 import type { ODataMetaType } from "./types";
 
+/** Верхняя граница EDM.Byte сохраняет прежний unsigned byte contract. */
+const ODATA_BYTE_MAX = 255;
+
 export const odataTypeSchemas: Record<ODataMetaType, z.ZodTypeAny> = {
 	string: z.string(),
 	guid: z.uuid().or(z.string().regex(/^[0-9a-fA-F-]+$/, "Invalid GUID")),
@@ -15,7 +18,7 @@ export const odataTypeSchemas: Record<ODataMetaType, z.ZodTypeAny> = {
 	datetimeOffset: z.date(),
 	time: z.date(),
 	binary: z.string(),
-	byte: z.number().int().min(0).max(255)
+	byte: z.number().int().min(0).max(ODATA_BYTE_MAX)
 };
 
 // Type Guards на основе Zod

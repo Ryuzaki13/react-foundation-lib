@@ -1,3 +1,4 @@
+import { ANALYTICAL_TOTALS_SCOPE_FILTERED } from "./analyticalDefinitionConstants";
 import { createAnalyticalCalculationPlan } from "./calculations";
 import { type AnalyticalTableDefinition, type CompiledAnalyticalTableDefinition } from "./types";
 
@@ -14,6 +15,6 @@ export function compileAnalyticalTableDefinition<T>(definition: AnalyticalTableD
 		isAggregateRow: definition.isAggregateRow,
 		aggregate: definition.aggregate,
 		grandTotals: definition.grandTotals !== false,
-		grandTotalsScope: definition.grandTotalsScope ?? "filtered"
+		grandTotalsScope: definition.grandTotalsScope ?? ANALYTICAL_TOTALS_SCOPE_FILTERED
 	};
 }

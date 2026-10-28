@@ -1,7 +1,9 @@
 import { State } from "../../types";
+import { VALUE_STATE_NONE } from "../../types/valueStateConstants";
 
 import { ThresholdBoundary, ThresholdDefinition, ThresholdValueStateResolverConfig, ValueStateResolver } from "./types";
 import { findResolverByCanonicalKey, registerResolver } from "./valueStateRegistry";
+import { VALUE_STATE_RESOLVER_KIND_THRESHOLD, THRESHOLD_BOUNDARY_UPPER, THRESHOLD_BOUNDARY_LOWER } from "./valueStateResolverConstants";
 
 /**
  * Нормализованный порог (внутренний тип)
@@ -14,15 +16,15 @@ interface NormalizedThreshold {
 /** Нормализовать порог: число → объект с boundary по умолчанию */
 function normalizeThreshold(threshold: number | ThresholdDefinition): NormalizedThreshold {
 	if (typeof threshold === "number") {
-		return { value: threshold, boundary: "upper" };
+		return { value: threshold, boundary: THRESHOLD_BOUNDARY_UPPER };
 	}
-	return { value: threshold.value, boundary: threshold.boundary ?? "upper" };
+	return { value: threshold.value, boundary: threshold.boundary ?? THRESHOLD_BOUNDARY_UPPER };
 }
 
 /** Создать каноническую строку конфигурации (с префиксом типа для изоляции от других резолверов) */
 function createCanonicalKey(sortedThresholds: NormalizedThreshold[], states: State[], invalidState: State): string {
 	const thresholdsPart = sortedThresholds.map((t) => `${t.value}:${t.boundary}`).join(",");
-	return `threshold|${thresholdsPart}|${states.join(",")}|${invalidState}`;
+	return `${VALUE_STATE_RESOLVER_KIND_THRESHOLD}|${thresholdsPart}|${states.join(",")}|${invalidState}`;
 }
 
 /** Валидация конфигурации */
@@ -43,7 +45,7 @@ function validateConfig(thresholds: NormalizedThreshold[], states: State[]): voi
 /** Скомпилировать функцию-резолвер из нормализованных данных */
 function compileThresholdResolver(sortedThresholds: NormalizedThreshold[], configStates: State[], invalidState: State): ValueStateResolver {
 	const thresholdValues = sortedThresholds.map((t) => t.value);
-	const thresholdIsLower = sortedThresholds.map((t) => t.boundary === "lower");
+	const thresholdIsLower = sortedThresholds.map((t) => t.boundary === THRESHOLD_BOUNDARY_LOWER);
 	const states = [...configStates];
 
 	return (value: unknown): State => {
@@ -65,7 +67,7 @@ function compileThresholdResolver(sortedThresholds: NormalizedThreshold[], confi
 
 /** Нормализовать конфигурацию и вернуть подготовленные данные */
 function prepareConfig(config: ThresholdValueStateResolverConfig) {
-	const invalidState: State = config.invalidState ?? "none";
+	const invalidState: State = config.invalidState ?? VALUE_STATE_NONE;
 	const sortedThresholds = config.thresholds.map(normalizeThreshold).sort((a, b) => a.value - b.value);
 
 	validateConfig(sortedThresholds, config.states);

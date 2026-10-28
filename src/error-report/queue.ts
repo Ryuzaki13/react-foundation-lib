@@ -11,6 +11,16 @@ import {
 	type ErrorReportQueueTransitionResult
 } from "./queueContract";
 import { normalizeErrorReportQueueRecords } from "./queueRecord";
+import {
+	QUEUE_LEASE_OWNER_MAX_LENGTH,
+	QUEUE_TRANSITION_MISSING,
+	QUEUE_TRANSITION_LEASE_MISMATCH,
+	QUEUE_TRANSITION_UPDATED,
+	QUEUE_ENQUEUE_INVALID_PAYLOAD,
+	QUEUE_ENQUEUE_DUPLICATE,
+	QUEUE_ENQUEUE_CAPACITY_EXCEEDED,
+	QUEUE_ENQUEUE_ACCEPTED
+} from "./queueResultConstants";
 import { parseErrorReportPayload } from "./schema";
 import { type ErrorReportPayload } from "./types";
 
@@ -30,7 +40,7 @@ function toUtc(value: number) {
 
 function normalizeOwnerId(value: string) {
 	const ownerId = value.trim();
-	if (ownerId.length === 0 || ownerId.length > 128) {
+	if (ownerId.length === 0 || ownerId.length > QUEUE_LEASE_OWNER_MAX_LENGTH) {
 		throw new Error("Error report lease owner должен содержать от 1 до 128 символов");
 	}
 	return ownerId;
@@ -48,9 +58,9 @@ function resolveTransition(
 	ownerId: string
 ): { readonly index: number; readonly result: ErrorReportQueueTransitionResult } {
 	const index = records.findIndex((record) => record.reportId === reportId);
-	if (index < 0) return { index, result: "missing" };
-	if (records[index]?.lease?.ownerId !== ownerId) return { index, result: "lease-mismatch" };
-	return { index, result: "updated" };
+	if (index < 0) return { index, result: QUEUE_TRANSITION_MISSING };
+	if (records[index]?.lease?.ownerId !== ownerId) return { index, result: QUEUE_TRANSITION_LEASE_MISMATCH };
+	return { index, result: QUEUE_TRANSITION_UPDATED };
 }
 
 /**
@@ -82,14 +92,14 @@ export function createErrorReportQueue(options: CreateErrorReportQueueOptions = 
 	return {
 		enqueue: async (payload: ErrorReportPayload, now = new Date()) => {
 			const parsedPayload = parseErrorReportPayload(payload);
-			if (!parsedPayload) return { status: "invalid-payload" as const };
+			if (!parsedPayload) return { status: QUEUE_ENQUEUE_INVALID_PAYLOAD };
 
 			const nowMs = now.getTime();
-			if (!Number.isFinite(nowMs)) return { status: "invalid-payload" as const };
+			if (!Number.isFinite(nowMs)) return { status: QUEUE_ENQUEUE_INVALID_PAYLOAD };
 
 			return update<ErrorReportQueueEnqueueResult>(nowMs, (records) => {
 				if (records.some((record) => record.reportId === parsedPayload.reportId)) {
-					return { records, result: { status: "duplicate" as const } };
+					return { records, result: { status: QUEUE_ENQUEUE_DUPLICATE } };
 				}
 
 				let evictedReportId: string | undefined;
@@ -100,7 +110,7 @@ export function createErrorReportQueue(options: CreateErrorReportQueueOptions = 
 						.sort((left, right) => Date.parse(left.record.enqueuedUtc) - Date.parse(right.record.enqueuedUtc))[0]?.index;
 
 					if (evictedIndex === undefined) {
-						return { records, result: { status: "capacity-exceeded" as const } };
+						return { records, result: { status: QUEUE_ENQUEUE_CAPACITY_EXCEEDED } };
 					}
 
 					evictedReportId = records[evictedIndex]?.reportId;
@@ -120,7 +130,7 @@ export function createErrorReportQueue(options: CreateErrorReportQueueOptions = 
 
 				return {
 					records,
-					result: evictedReportId ? { status: "enqueued" as const, evictedReportId } : { status: "enqueued" as const }
+					result: evictedReportId ? { status: QUEUE_ENQUEUE_ACCEPTED, evictedReportId } : { status: QUEUE_ENQUEUE_ACCEPTED }
 				};
 			});
 		},
@@ -156,9 +166,9 @@ export function createErrorReportQueue(options: CreateErrorReportQueueOptions = 
 			const ownerId = normalizeOwnerId(inputOwnerId);
 			return update(Date.now(), (records) => {
 				const transition = resolveTransition(records, reportId, ownerId);
-				if (transition.result !== "updated") return { records, result: transition.result };
+				if (transition.result !== QUEUE_TRANSITION_UPDATED) return { records, result: transition.result };
 				records.splice(transition.index, 1);
-				return { records, result: "updated" as const };
+				return { records, result: QUEUE_TRANSITION_UPDATED };
 			});
 		},
 		reschedule: async (reportId, inputOwnerId, retry) => {
@@ -171,25 +181,25 @@ export function createErrorReportQueue(options: CreateErrorReportQueueOptions = 
 
 			return update(failureUtcMs, (records) => {
 				const transition = resolveTransition(records, reportId, ownerId);
-				if (transition.result !== "updated") return { records, result: transition.result };
+				if (transition.result !== QUEUE_TRANSITION_UPDATED) return { records, result: transition.result };
 				const record = records[transition.index];
-				if (!record) return { records, result: "missing" as const };
+				if (!record) return { records, result: QUEUE_TRANSITION_MISSING };
 				records[transition.index] = {
 					...record,
 					nextAttemptUtc: retry.nextAttemptUtc,
 					lease: undefined,
 					lastFailure: retry.failure
 				};
-				return { records, result: "updated" as const };
+				return { records, result: QUEUE_TRANSITION_UPDATED };
 			});
 		},
 		discard: async (reportId, inputOwnerId) => {
 			const ownerId = normalizeOwnerId(inputOwnerId);
 			return update(Date.now(), (records) => {
 				const transition = resolveTransition(records, reportId, ownerId);
-				if (transition.result !== "updated") return { records, result: transition.result };
+				if (transition.result !== QUEUE_TRANSITION_UPDATED) return { records, result: transition.result };
 				records.splice(transition.index, 1);
-				return { records, result: "updated" as const };
+				return { records, result: QUEUE_TRANSITION_UPDATED };
 			});
 		},
 		getRecords: async (now = new Date()) => {

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { RowSelectionState } from "@tanstack/react-table";
+import { type RowSelectionState } from "@tanstack/react-table";
 
 import { pruneTableRowSelection, toggleTableRowSelection } from "./selection";
-import { TableSelectionMode } from "./types";
+import { TABLE_SELECTION_MODE_NONE } from "./tableSelectionConstants";
+import { type TableSelectionMode } from "./types";
 
 interface UseTableRowSelectionParams<TData extends object> {
 	availableRowIds: readonly string[];
@@ -137,7 +138,7 @@ export function useTableRowSelection<TData extends object>({
 	 */
 	const activateRowSelection = useCallback(
 		(rowId: string, canSelect: boolean) => {
-			if (selectionMode === "none" || !canSelect) {
+			if (selectionMode === TABLE_SELECTION_MODE_NONE || !canSelect) {
 				return;
 			}
 

@@ -1,6 +1,21 @@
-export type ReadMode = "data-url" | "array-buffer";
+import {
+	type READ_FILE_ERROR_FILE_TOO_LARGE,
+	type READ_FILE_ERROR_MIME_NOT_ALLOWED,
+	type READ_FILE_ERROR_NO_FILE,
+	type READ_FILE_ERROR_READ_ABORTED,
+	type READ_FILE_ERROR_READ_FAILED,
+	type READ_FILE_MODE_ARRAY_BUFFER,
+	type READ_FILE_MODE_DATA_URL
+} from "./readFileConstants";
 
-export type ReadFileErrorCode = "NO_FILE" | "MIME_NOT_ALLOWED" | "FILE_TOO_LARGE" | "READ_ABORTED" | "READ_FAILED";
+export type ReadMode = typeof READ_FILE_MODE_DATA_URL | typeof READ_FILE_MODE_ARRAY_BUFFER;
+
+export type ReadFileErrorCode =
+	| typeof READ_FILE_ERROR_NO_FILE
+	| typeof READ_FILE_ERROR_MIME_NOT_ALLOWED
+	| typeof READ_FILE_ERROR_FILE_TOO_LARGE
+	| typeof READ_FILE_ERROR_READ_ABORTED
+	| typeof READ_FILE_ERROR_READ_FAILED;
 
 export class ReadFileError extends Error {
 	public readonly code: ReadFileErrorCode;
@@ -32,24 +47,24 @@ export type ReadFileOptionsBase = {
 };
 
 export type ReadFileAsDataUrlOptions = ReadFileOptionsBase & {
-	mode?: "data-url";
+	mode?: typeof READ_FILE_MODE_DATA_URL;
 };
 
 export type ReadFileAsArrayBufferOptions = ReadFileOptionsBase & {
-	mode: "array-buffer";
+	mode: typeof READ_FILE_MODE_ARRAY_BUFFER;
 };
 
 export type ReadFileOptions = ReadFileAsDataUrlOptions | ReadFileAsArrayBufferOptions;
 
 export type ReadFileAsDataUrlResult = {
-	mode: "data-url";
+	mode: typeof READ_FILE_MODE_DATA_URL;
 	meta: FileMeta;
 	dataUrl: string;
 	file: File;
 };
 
 export type ReadFileAsArrayBufferResult = {
-	mode: "array-buffer";
+	mode: typeof READ_FILE_MODE_ARRAY_BUFFER;
 	meta: FileMeta;
 	buffer: ArrayBuffer;
 	file: File;

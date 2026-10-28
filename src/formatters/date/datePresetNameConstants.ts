@@ -1,0 +1,26 @@
+/** Имена встроенных пресетов разделяют внутренние обращения и сохраняемый публичный объект имён. */
+export const DATE_PRESET_NAME_DATE = "date";
+export const DATE_PRESET_NAME_DATE_SHORT = "date-short";
+export const DATE_PRESET_NAME_DATE_MEDIUM = "date-medium";
+export const DATE_PRESET_NAME_DATE_LONG = "date-long";
+export const DATE_PRESET_NAME_MONTH_SHORT = "month-short";
+export const DATE_PRESET_NAME_MONTH_MEDIUM = "month-medium";
+export const DATE_PRESET_NAME_MONTH_LONG = "month-long";
+export const DATE_PRESET_NAME_MONTH_YEAR_MEDIUM = "month-year-medium";
+export const DATE_PRESET_NAME_MONTH_YEAR_LONG = "month-year-long";
+export const DATE_PRESET_NAME_DATETIME = "datetime";
+export const DATE_PRESET_NAME_DATETIME_SECONDS = "datetime-seconds";
+export const DATE_PRESET_NAME_DATETIME_SHORT = "datetime-short";
+export const DATE_PRESET_NAME_DATETIME_MEDIUM = "datetime-medium";
+export const DATE_PRESET_NAME_DATETIME_LONG = "datetime-long";
+export const DATE_PRESET_NAME_TIME = "time";
+export const DATE_PRESET_NAME_TIME_SECONDS = "time-seconds";
+export const DATE_PRESET_NAME_TIME_SHORT = "time-short";
+export const DATE_PRESET_NAME_TIME_MEDIUM = "time-medium";
+export const DATE_PRESET_NAME_TIME_LONG = "time-long";
+export const DATE_PRESET_NAME_ODATA_DATE = "odata-date";
+export const DATE_PRESET_NAME_ODATA_DATETIME = "odata-datetime";
+export const DATE_PRESET_NAME_ABAP_DATETIME = "abap-datetime";
+export const DATE_PRESET_NAME_ABAP_DATE = "abap-date";
+export const DATE_PRESET_NAME_ABAP_MONTH = "abap-month";
+export const DATE_PRESET_NAME_ABAP_YEAR = "abap-year";

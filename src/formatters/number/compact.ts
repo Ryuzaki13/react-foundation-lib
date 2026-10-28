@@ -1,3 +1,10 @@
+import {
+	COMPACT_ROUNDING_MODE_TRUNC,
+	COMPACT_ROUNDING_MODE_ROUND,
+	COMPACT_ROUNDING_MODE_FLOOR,
+	COMPACT_ROUNDING_MODE_CEIL
+} from "./numberFormatConstants";
+
 import type { NumberFormatCompactOptions, NumberFormatCompactRoundingMode, NumberFormatCompactUnit, NumberFormatPreset } from "./types";
 
 type PlainNumberFormatter = (value: number, preset: NumberFormatPreset) => string;
@@ -16,26 +23,24 @@ const DEFAULT_COMPACT_NUMBER_UNITS: readonly NumberFormatCompactUnit[] = [
 	{ value: 1_000, suffix: "тыс" }
 ];
 
-const DEFAULT_COMPACT_NUMBER_OPTIONS = {
-	minCompactValue: 1_000,
-	roundingMode: "trunc",
-	suffixSeparator: " "
-} satisfies Required<Pick<NumberFormatCompactOptions, "minCompactValue" | "roundingMode" | "suffixSeparator">>;
+const DEFAULT_COMPACT_MIN_VALUE = 1_000;
+const COMPACT_UNIT_PROMOTION_THRESHOLD = 1_000;
+const COMPACT_AUTO_DECIMAL_THRESHOLD = 10;
 
 const DEFAULT_COMPACT_DECIMAL_SEPARATOR = ",";
 
 function applyCompactRounding(value: number, mode: NumberFormatCompactRoundingMode): number {
 	switch (mode) {
-		case "round":
+		case COMPACT_ROUNDING_MODE_ROUND:
 			return Math.round(value);
 
-		case "floor":
+		case COMPACT_ROUNDING_MODE_FLOOR:
 			return Math.floor(value);
 
-		case "ceil":
+		case COMPACT_ROUNDING_MODE_CEIL:
 			return Math.ceil(value);
 
-		case "trunc":
+		case COMPACT_ROUNDING_MODE_TRUNC:
 			return Math.trunc(value);
 	}
 }
@@ -48,7 +53,7 @@ function roundCompactValue(value: number, decimals: number, mode: NumberFormatCo
 }
 
 function getAutoCompactDecimals(normalizedValue: number): number {
-	if (normalizedValue >= 10) return 0;
+	if (normalizedValue >= COMPACT_AUTO_DECIMAL_THRESHOLD) return 0;
 
 	return 1;
 }
@@ -96,7 +101,7 @@ function formatCompactValueByUnit(
 	const roundedValue = roundCompactValue(normalizedValue, maxDecimals, options.roundingMode);
 
 	// Защита от результата вида "1000 тыс": переходим на следующую единицу.
-	if (roundedValue >= 1000 && unitIndex > 0) {
+	if (roundedValue >= COMPACT_UNIT_PROMOTION_THRESHOLD && unitIndex > 0) {
 		return formatCompactValueByUnit(absValue, unitIndex - 1, options, preset, formatPlainNumber);
 	}
 
@@ -113,9 +118,9 @@ export function formatCompactNumberValue(args: {
 	formatPlainNumber: PlainNumberFormatter;
 }): string {
 	const {
-		minCompactValue = DEFAULT_COMPACT_NUMBER_OPTIONS.minCompactValue,
-		roundingMode = DEFAULT_COMPACT_NUMBER_OPTIONS.roundingMode,
-		suffixSeparator = DEFAULT_COMPACT_NUMBER_OPTIONS.suffixSeparator,
+		minCompactValue = DEFAULT_COMPACT_MIN_VALUE,
+		roundingMode = COMPACT_ROUNDING_MODE_TRUNC,
+		suffixSeparator = " ",
 		maxDecimals,
 		units = DEFAULT_COMPACT_NUMBER_UNITS
 	} = args.options;

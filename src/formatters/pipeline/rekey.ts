@@ -1,6 +1,15 @@
 import { uuidv4 } from "../../crypto";
 
 import { cloneResolveValueStateConfig } from "./clone";
+import {
+	PIPELINE_NODE_SOURCE,
+	PIPELINE_NODE_SINK,
+	PIPELINE_FORMATTER_TYPED_VALUE_FORMAT,
+	PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS,
+	PIPELINE_FORMATTER_ROW_BASED_OVERRIDE,
+	PIPELINE_OVERRIDE_MODE_FORMULA,
+	PIPELINE_FORMATTER_RESOLVE_VALUE_STATE
+} from "./formattersPipelineConstants";
 import { validateFormattersPipelineGraph } from "./validate";
 
 import type {
@@ -14,43 +23,43 @@ import type {
 type IdFactory = () => string;
 
 function isSystemNode(node: FormattersPipelineNode): boolean {
-	return node.type === "source" || node.type === "sink";
+	return node.type === PIPELINE_NODE_SOURCE || node.type === PIPELINE_NODE_SINK;
 }
 
 function cloneNodeWithId(node: FormattersPipelineNode, id: string): FormattersPipelineNode {
 	switch (node.type) {
-		case "source":
-		case "sink":
+		case PIPELINE_NODE_SOURCE:
+		case PIPELINE_NODE_SINK:
 			return {
 				...node,
 				id,
 				position: { ...node.position }
 			};
-		case "typedValueFormat":
+		case PIPELINE_FORMATTER_TYPED_VALUE_FORMAT:
 			return {
 				...node,
 				id,
 				position: { ...node.position },
 				config: node.config ? { ...node.config } : undefined
 			};
-		case "normalizeLeadingZeros":
+		case PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS:
 			return {
 				...node,
 				id,
 				position: { ...node.position },
 				config: node.config ? { ...node.config } : undefined
 			};
-		case "rowBasedOverride":
+		case PIPELINE_FORMATTER_ROW_BASED_OVERRIDE:
 			return {
 				...node,
 				id,
 				position: { ...node.position },
 				config:
-					node.config.mode === "formula"
+					node.config.mode === PIPELINE_OVERRIDE_MODE_FORMULA
 						? { ...node.config, dependencyIds: node.config.dependencyIds ? [...node.config.dependencyIds] : undefined }
 						: { ...node.config }
 			};
-		case "resolveValueState":
+		case PIPELINE_FORMATTER_RESOLVE_VALUE_STATE:
 			return {
 				...node,
 				id,
@@ -84,28 +93,28 @@ function rekeyPlan(plan: FormattersPipelinePlan, idFactory: IdFactory): Formatte
 	return {
 		steps: plan.steps.map((step) => {
 			switch (step.type) {
-				case "typedValueFormat":
+				case PIPELINE_FORMATTER_TYPED_VALUE_FORMAT:
 					return {
 						...step,
 						id: idFactory(),
 						config: step.config ? { ...step.config } : undefined
 					};
-				case "normalizeLeadingZeros":
+				case PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS:
 					return {
 						...step,
 						id: idFactory(),
 						config: step.config ? { ...step.config } : undefined
 					};
-				case "rowBasedOverride":
+				case PIPELINE_FORMATTER_ROW_BASED_OVERRIDE:
 					return {
 						...step,
 						id: idFactory(),
 						config:
-							step.config.mode === "formula"
+							step.config.mode === PIPELINE_OVERRIDE_MODE_FORMULA
 								? { ...step.config, dependencyIds: step.config.dependencyIds ? [...step.config.dependencyIds] : undefined }
 								: { ...step.config }
 					};
-				case "resolveValueState":
+				case PIPELINE_FORMATTER_RESOLVE_VALUE_STATE:
 					return {
 						...step,
 						id: idFactory(),

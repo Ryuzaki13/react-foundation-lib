@@ -33,7 +33,7 @@ export function calculateAnalyticalTotals<T>(args: {
 	definition: CompiledAnalyticalTableDefinition<T>;
 	nodes: readonly AnalyticalHierarchyNode<T>[];
 	aggregateRowIds: ReadonlySet<string>;
-	scope: "group" | "grand";
+	scope: AnalyticalAggregateContext<T>["scope"];
 	groupingPath?: AnalyticalValues;
 }): AnalyticalValues {
 	const { definition, nodes, aggregateRowIds, scope, groupingPath = {} } = args;

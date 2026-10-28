@@ -1,11 +1,14 @@
 import { uuidv4 } from "../crypto/uuid";
 import { isRecord } from "../validators/isRecord";
 
+import { BROWSER_NOTIFICATION_UNSUPPORTED } from "./browserNotificationConstants";
 import {
 	type BrowserNotificationPermission,
 	type BrowserNotificationPresenter,
 	type BrowserNotificationPresenterOptions
 } from "./browserNotificationTypes";
+
+const NOTIFICATION_PERMISSION_GRANTED = "granted";
 
 /**
  * Без I/O до команды. Предпочитает действующий SW для мобильных браузеров,
@@ -17,7 +20,7 @@ export function createBrowserNotificationPresenter({ onOpen, onError }: BrowserN
 	const permission = (): BrowserNotificationPermission =>
 		typeof window !== "undefined" && window.isSecureContext && typeof Notification !== "undefined"
 			? Notification.permission
-			: "unsupported";
+			: BROWSER_NOTIFICATION_UNSUPPORTED;
 	return {
 		permission,
 		async requestPermission() {
@@ -31,7 +34,7 @@ export function createBrowserNotificationPresenter({ onOpen, onError }: BrowserN
 			}
 		},
 		show(request) {
-			if (disposed || permission() !== "granted") return () => undefined;
+			if (disposed || permission() !== NOTIFICATION_PERMISSION_GRANTED) return () => undefined;
 			const url = new URL(request.url, window.location.href);
 			if (url.origin !== window.location.origin) throw new Error("URL уведомления должен принадлежать текущему origin.");
 			let released = false;
@@ -46,7 +49,7 @@ export function createBrowserNotificationPresenter({ onOpen, onError }: BrowserN
 			releases.add(release);
 			const deliver = async () => {
 				const registration = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
-				if (released || disposed || permission() !== "granted") return;
+				if (released || disposed || permission() !== NOTIFICATION_PERMISSION_GRANTED) return;
 				const options: NotificationOptions = {
 					body: request.body,
 					tag: request.tag,

@@ -1,5 +1,8 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
+// Имя default одинаково обозначает fallback-компонент в ключе кэша и диагностике.
+const DEFAULT_LAZY_COMPONENT_NAME = "default";
+
 type LazyComponentModule<TProps extends object> = Record<string, ComponentType<TProps>>;
 type LazyComponentImport<TProps extends object> = () => Promise<LazyComponentModule<TProps> | null>;
 
@@ -27,7 +30,7 @@ export const createLazyComponent = <TProps extends object>(
 	componentName: string,
 	cacheKey?: string
 ): LazyExoticComponent<ComponentType<TProps>> => {
-	const lazyCacheKey = cacheKey ? `${cacheKey}:${componentName ?? "default"}` : undefined;
+	const lazyCacheKey = cacheKey ? `${cacheKey}:${componentName ?? DEFAULT_LAZY_COMPONENT_NAME}` : undefined;
 	if (lazyCacheKey && lazyComponentCacheByKey.has(lazyCacheKey)) {
 		return lazyComponentCacheByKey.get(lazyCacheKey)! as LazyExoticComponent<ComponentType<TProps>>;
 	}
@@ -42,14 +45,14 @@ export const createLazyComponent = <TProps extends object>(
 		const lazyComponent = lazy(() =>
 			importPath().then((module) => {
 				if (!module) {
-					throw new Error(`Component not found or invalid in module: ${componentName ?? "default"}`);
+					throw new Error(`Component not found or invalid in module: ${componentName ?? DEFAULT_LAZY_COMPONENT_NAME}`);
 				}
 
 				const component =
 					componentName && module[componentName] ? module[componentName] : (module.default ?? Object.values(module)[0]);
 
 				if (!component || typeof component !== "function") {
-					throw new Error(`Could not lazy-load component "${componentName ?? "default"}"`);
+					throw new Error(`Could not lazy-load component "${componentName ?? DEFAULT_LAZY_COMPONENT_NAME}"`);
 				}
 
 				return { default: component };

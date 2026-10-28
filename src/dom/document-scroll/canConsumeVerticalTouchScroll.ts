@@ -1,3 +1,5 @@
+const SCROLL_EDGE_TOLERANCE_PX = 1;
+
 /** Проверяет обычную вложенную scroll-цепочку; корневой документ не является разрешённым host. */
 export function canConsumeVerticalTouchScroll(documentTarget: Document, path: readonly EventTarget[], deltaY: number): boolean {
 	const view = documentTarget.defaultView;
@@ -14,7 +16,7 @@ export function canConsumeVerticalTouchScroll(documentTarget: Document, path: re
 		const top = Math.max(0, Math.min(maximum, entry.scrollTop));
 		// scrollTop дробный, а scrollHeight/clientHeight округлены: 1 CSS px
 		// допуска перекрывает ложный остаток на физически достигнутом краю.
-		if (deltaY > 0 ? maximum - top > 1 : top > 1) return true;
+		if (deltaY > 0 ? maximum - top > SCROLL_EDGE_TOLERANCE_PX : top > SCROLL_EDGE_TOLERANCE_PX) return true;
 		// На краю contain/none движение не должно переходить к следующему ancestor.
 		if (/^(contain|none)$/.test(style.overscrollBehaviorY)) return false;
 	}

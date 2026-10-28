@@ -1,11 +1,29 @@
 import { truncateText } from "../formatters";
 
 import { getErrorReportCaptureOptions } from "./captureOptions";
+import { ERROR_REPORT_VALUE_POLICY_VERBATIM } from "./capturePolicyConstants";
+import {
+	ERROR_REPORT_UTC_MAX_LENGTH,
+	ERROR_REPORT_BREADCRUMB_ROUTE_MAX_LENGTH,
+	ERROR_REPORT_BREADCRUMB_APP_MAX_LENGTH,
+	ERROR_REPORT_BREADCRUMB_VIEW_MAX_LENGTH,
+	ERROR_REPORT_BREADCRUMB_TARGET_MAX_LENGTH,
+	ERROR_REPORT_BREADCRUMBS_MAX_ITEMS
+} from "./errorReportCaptureLimits";
+import {
+	ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL,
+	ERROR_REPORT_BREADCRUMB_CLICK,
+	ERROR_REPORT_BREADCRUMB_VISIBILITY
+} from "./errorReportContractConstants";
 import { sanitizeDetail, sanitizeDiagnosticText } from "./safeValue";
 
 import type { ErrorReportBreadcrumb } from "./types";
 
-const MAX_BREADCRUMBS = 80;
+const CLICK_EVENT = "click";
+const VISIBILITY_CHANGE_EVENT = "visibilitychange";
+const ERROR_REPORT_TARGET_ATTRIBUTE = "data-error-report-target";
+const DATA_UI_ATTRIBUTE = "data-ui";
+const DATA_ACTION_ATTRIBUTE = "data-action";
 const MAX_ELEMENT_CHAIN = 20;
 const MAX_ATTRIBUTE_LENGTH = 120;
 const INTERACTIVE_CLICK_TARGET_SELECTOR = ["button", "a", "input", "select", "textarea", "[role]"].join(",");
@@ -22,24 +40,24 @@ export function addErrorReportBreadcrumb(breadcrumb: Omit<ErrorReportBreadcrumb,
 		...breadcrumbs,
 		{
 			...breadcrumb,
-			utc: sanitizeDiagnosticText(breadcrumb.utc ?? nowUtc(), 64),
+			utc: sanitizeDiagnosticText(breadcrumb.utc ?? nowUtc(), ERROR_REPORT_UTC_MAX_LENGTH),
 			routeId: breadcrumb.routeId
 				? sanitizeDiagnosticText(
-						getErrorReportCaptureOptions().valuePolicy === "verbatim"
+						getErrorReportCaptureOptions().valuePolicy === ERROR_REPORT_VALUE_POLICY_VERBATIM
 							? breadcrumb.routeId
 							: (breadcrumb.routeId.split(/[?#]/, 1)[0] ?? breadcrumb.routeId),
-						512
+						ERROR_REPORT_BREADCRUMB_ROUTE_MAX_LENGTH
 					)
 				: undefined,
-			appId: breadcrumb.appId ? sanitizeDiagnosticText(breadcrumb.appId, 128) : undefined,
-			viewId: breadcrumb.viewId ? sanitizeDiagnosticText(breadcrumb.viewId, 128) : undefined,
-			target: breadcrumb.target ? sanitizeDiagnosticText(breadcrumb.target, 2_048) : undefined,
+			appId: breadcrumb.appId ? sanitizeDiagnosticText(breadcrumb.appId, ERROR_REPORT_BREADCRUMB_APP_MAX_LENGTH) : undefined,
+			viewId: breadcrumb.viewId ? sanitizeDiagnosticText(breadcrumb.viewId, ERROR_REPORT_BREADCRUMB_VIEW_MAX_LENGTH) : undefined,
+			target: breadcrumb.target ? sanitizeDiagnosticText(breadcrumb.target, ERROR_REPORT_BREADCRUMB_TARGET_MAX_LENGTH) : undefined,
 			detail: sanitizeDetail(breadcrumb.detail, {
-				scope: "breadcrumb-detail",
+				scope: ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL,
 				source: breadcrumb.type
 			})
 		}
-	].slice(-MAX_BREADCRUMBS);
+	].slice(-ERROR_REPORT_BREADCRUMBS_MAX_ITEMS);
 }
 
 export function getErrorReportBreadcrumbs() {
@@ -55,7 +73,7 @@ function truncateAttributeText(value: string | null | undefined) {
 }
 
 function readSafeTargetValue(element: Element) {
-	const value = truncateAttributeText(element.getAttribute("data-error-report-target"));
+	const value = truncateAttributeText(element.getAttribute(ERROR_REPORT_TARGET_ATTRIBUTE));
 	return value && SAFE_TARGET_VALUE.test(value) ? value : undefined;
 }
 
@@ -73,8 +91,8 @@ function readTechnicalAttributes(element: Element) {
 		role: readTechnicalAttribute(element, "role"),
 		type: readTechnicalAttribute(element, "type"),
 		errorReportTarget,
-		dataUi: errorReportTarget ? undefined : readTechnicalAttribute(element, "data-ui"),
-		dataAction: errorReportTarget ? undefined : readTechnicalAttribute(element, "data-action")
+		dataUi: errorReportTarget ? undefined : readTechnicalAttribute(element, DATA_UI_ATTRIBUTE),
+		dataAction: errorReportTarget ? undefined : readTechnicalAttribute(element, DATA_ACTION_ATTRIBUTE)
 	};
 }
 
@@ -93,10 +111,10 @@ function buildElementSelector(element: Element) {
 	if (attrs.role) parts.push(`[role="${attrs.role}"]`);
 	if (attrs.type) parts.push(`[type="${attrs.type}"]`);
 	if (attrs.errorReportTarget) {
-		parts.push(`[data-error-report-target="${escapeSelectorPart(attrs.errorReportTarget)}"]`);
+		parts.push(`[${ERROR_REPORT_TARGET_ATTRIBUTE}="${escapeSelectorPart(attrs.errorReportTarget)}"]`);
 	} else {
-		if (attrs.dataUi) parts.push(`[data-ui="${escapeSelectorPart(attrs.dataUi)}"]`);
-		if (attrs.dataAction) parts.push(`[data-action="${escapeSelectorPart(attrs.dataAction)}"]`);
+		if (attrs.dataUi) parts.push(`[${DATA_UI_ATTRIBUTE}="${escapeSelectorPart(attrs.dataUi)}"]`);
+		if (attrs.dataAction) parts.push(`[${DATA_ACTION_ATTRIBUTE}="${escapeSelectorPart(attrs.dataAction)}"]`);
 	}
 
 	return parts.join("");
@@ -140,8 +158,8 @@ function findMeaningfulClickTarget(target: Element) {
 		chain.find(
 			(element) =>
 				element.matches(INTERACTIVE_CLICK_TARGET_SELECTOR) ||
-				readTechnicalAttribute(element, "data-action") !== undefined ||
-				readTechnicalAttribute(element, "data-ui") !== undefined
+				readTechnicalAttribute(element, DATA_ACTION_ATTRIBUTE) !== undefined ||
+				readTechnicalAttribute(element, DATA_UI_ATTRIBUTE) !== undefined
 		) ?? target
 	);
 }
@@ -173,7 +191,7 @@ function describeClickDetail(event: MouseEvent) {
 			target: meaningfulTarget ? compactElementDescription(describeElement(meaningfulTarget)) : undefined,
 			chain
 		},
-		{ scope: "breadcrumb-detail", source: "click" }
+		{ scope: ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL, source: ERROR_REPORT_BREADCRUMB_CLICK }
 	);
 }
 
@@ -185,7 +203,7 @@ export function installErrorReportBrowserBreadcrumbs() {
 
 	const onClick = (event: MouseEvent) => {
 		addErrorReportBreadcrumb({
-			type: "click",
+			type: ERROR_REPORT_BREADCRUMB_CLICK,
 			target: describeClickTarget(event.target),
 			detail: describeClickDetail(event)
 		});
@@ -193,16 +211,19 @@ export function installErrorReportBrowserBreadcrumbs() {
 
 	const onVisibilityChange = () => {
 		addErrorReportBreadcrumb({
-			type: "visibility",
-			detail: sanitizeDetail({ visibilityState: document.visibilityState }, { scope: "breadcrumb-detail", source: "visibility" })
+			type: ERROR_REPORT_BREADCRUMB_VISIBILITY,
+			detail: sanitizeDetail(
+				{ visibilityState: document.visibilityState },
+				{ scope: ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL, source: ERROR_REPORT_BREADCRUMB_VISIBILITY }
+			)
 		});
 	};
 
-	window.addEventListener("click", onClick, true);
-	document.addEventListener("visibilitychange", onVisibilityChange);
+	window.addEventListener(CLICK_EVENT, onClick, true);
+	document.addEventListener(VISIBILITY_CHANGE_EVENT, onVisibilityChange);
 
 	return () => {
-		window.removeEventListener("click", onClick, true);
-		document.removeEventListener("visibilitychange", onVisibilityChange);
+		window.removeEventListener(CLICK_EVENT, onClick, true);
+		document.removeEventListener(VISIBILITY_CHANGE_EVENT, onVisibilityChange);
 	};
 }

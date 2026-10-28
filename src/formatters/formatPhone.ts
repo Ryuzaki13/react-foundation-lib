@@ -1,3 +1,5 @@
+const PHONE_MAX_DIGITS = 11;
+
 export function formatPhone(number: string): string {
 	const match = clearPhone(number).match(/^(\+7)(\d{3})(\d{3})(\d{2})(\d{2})$/);
 	if (!match) return number;
@@ -7,6 +9,6 @@ export function formatPhone(number: string): string {
 export function clearPhone(number: string): string {
 	return `+7${number
 		.replace(/\D/g, "")
-		.slice(0, 11)
+		.slice(0, PHONE_MAX_DIGITS)
 		.replace(/^(7|8)/, "")}`;
 }

@@ -1,6 +1,12 @@
 import { canConsumeVerticalTouchScroll } from "./canConsumeVerticalTouchScroll";
 import { isNativeTouchInteraction } from "./isNativeTouchInteraction";
 
+// Один и тот же набор событий используется при подключении и снятии защиты жеста.
+const TOUCH_START_EVENT = "touchstart";
+const TOUCH_MOVE_EVENT = "touchmove";
+const TOUCH_END_EVENT = "touchend";
+const TOUCH_CANCEL_EVENT = "touchcancel";
+
 type TouchScrollObservation = Readonly<{
 	identifier: number;
 	x: number;
@@ -63,15 +69,15 @@ export function attachDocumentTouchScrollGuard(documentTarget: Document): () => 
 		bypassGesture = false;
 	};
 
-	documentTarget.addEventListener("touchstart", onStart, { capture: true, passive: true });
-	documentTarget.addEventListener("touchmove", onMove, { capture: true, passive: false });
-	documentTarget.addEventListener("touchend", onEnd, { capture: true, passive: true });
-	documentTarget.addEventListener("touchcancel", onEnd, { capture: true, passive: true });
+	documentTarget.addEventListener(TOUCH_START_EVENT, onStart, { capture: true, passive: true });
+	documentTarget.addEventListener(TOUCH_MOVE_EVENT, onMove, { capture: true, passive: false });
+	documentTarget.addEventListener(TOUCH_END_EVENT, onEnd, { capture: true, passive: true });
+	documentTarget.addEventListener(TOUCH_CANCEL_EVENT, onEnd, { capture: true, passive: true });
 	return () => {
-		documentTarget.removeEventListener("touchstart", onStart, true);
-		documentTarget.removeEventListener("touchmove", onMove, true);
-		documentTarget.removeEventListener("touchend", onEnd, true);
-		documentTarget.removeEventListener("touchcancel", onEnd, true);
+		documentTarget.removeEventListener(TOUCH_START_EVENT, onStart, true);
+		documentTarget.removeEventListener(TOUCH_MOVE_EVENT, onMove, true);
+		documentTarget.removeEventListener(TOUCH_END_EVENT, onEnd, true);
+		documentTarget.removeEventListener(TOUCH_CANCEL_EVENT, onEnd, true);
 		observation = null;
 	};
 }

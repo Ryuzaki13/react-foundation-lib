@@ -1,6 +1,5 @@
 import { type DeadlineTimer, type DeadlineTimerOptions } from "./deadlineTimerTypes";
-
-const MAX_NATIVE_DELAY_MS = 2_147_483_647;
+import { MAX_NATIVE_DELAY_MS } from "./nativeTimerConstants";
 
 type DeadlineGeneration = {
 	deadlineAtMs: number;

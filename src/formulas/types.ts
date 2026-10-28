@@ -1,3 +1,5 @@
+import { type TABLE_FORMULA_DEPENDENCY_KIND_CONSTANT } from "./tableFormulaConstants";
+
 export type TableFormulaRowData = Record<string, unknown>;
 
 /**
@@ -6,7 +8,7 @@ export type TableFormulaRowData = Record<string, unknown>;
  * Константа занимает обычную позицию аргумента, но не создаёт зависимости от
  * данных строки. Строковая форма сохраняет контракт существующих consumers.
  */
-export type TableFormulaDependency = string | { readonly kind: "constant"; readonly value: number };
+export type TableFormulaDependency = string | { readonly kind: typeof TABLE_FORMULA_DEPENDENCY_KIND_CONSTANT; readonly value: number };
 
 export interface TableFormulaContext {
 	/** Возвращает ID только для аргумента-поля; у константы ключа строки нет. */

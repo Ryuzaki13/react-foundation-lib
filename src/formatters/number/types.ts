@@ -1,4 +1,15 @@
-export type NumberFormatCompactRoundingMode = "round" | "floor" | "ceil" | "trunc";
+import {
+	type COMPACT_ROUNDING_MODE_ROUND,
+	type COMPACT_ROUNDING_MODE_FLOOR,
+	type COMPACT_ROUNDING_MODE_CEIL,
+	type COMPACT_ROUNDING_MODE_TRUNC
+} from "./numberFormatConstants";
+
+export type NumberFormatCompactRoundingMode =
+	| typeof COMPACT_ROUNDING_MODE_ROUND
+	| typeof COMPACT_ROUNDING_MODE_FLOOR
+	| typeof COMPACT_ROUNDING_MODE_CEIL
+	| typeof COMPACT_ROUNDING_MODE_TRUNC;
 
 export type NumberFormatCompactUnit = {
 	value: number;

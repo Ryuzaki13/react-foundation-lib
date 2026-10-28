@@ -2,12 +2,14 @@ import { useCallback, useState } from "react";
 
 import { useCopyElementText } from "./useCopyElementText";
 
+const COPY_FEEDBACK_DURATION_MS = 2_000;
+
 export const useCopyFeedback = () => {
 	const [isCopied, setIsCopied] = useState(false);
 
 	const showFeedback = useCallback(() => {
 		setIsCopied(true);
-		const timer = setTimeout(() => setIsCopied(false), 2000);
+		const timer = setTimeout(() => setIsCopied(false), COPY_FEEDBACK_DURATION_MS);
 		return () => clearTimeout(timer);
 	}, []);
 

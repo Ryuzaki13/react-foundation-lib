@@ -1,6 +1,11 @@
 import { type CoalescingTaskRunner, type CoalescingTaskRunnerOptions } from "./asyncTaskRunnerTypes";
+import { MAX_NATIVE_DELAY_MS } from "./nativeTimerConstants";
 
-type ScheduledWake = { kind: "retry" | "tail"; timer: ReturnType<typeof setTimeout> };
+// Причина отложенного запуска отличает retry от немедленного хвоста single-flight.
+const SCHEDULED_WAKE_RETRY = "retry";
+const SCHEDULED_WAKE_TAIL = "tail";
+
+type ScheduledWake = { kind: typeof SCHEDULED_WAKE_RETRY | typeof SCHEDULED_WAKE_TAIL; timer: ReturnType<typeof setTimeout> };
 type RunnerGeneration = {
 	pending: Promise<void> | null;
 	rerun: boolean;
@@ -17,7 +22,7 @@ type RunnerGeneration = {
 export function createCoalescingTaskRunner(options: CoalescingTaskRunnerOptions): CoalescingTaskRunner {
 	for (const delay of [options.retryDelayMs, ...(options.pollIntervalMs === undefined ? [] : [options.pollIntervalMs])]) {
 		// Более длинную задержку Node превращает в 1 ms: молчаливое ограничение здесь опасно.
-		if (!Number.isInteger(delay) || delay < 1 || delay > 2_147_483_647) {
+		if (!Number.isInteger(delay) || delay < 1 || delay > MAX_NATIVE_DELAY_MS) {
 			throw new RangeError("Задержки runner должны быть целыми числами от 1 до 2147483647 ms.");
 		}
 	}
@@ -35,7 +40,7 @@ export function createCoalescingTaskRunner(options: CoalescingTaskRunnerOptions)
 		generation.pollTimer = null;
 	};
 	const backgroundWake = (generation: RunnerGeneration) => {
-		if (active !== generation || generation.reportingFailure || generation.scheduledWake?.kind === "retry") return;
+		if (active !== generation || generation.reportingFailure || generation.scheduledWake?.kind === SCHEDULED_WAKE_RETRY) return;
 		// Обычный отказ уже передан onError; отказ самого onError сохранён для
 		// admission/stop. Timer не создаёт unhandled rejection и не теряет reporter error.
 		void wake().catch(() => {});
@@ -76,13 +81,13 @@ export function createCoalescingTaskRunner(options: CoalescingTaskRunnerOptions)
 					generation.rerun = false;
 					clearTimers(generation);
 				}
-				schedule(generation, "retry", options.retryDelayMs);
+				schedule(generation, SCHEDULED_WAKE_RETRY, options.retryDelayMs);
 				throw error;
 			})
 			.finally(() => {
 				generation.pending = null;
 				// При отказе retry timer уже существует и не заменяется немедленным хвостом.
-				if (generation.rerun) schedule(generation, "tail", 0);
+				if (generation.rerun) schedule(generation, SCHEDULED_WAKE_TAIL, 0);
 			});
 		return generation.pending;
 	};

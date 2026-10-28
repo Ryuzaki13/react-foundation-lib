@@ -38,9 +38,11 @@ export type NotificationsStore = NotificationsState & {
 	actions: NotificationsActions;
 };
 
-const genId = (): NotificationId => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+const ID_ENCODING_RADIX = 36;
+const genId = (): NotificationId => `${Date.now().toString(ID_ENCODING_RADIX)}-${Math.random().toString(ID_ENCODING_RADIX).slice(2, 9)}`;
 
 const MAX_VISIBLE_ITEMS = 6;
+const DEFAULT_NOTIFICATION_TTL_MS = 10_000;
 
 export function createNotificationsStore() {
 	const timers = new Map<NotificationId, number>();
@@ -53,7 +55,7 @@ export function createNotificationsStore() {
 		}
 	};
 
-	const armTimer = (store: StoreApi<NotificationsStore>, id: NotificationId, ttlMs: number = 10_000) => {
+	const armTimer = (store: StoreApi<NotificationsStore>, id: NotificationId, ttlMs: number = DEFAULT_NOTIFICATION_TTL_MS) => {
 		clearTimer(id);
 		if (ttlMs <= 0) return;
 

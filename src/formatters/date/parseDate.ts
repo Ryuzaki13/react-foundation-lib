@@ -1,7 +1,76 @@
+import {
+	MS_IN_SECOND,
+	MS_IN_MINUTE,
+	MS_IN_HOUR,
+	MS_IN_DAY,
+	CALENDAR_MONTHS_PER_YEAR,
+	CALENDAR_LAST_HOUR,
+	CALENDAR_LAST_MINUTE
+} from "./calendarDateConstants";
+import {
+	INTL_DATE_PART_MONTH,
+	INTL_DATE_MONTH_SHORT,
+	INTL_DATE_MONTH_LONG,
+	INTL_DATE_PART_NUMERIC,
+	DATE_FORMAT_PRECISION_YEAR,
+	DATE_FORMAT_PRECISION_MONTH,
+	DATE_FORMAT_PRECISION_DAY
+} from "./dateFormatConstants";
+import {
+	DATE_PATTERN_DAY_MONTH_YEAR_DOTTED,
+	DATE_PATTERN_TOKEN_YEAR,
+	DATE_PATTERN_TOKEN_SHORT_YEAR,
+	DATE_PATTERN_TOKEN_MONTH,
+	DATE_PATTERN_TOKEN_DAY,
+	DATE_PATTERN_TOKEN_HOURS,
+	DATE_PATTERN_TOKEN_MINUTES,
+	DATE_PATTERN_TOKEN_SECONDS
+} from "./datePatternConstants";
+import {
+	DATE_PRESET_NAME_DATE,
+	DATE_PRESET_NAME_DATE_SHORT,
+	DATE_PRESET_NAME_MONTH_SHORT,
+	DATE_PRESET_NAME_MONTH_MEDIUM,
+	DATE_PRESET_NAME_MONTH_LONG,
+	DATE_PRESET_NAME_MONTH_YEAR_MEDIUM,
+	DATE_PRESET_NAME_MONTH_YEAR_LONG,
+	DATE_PRESET_NAME_DATETIME,
+	DATE_PRESET_NAME_DATETIME_SECONDS,
+	DATE_PRESET_NAME_DATETIME_SHORT
+} from "./datePresetNameConstants";
+import {
+	DATE_INPUT_SOURCE_ISO_LOCAL,
+	PARSED_DATE_KIND_DATE_TIME,
+	DATE_INPUT_SOURCE_TIMESTAMP,
+	DATE_INPUT_SOURCE_ODATA_TICKS,
+	DATE_INPUT_SOURCE_ISO_ZONED,
+	DATE_INPUT_SOURCE_ABAP_COMPACT,
+	DATE_INPUT_SOURCE_ABAP_TIMESTAMP,
+	DATE_INPUT_SOURCE_ABAP_DOTTED,
+	DATE_INPUT_SOURCE_SLASH_DATE,
+	DATE_INPUT_SOURCE_ODATA_LITERAL,
+	PARSED_DATE_KIND_DURATION,
+	DATE_INPUT_SOURCE_ISO_DURATION,
+	DATE_INPUT_SOURCE_DATE_OBJECT
+} from "./dateValueConstants";
 import { DATE_PATTERN_TOKEN_RE, hasDatePatternTokens, resolveDatePatternPrecision } from "./pattern";
-import { DATE_FORMAT_DEFAULTS, DEFAULT_DATE_PRESET_NAMES, getDatePreset, resolveDateFormatName } from "./presets";
+import { DATE_FORMAT_DEFAULTS, getDatePreset, resolveDateFormatName } from "./presets";
 
 import type { DateFormatPattern, DateFormatPrecision, ParsedDateTimeValue, ParsedDateValue } from "./types";
+
+const DATE_PARSING_MODE_FLOATING = "floating";
+const DATE_PARSING_MODE_INSTANT = "instant";
+const TIMESTAMP_MILLISECONDS_THRESHOLD = 1e12;
+const MONTH_NAME_REFERENCE_YEAR = 2026;
+const MILLISECOND_DIGITS = 3;
+const PREVIOUS_CENTURY = 1900;
+const CURRENT_CENTURY = 2000;
+const ABAP_YEAR_END_OFFSET = 4;
+const ABAP_MONTH_END_OFFSET = 6;
+const ABAP_DAY_END_OFFSET = 8;
+const ABAP_HOUR_END_OFFSET = 10;
+const ABAP_MINUTE_END_OFFSET = 12;
+const ABAP_SECOND_END_OFFSET = 14;
 
 /**
  * Регулярное выражение для OData даты вида `/Date(1720137600000+0300)/`.
@@ -57,10 +126,6 @@ const EMPTY_STRING_VALUES = new Set(["", "null", "undefined"]);
 /**
  * Константы для расчёта длительностей.
  */
-const MS_IN_SECOND = 1_000;
-const MS_IN_MINUTE = 60_000;
-const MS_IN_HOUR = 3_600_000;
-const MS_IN_DAY = 86_400_000;
 const APPROX_DAYS_IN_MONTH = 30;
 const APPROX_DAYS_IN_YEAR = 365;
 const TWO_DIGIT_YEAR_PIVOT = 70;
@@ -71,7 +136,7 @@ const TWO_DIGIT_YEAR_PIVOT = 70;
  * `floating` сохраняет историческую семантику видимых календарных компонентов,
  * `instant` применяет timezone и сохраняет Unix instant.
  */
-type DateParsingMode = "floating" | "instant";
+type DateParsingMode = typeof DATE_PARSING_MODE_FLOATING | typeof DATE_PARSING_MODE_INSTANT;
 
 /**
  * Внутренние настройки общего механизма парсинга.
@@ -83,17 +148,17 @@ type ParseDateValueInternalOptions = {
 	mode?: DateParsingMode;
 };
 
-const DEFAULT_DATE_PARSING_MODE: DateParsingMode = "floating";
+const DEFAULT_DATE_PARSING_MODE: DateParsingMode = DATE_PARSING_MODE_FLOATING;
 
 /**
  * Шаблоны ручного ввода для встроенных Intl-пресетов.
  */
 const DATE_FORMAT_PARSE_PATTERNS: Readonly<Record<string, readonly DateFormatPattern[]>> = Object.freeze({
-	[DEFAULT_DATE_PRESET_NAMES.date]: Object.freeze(["dd.MM.yyyy"] as const),
-	[DEFAULT_DATE_PRESET_NAMES.dateShort]: Object.freeze(["dd.MM.yyyy"] as const),
-	[DEFAULT_DATE_PRESET_NAMES.datetime]: Object.freeze(["dd.MM.yyyy HH:mm"] as const),
-	[DEFAULT_DATE_PRESET_NAMES.datetimeSeconds]: Object.freeze(["dd.MM.yyyy HH:mm:ss"] as const),
-	[DEFAULT_DATE_PRESET_NAMES.datetimeShort]: Object.freeze(["dd.MM.yyyy, HH:mm"] as const)
+	[DATE_PRESET_NAME_DATE]: Object.freeze([DATE_PATTERN_DAY_MONTH_YEAR_DOTTED] as const),
+	[DATE_PRESET_NAME_DATE_SHORT]: Object.freeze([DATE_PATTERN_DAY_MONTH_YEAR_DOTTED] as const),
+	[DATE_PRESET_NAME_DATETIME]: Object.freeze(["dd.MM.yyyy HH:mm"] as const),
+	[DATE_PRESET_NAME_DATETIME_SECONDS]: Object.freeze(["dd.MM.yyyy HH:mm:ss"] as const),
+	[DATE_PRESET_NAME_DATETIME_SHORT]: Object.freeze(["dd.MM.yyyy, HH:mm"] as const)
 });
 
 /**
@@ -112,12 +177,8 @@ const LOCALIZED_MONTH_RE = /^([\p{L}.]+)\s+(\d{4})(?:\s*[\p{L}.]+)?$/iu;
 const LOCALIZED_YEAR_RE = /^(\d{4})(?:\s*[\p{L}.]+)?$/iu;
 
 const localizedMonthIndexCache = new Map<string, ReadonlyMap<string, number>>();
-const DAY_MONTH_PRESET_NAMES = new Set<string>([
-	DEFAULT_DATE_PRESET_NAMES.monthShort,
-	DEFAULT_DATE_PRESET_NAMES.monthMedium,
-	DEFAULT_DATE_PRESET_NAMES.monthLong
-]);
-const MONTH_YEAR_PRESET_NAMES = new Set<string>([DEFAULT_DATE_PRESET_NAMES.monthYearMedium, DEFAULT_DATE_PRESET_NAMES.monthYearLong]);
+const DAY_MONTH_PRESET_NAMES = new Set<string>([DATE_PRESET_NAME_MONTH_SHORT, DATE_PRESET_NAME_MONTH_MEDIUM, DATE_PRESET_NAME_MONTH_LONG]);
+const MONTH_YEAR_PRESET_NAMES = new Set<string>([DATE_PRESET_NAME_MONTH_YEAR_MEDIUM, DATE_PRESET_NAME_MONTH_YEAR_LONG]);
 
 /**
  * Создаёт календарную дату без timezone-семантики и валидирует компоненты.
@@ -159,7 +220,7 @@ function addLocalizedMonthPart(
 	index: number,
 	locale: string
 ): void {
-	const monthPart = formatter.formatToParts(date).find((part) => part.type === "month");
+	const monthPart = formatter.formatToParts(date).find((part) => part.type === INTL_DATE_PART_MONTH);
 	if (monthPart) addLocalizedMonthName(monthIndex, monthPart.value, index, locale);
 }
 
@@ -171,13 +232,21 @@ function getLocalizedMonthIndex(locale: string): ReadonlyMap<string, number> {
 	if (cachedIndex) return cachedIndex;
 
 	const monthIndex = new Map<string, number>();
-	const shortFormatter = new Intl.DateTimeFormat(locale, { month: "short" });
-	const longFormatter = new Intl.DateTimeFormat(locale, { month: "long" });
-	const shortDateFormatter = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" });
-	const longDateFormatter = new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric" });
+	const shortFormatter = new Intl.DateTimeFormat(locale, { month: INTL_DATE_MONTH_SHORT });
+	const longFormatter = new Intl.DateTimeFormat(locale, { month: INTL_DATE_MONTH_LONG });
+	const shortDateFormatter = new Intl.DateTimeFormat(locale, {
+		day: INTL_DATE_PART_NUMERIC,
+		month: INTL_DATE_MONTH_SHORT,
+		year: INTL_DATE_PART_NUMERIC
+	});
+	const longDateFormatter = new Intl.DateTimeFormat(locale, {
+		day: INTL_DATE_PART_NUMERIC,
+		month: INTL_DATE_MONTH_LONG,
+		year: INTL_DATE_PART_NUMERIC
+	});
 
-	for (let month = 0; month < 12; month += 1) {
-		const date = new Date(2026, month, 1);
+	for (let month = 0; month < CALENDAR_MONTHS_PER_YEAR; month += 1) {
+		const date = new Date(MONTH_NAME_REFERENCE_YEAR, month, 1);
 		addLocalizedMonthName(monthIndex, shortFormatter.format(date), month, locale);
 		addLocalizedMonthName(monthIndex, longFormatter.format(date), month, locale);
 		addLocalizedMonthPart(monthIndex, shortDateFormatter, date, month, locale);
@@ -208,7 +277,7 @@ function parseLocalizedDayString(value: string, locale: string): ParsedDateTimeV
 	}
 
 	const parsed = createCalendarDate(year, monthIndex + 1, day, hour, minute, second);
-	return parsed ? asDateTimeValue(parsed, "iso-local") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ISO_LOCAL) : null;
 }
 
 /**
@@ -221,7 +290,7 @@ function parseLocalizedDayMonthString(value: string, locale: string, year: numbe
 		const month = Number(numericMatch[2]);
 		const parsed = createCalendarDate(year, month, day);
 
-		return parsed ? asDateTimeValue(parsed, "iso-local") : null;
+		return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ISO_LOCAL) : null;
 	}
 
 	const match = LOCALIZED_DAY_MONTH_RE.exec(value.trim());
@@ -235,7 +304,7 @@ function parseLocalizedDayMonthString(value: string, locale: string, year: numbe
 	}
 
 	const parsed = createCalendarDate(year, monthIndex + 1, day);
-	return parsed ? asDateTimeValue(parsed, "iso-local") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ISO_LOCAL) : null;
 }
 
 /**
@@ -251,7 +320,7 @@ function parseLocalizedMonthString(value: string, locale: string): ParsedDateTim
 	if (monthIndex === undefined || !Number.isFinite(year)) return null;
 
 	const parsed = createCalendarDate(year, monthIndex + 1, 1);
-	return parsed ? asDateTimeValue(parsed, "iso-local") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ISO_LOCAL) : null;
 }
 
 /**
@@ -265,15 +334,15 @@ function parseLocalizedYearString(value: string): ParsedDateTimeValue | null {
 	if (!Number.isFinite(year)) return null;
 
 	const parsed = createCalendarDate(year, 1, 1);
-	return parsed ? asDateTimeValue(parsed, "iso-local") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ISO_LOCAL) : null;
 }
 
 /**
  * Парсит человекочитаемую дату с учётом точности календарного значения.
  */
 function parseLocalizedDateString(value: string, locale: string, precision: DateFormatPrecision): ParsedDateTimeValue | null {
-	if (precision === "year") return parseLocalizedYearString(value);
-	if (precision === "month") return parseLocalizedMonthString(value, locale);
+	if (precision === DATE_FORMAT_PRECISION_YEAR) return parseLocalizedYearString(value);
+	if (precision === DATE_FORMAT_PRECISION_MONTH) return parseLocalizedMonthString(value, locale);
 
 	return parseLocalizedDayString(value, locale);
 }
@@ -340,7 +409,7 @@ function cloneUtcCalendarDate(date: Date): Date {
  * Формирует результат парсинга календарной даты/времени.
  */
 function asDateTimeValue(date: Date, source: ParsedDateTimeValue["source"]): ParsedDateTimeValue {
-	return { kind: "date-time", source, date };
+	return { kind: PARSED_DATE_KIND_DATE_TIME, source, date };
 }
 
 /**
@@ -349,11 +418,11 @@ function asDateTimeValue(date: Date, source: ParsedDateTimeValue["source"]): Par
 function parseTimestamp(value: number, mode: DateParsingMode = DEFAULT_DATE_PARSING_MODE): ParsedDateTimeValue | null {
 	if (!Number.isFinite(value)) return null;
 
-	const timestamp = Math.abs(value) < 1e12 ? value * 1_000 : value;
+	const timestamp = Math.abs(value) < TIMESTAMP_MILLISECONDS_THRESHOLD ? value * MS_IN_SECOND : value;
 	const parsed = new Date(timestamp);
 	if (Number.isNaN(parsed.getTime())) return null;
 
-	return asDateTimeValue(mode === "instant" ? parsed : cloneUtcCalendarDate(parsed), "timestamp");
+	return asDateTimeValue(mode === DATE_PARSING_MODE_INSTANT ? parsed : cloneUtcCalendarDate(parsed), DATE_INPUT_SOURCE_TIMESTAMP);
 }
 
 /**
@@ -367,15 +436,15 @@ function parseODataTicks(value: string, mode: DateParsingMode = DEFAULT_DATE_PAR
 	const timestamp = Number(match[1]);
 	if (!Number.isFinite(timestamp)) return null;
 
-	if (mode === "instant") {
+	if (mode === DATE_PARSING_MODE_INSTANT) {
 		// В OData v2 ticks уже содержат миллисекунды от Unix epoch.
 		// Offset описывает сервисное представление и не должен повторно сдвигать instant.
 		const instantDate = new Date(timestamp);
-		return Number.isNaN(instantDate.getTime()) ? null : asDateTimeValue(instantDate, "odata-ticks");
+		return Number.isNaN(instantDate.getTime()) ? null : asDateTimeValue(instantDate, DATE_INPUT_SOURCE_ODATA_TICKS);
 	}
 
 	const offset = match[2];
-	if (!offset) return asDateTimeValue(cloneUtcCalendarDate(new Date(timestamp)), "odata-ticks");
+	if (!offset) return asDateTimeValue(cloneUtcCalendarDate(new Date(timestamp)), DATE_INPUT_SOURCE_ODATA_TICKS);
 
 	const sign = offset.startsWith("-") ? -1 : 1;
 	const hours = Number(offset.slice(1, 3));
@@ -383,7 +452,7 @@ function parseODataTicks(value: string, mode: DateParsingMode = DEFAULT_DATE_PAR
 	if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
 
 	const offsetMs = sign * (hours * MS_IN_HOUR + minutes * MS_IN_MINUTE);
-	return asDateTimeValue(cloneUtcCalendarDate(new Date(timestamp + offsetMs)), "odata-ticks");
+	return asDateTimeValue(cloneUtcCalendarDate(new Date(timestamp + offsetMs)), DATE_INPUT_SOURCE_ODATA_TICKS);
 }
 
 /**
@@ -399,11 +468,11 @@ function parseIsoLocal(value: string): ParsedDateTimeValue | null {
 	const hour = Number(match[4] ?? 0);
 	const minute = Number(match[5] ?? 0);
 	const second = Number(match[6] ?? 0);
-	const millisecondsRaw = (match[7] ?? "").slice(0, 3).padEnd(3, "0");
+	const millisecondsRaw = (match[7] ?? "").slice(0, MILLISECOND_DIGITS).padEnd(MILLISECOND_DIGITS, "0");
 	const millisecond = Number(millisecondsRaw || 0);
 
 	const parsed = createCalendarDate(year, month, day, hour, minute, second, millisecond);
-	return parsed ? asDateTimeValue(parsed, "iso-local") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ISO_LOCAL) : null;
 }
 
 /**
@@ -418,7 +487,7 @@ function resolveIsoTimezoneOffsetMs(timezoneMatch: RegExpExecArray): number | nu
 	const sign = timezoneMatch[2] === "-" ? -1 : 1;
 	const hours = Number(timezoneMatch[3]);
 	const minutes = Number(timezoneMatch[4]);
-	if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours > 23 || minutes > 59) return null;
+	if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours > CALENDAR_LAST_HOUR || minutes > CALENDAR_LAST_MINUTE) return null;
 
 	return sign * (hours * MS_IN_HOUR + minutes * MS_IN_MINUTE);
 }
@@ -433,7 +502,7 @@ function parseIsoZoned(value: string, mode: DateParsingMode = DEFAULT_DATE_PARSI
 	const normalizedValue = value.slice(0, timezoneMatch.index);
 	const parsed = parseIsoLocal(normalizedValue);
 	if (!parsed) return null;
-	if (mode === "floating") return asDateTimeValue(parsed.date, "iso-zoned");
+	if (mode === DATE_PARSING_MODE_FLOATING) return asDateTimeValue(parsed.date, DATE_INPUT_SOURCE_ISO_ZONED);
 
 	const timezoneOffsetMs = resolveIsoTimezoneOffsetMs(timezoneMatch);
 	if (timezoneOffsetMs === null) return null;
@@ -451,7 +520,7 @@ function parseIsoZoned(value: string, mode: DateParsingMode = DEFAULT_DATE_PARSI
 		) - timezoneOffsetMs;
 
 	const instantDate = new Date(instantTimestamp);
-	return Number.isNaN(instantDate.getTime()) ? null : asDateTimeValue(instantDate, "iso-zoned");
+	return Number.isNaN(instantDate.getTime()) ? null : asDateTimeValue(instantDate, DATE_INPUT_SOURCE_ISO_ZONED);
 }
 
 /**
@@ -460,12 +529,12 @@ function parseIsoZoned(value: string, mode: DateParsingMode = DEFAULT_DATE_PARSI
 function parseAbapCompact(value: string): ParsedDateTimeValue | null {
 	if (!ABAP_COMPACT_RE.test(value)) return null;
 
-	const year = Number(value.slice(0, 4));
-	const month = Number(value.slice(4, 6));
-	const day = Number(value.slice(6, 8));
+	const year = Number(value.slice(0, ABAP_YEAR_END_OFFSET));
+	const month = Number(value.slice(ABAP_YEAR_END_OFFSET, ABAP_MONTH_END_OFFSET));
+	const day = Number(value.slice(ABAP_MONTH_END_OFFSET, ABAP_DAY_END_OFFSET));
 
 	const parsed = createCalendarDate(year, month, day);
-	return parsed ? asDateTimeValue(parsed, "abap-compact") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ABAP_COMPACT) : null;
 }
 
 /**
@@ -474,15 +543,15 @@ function parseAbapCompact(value: string): ParsedDateTimeValue | null {
 function parseAbapTimestamp(value: string): ParsedDateTimeValue | null {
 	if (!ABAP_TIMESTAMP_RE.test(value)) return null;
 
-	const year = Number(value.slice(0, 4));
-	const month = Number(value.slice(4, 6));
-	const day = Number(value.slice(6, 8));
-	const hour = Number(value.slice(8, 10));
-	const minute = Number(value.slice(10, 12));
-	const second = Number(value.slice(12, 14));
+	const year = Number(value.slice(0, ABAP_YEAR_END_OFFSET));
+	const month = Number(value.slice(ABAP_YEAR_END_OFFSET, ABAP_MONTH_END_OFFSET));
+	const day = Number(value.slice(ABAP_MONTH_END_OFFSET, ABAP_DAY_END_OFFSET));
+	const hour = Number(value.slice(ABAP_DAY_END_OFFSET, ABAP_HOUR_END_OFFSET));
+	const minute = Number(value.slice(ABAP_HOUR_END_OFFSET, ABAP_MINUTE_END_OFFSET));
+	const second = Number(value.slice(ABAP_MINUTE_END_OFFSET, ABAP_SECOND_END_OFFSET));
 
 	const parsed = createCalendarDate(year, month, day, hour, minute, second);
-	return parsed ? asDateTimeValue(parsed, "abap-timestamp") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ABAP_TIMESTAMP) : null;
 }
 
 /**
@@ -497,7 +566,7 @@ function parseAbapDotted(value: string): ParsedDateTimeValue | null {
 	const year = Number(match[3]);
 
 	const parsed = createCalendarDate(year, month, day);
-	return parsed ? asDateTimeValue(parsed, "abap-dotted") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ABAP_DOTTED) : null;
 }
 
 /**
@@ -512,7 +581,7 @@ function parseSlashDate(value: string): ParsedDateTimeValue | null {
 	const year = Number(match[3]);
 
 	const parsed = createCalendarDate(year, month, day);
-	return parsed ? asDateTimeValue(parsed, "slash-date") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_SLASH_DATE) : null;
 }
 
 /**
@@ -523,7 +592,7 @@ function parseODataLiteral(value: string, mode: DateParsingMode = DEFAULT_DATE_P
 	if (!match) return null;
 
 	const innerValue = match[2].trim();
-	return parseDateString(innerValue, "odata-literal", mode);
+	return parseDateString(innerValue, DATE_INPUT_SOURCE_ODATA_LITERAL, mode);
 }
 
 /**
@@ -542,7 +611,7 @@ function parseIsoDuration(value: string): ParsedDateValue | null {
 	const hours = Number(match[5] ?? 0);
 	const minutes = Number(match[6] ?? 0);
 	const seconds = Number(match[7] ?? 0);
-	const fractionRaw = (match[8] ?? "").slice(0, 3).padEnd(3, "0");
+	const fractionRaw = (match[8] ?? "").slice(0, MILLISECOND_DIGITS).padEnd(MILLISECOND_DIGITS, "0");
 	const milliseconds = Number(fractionRaw || 0);
 
 	const hasAnyComponent = Boolean(years || months || days || hours || minutes || seconds || milliseconds);
@@ -558,7 +627,7 @@ function parseIsoDuration(value: string): ParsedDateValue | null {
 			seconds * MS_IN_SECOND +
 			milliseconds);
 
-	return { kind: "duration", source: "iso-duration", durationMs };
+	return { kind: PARSED_DATE_KIND_DURATION, source: DATE_INPUT_SOURCE_ISO_DURATION, durationMs };
 }
 
 /**
@@ -617,7 +686,7 @@ function escapeRegExp(value: string): string {
  * значения `70-99` трактуются как `1970-1999`.
  */
 function resolveTwoDigitYear(year: number): number {
-	return year < TWO_DIGIT_YEAR_PIVOT ? 2000 + year : 1900 + year;
+	return year < TWO_DIGIT_YEAR_PIVOT ? CURRENT_CENTURY + year : PREVIOUS_CENTURY + year;
 }
 
 /**
@@ -634,7 +703,7 @@ export interface ParseDateByPatternOptions {
 
 export function parseDateByPattern(
 	value: unknown,
-	pattern = "dd.MM.yyyy",
+	pattern = DATE_PATTERN_DAY_MONTH_YEAR_DOTTED,
 	options: ParseDateByPatternOptions = {}
 ): ParsedDateValue | null {
 	if (typeof value !== "string") {
@@ -644,7 +713,7 @@ export function parseDateByPattern(
 	const trimmed = value.trim();
 	if (EMPTY_STRING_VALUES.has(trimmed.toLowerCase())) return null;
 
-	const precision = options.precision ?? "day";
+	const precision = options.precision ?? DATE_FORMAT_PRECISION_DAY;
 	const precisionPattern = resolveDatePatternPrecision(pattern, precision);
 	const captureNames: string[] = [];
 	let cursor = 0;
@@ -657,7 +726,7 @@ export function parseDateByPattern(
 		regexPattern += escapeRegExp(precisionPattern.slice(cursor, matchPart.index));
 		captureNames.push(matchPart[0]);
 
-		if (matchPart[0] === "yyyy") regexPattern += "(\\d{4})";
+		if (matchPart[0] === DATE_PATTERN_TOKEN_YEAR) regexPattern += "(\\d{4})";
 		else regexPattern += "(\\d{2})";
 
 		cursor = matchPart.index + matchPart[0].length;
@@ -683,21 +752,21 @@ export function parseDateByPattern(
 		const numericValue = Number(rawValue);
 		if (!Number.isFinite(numericValue)) return null;
 
-		if (token === "yyyy") year = numericValue;
-		if (token === "yy") year = resolveTwoDigitYear(numericValue);
-		if (token === "MM") month = numericValue;
-		if (token === "dd") day = numericValue;
-		if (token === "HH") hour = numericValue;
-		if (token === "mm") minute = numericValue;
-		if (token === "ss") second = numericValue;
+		if (token === DATE_PATTERN_TOKEN_YEAR) year = numericValue;
+		if (token === DATE_PATTERN_TOKEN_SHORT_YEAR) year = resolveTwoDigitYear(numericValue);
+		if (token === DATE_PATTERN_TOKEN_MONTH) month = numericValue;
+		if (token === DATE_PATTERN_TOKEN_DAY) day = numericValue;
+		if (token === DATE_PATTERN_TOKEN_HOURS) hour = numericValue;
+		if (token === DATE_PATTERN_TOKEN_MINUTES) minute = numericValue;
+		if (token === DATE_PATTERN_TOKEN_SECONDS) second = numericValue;
 	}
 
 	if (!year) return null;
-	if (precision !== "year" && !month) return null;
-	if (precision === "day" && !day) return null;
+	if (precision !== DATE_FORMAT_PRECISION_YEAR && !month) return null;
+	if (precision === DATE_FORMAT_PRECISION_DAY && !day) return null;
 
 	const parsed = createCalendarDate(year, month ?? 1, day ?? 1, hour, minute, second);
-	return parsed ? asDateTimeValue(parsed, "iso-local") : null;
+	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ISO_LOCAL) : null;
 }
 
 export interface ParseDateByFormatOptions {
@@ -739,33 +808,33 @@ function getDateFormatParsePatterns(dateFormat: string, precision: DateFormatPre
 export function parseDateByFormat(value: unknown, dateFormat?: string, options: ParseDateByFormatOptions = {}): ParsedDateTimeValue | null {
 	if (typeof value !== "string") {
 		const parsed = parseDateValue(value);
-		return parsed?.kind === "date-time" ? parsed : null;
+		return parsed?.kind === PARSED_DATE_KIND_DATE_TIME ? parsed : null;
 	}
 
 	const trimmed = value.trim();
 	if (EMPTY_STRING_VALUES.has(trimmed.toLowerCase())) return null;
 
-	const precision = options.precision ?? "day";
-	const resolvedFormat = resolveDateFormatName(dateFormat, options.defaultFormat ?? DEFAULT_DATE_PRESET_NAMES.date);
+	const precision = options.precision ?? DATE_FORMAT_PRECISION_DAY;
+	const resolvedFormat = resolveDateFormatName(dateFormat, options.defaultFormat ?? DATE_PRESET_NAME_DATE);
 	for (const pattern of getDateFormatParsePatterns(resolvedFormat, precision)) {
 		const parsedByPattern = parseDateByPattern(trimmed, pattern, { precision });
-		if (parsedByPattern?.kind === "date-time") return parsedByPattern;
+		if (parsedByPattern?.kind === PARSED_DATE_KIND_DATE_TIME) return parsedByPattern;
 	}
 
-	if (precision === "day") {
+	if (precision === DATE_FORMAT_PRECISION_DAY) {
 		const parsedByValue = parseDateValue(trimmed);
-		if (parsedByValue?.kind === "date-time") return parsedByValue;
+		if (parsedByValue?.kind === PARSED_DATE_KIND_DATE_TIME) return parsedByValue;
 	}
 
 	const preset = getDatePreset(resolvedFormat);
 	const locale = preset?.locale ?? options.locale ?? DATE_FORMAT_DEFAULTS.locale;
 
-	if (precision === "day" && isDayMonthPresetName(resolvedFormat)) {
+	if (precision === DATE_FORMAT_PRECISION_DAY && isDayMonthPresetName(resolvedFormat)) {
 		const parsedDayMonth = parseLocalizedDayMonthString(trimmed, locale, resolveReferenceYear(options.referenceDate));
 		if (parsedDayMonth) return parsedDayMonth;
 	}
 
-	if (precision !== "year" && isMonthYearPresetName(resolvedFormat)) {
+	if (precision !== DATE_FORMAT_PRECISION_YEAR && isMonthYearPresetName(resolvedFormat)) {
 		return parseLocalizedMonthString(trimmed, locale);
 	}
 
@@ -783,8 +852,8 @@ function parseDateValueInternal(
 
 	if (value instanceof Date) {
 		if (Number.isNaN(value.getTime())) return null;
-		const date = mode === "instant" ? new Date(value.getTime()) : cloneCalendarDate(value);
-		return asDateTimeValue(date, "date-object");
+		const date = mode === DATE_PARSING_MODE_INSTANT ? new Date(value.getTime()) : cloneCalendarDate(value);
+		return asDateTimeValue(date, DATE_INPUT_SOURCE_DATE_OBJECT);
 	}
 
 	if (typeof value === "number") {
@@ -823,7 +892,7 @@ export function parseDateValue(value: unknown): ParsedDateValue | null {
  * с сохранением момента времени; форматы без timezone остаются календарными.
  */
 export function parseDateValueTZ(value: unknown): ParsedDateValue | null {
-	return parseDateValueInternal(value, { mode: "instant" });
+	return parseDateValueInternal(value, { mode: DATE_PARSING_MODE_INSTANT });
 }
 
 /**
@@ -834,7 +903,7 @@ export function parseDateValueTZ(value: unknown): ParsedDateValue | null {
  */
 function coerceParsedDateToDate(value: ParsedDateValue | null): Date | null {
 	if (!value) return null;
-	if (value.kind === "date-time") return value.date;
+	if (value.kind === PARSED_DATE_KIND_DATE_TIME) return value.date;
 
 	const durationDate = new Date(value.durationMs);
 	if (Number.isNaN(durationDate.getTime())) return null;

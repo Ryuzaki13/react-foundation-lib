@@ -1,7 +1,11 @@
 import { formatNumber } from "./formatNumber";
+import { FORMATTED_NUMBER_ZERO, COMPACT_ROUNDING_MODE_TRUNC } from "./numberFormatConstants";
+import { NUMBER_PRESET_NAME_INTEGER, NUMBER_PRESET_NAME_CURRENCY, NUMBER_PRESET_NAME_COMPACT_CURRENCY } from "./numberPresetNameConstants";
 import { toFiniteNumber } from "./parseNumber";
-import { DEFAULT_NUMBER_PRESET_NAMES, resolveNumberPreset } from "./presets";
+import { resolveNumberPreset } from "./presets";
 import { type NumberFormatCompactOptions, type NumberFormatPreset } from "./types";
+
+const CHART_AXIS_MIN_COMPACT_VALUE = 10_000;
 
 /**
  * Компактное форматирование числа по предустановке.
@@ -16,11 +20,11 @@ import { type NumberFormatCompactOptions, type NumberFormatPreset } from "./type
  */
 export function formatCompactNumber(
 	value: unknown,
-	presetOrName: string | NumberFormatPreset = DEFAULT_NUMBER_PRESET_NAMES.integer,
+	presetOrName: string | NumberFormatPreset = NUMBER_PRESET_NAME_INTEGER,
 	options: NumberFormatCompactOptions = {}
 ): string {
 	const num = toFiniteNumber(value);
-	if (num === undefined) return "0";
+	if (num === undefined) return FORMATTED_NUMBER_ZERO;
 
 	const preset = resolveNumberPreset(presetOrName);
 	const compactPreset: NumberFormatPreset = {
@@ -42,7 +46,7 @@ export function formatCompactNumber(
  * 1 022 342 -> "1 млн"
  */
 export function formatNumberAsCompact(value: unknown): string {
-	return formatCompactNumber(value, DEFAULT_NUMBER_PRESET_NAMES.integer);
+	return formatCompactNumber(value, NUMBER_PRESET_NAME_INTEGER);
 }
 
 /**
@@ -51,7 +55,7 @@ export function formatNumberAsCompact(value: unknown): string {
  * Валютный символ не добавляется — это формат именно для короткой шкалы.
  */
 export function formatNumberAsCompactCurrency(value: unknown): string {
-	return formatCompactNumber(value, DEFAULT_NUMBER_PRESET_NAMES.compactCurrency);
+	return formatCompactNumber(value, NUMBER_PRESET_NAME_COMPACT_CURRENCY);
 }
 
 /**
@@ -60,9 +64,9 @@ export function formatNumberAsCompactCurrency(value: unknown): string {
  * Название более предметное, чтобы в chart-коде было понятно назначение.
  */
 export function formatNumberAsChartAxis(value: unknown): string {
-	return formatCompactNumber(value, DEFAULT_NUMBER_PRESET_NAMES.integer, {
-		minCompactValue: 10_000,
-		roundingMode: "trunc"
+	return formatCompactNumber(value, NUMBER_PRESET_NAME_INTEGER, {
+		minCompactValue: CHART_AXIS_MIN_COMPACT_VALUE,
+		roundingMode: COMPACT_ROUNDING_MODE_TRUNC
 	});
 }
 
@@ -73,19 +77,19 @@ export function formatNumberAsChartAxis(value: unknown): string {
  * В tooltip: 1 022 342
  */
 export function formatNumberAsChartTooltip(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.integer);
+	return formatNumber(value, NUMBER_PRESET_NAME_INTEGER);
 }
 
 /**
  * Компактное форматирование валюты для оси графика.
  */
 export function formatNumberAsCurrencyChartAxis(value: unknown): string {
-	return formatCompactNumber(value, DEFAULT_NUMBER_PRESET_NAMES.compactCurrency);
+	return formatCompactNumber(value, NUMBER_PRESET_NAME_COMPACT_CURRENCY);
 }
 
 /**
  * Полное форматирование валюты для tooltip графика.
  */
 export function formatNumberAsCurrencyChartTooltip(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.currency);
+	return formatNumber(value, NUMBER_PRESET_NAME_CURRENCY);
 }

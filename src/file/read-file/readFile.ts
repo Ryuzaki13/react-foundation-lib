@@ -1,5 +1,28 @@
 import { assertNotAborted } from "./assert";
-import { FileMeta, ReadFileError, ReadFileOptions, ReadFileResult, ReadMode } from "./types";
+import {
+	READ_FILE_ERROR_FILE_TOO_LARGE,
+	READ_FILE_ERROR_MIME_NOT_ALLOWED,
+	READ_FILE_ERROR_READ_ABORTED,
+	READ_FILE_ERROR_READ_FAILED,
+	READ_FILE_MODE_ARRAY_BUFFER,
+	READ_FILE_MODE_DATA_URL
+} from "./readFileConstants";
+import {
+	type FileMeta,
+	type ReadFileAsArrayBufferOptions,
+	type ReadFileAsArrayBufferResult,
+	type ReadFileAsDataUrlOptions,
+	type ReadFileAsDataUrlResult,
+	ReadFileError,
+	type ReadFileOptions,
+	type ReadFileResult,
+	type ReadMode
+} from "./types";
+
+const ABORT_EVENT = "abort";
+// Одинаковые причины отказа сохраняют общие сообщения в обоих режимах чтения.
+const READ_ABORTED_MESSAGE = "Чтение файла прервано";
+const UNEXPECTED_READER_RESULT_MESSAGE = "Неожиданный тип результата FileReader";
 
 function normalizeMime(mime?: string): string {
 	return mime?.trim().toLowerCase() ?? "";
@@ -30,8 +53,8 @@ export function attachAbort(signal: AbortSignal | undefined, reader: FileReader)
 		}
 	};
 
-	signal.addEventListener("abort", onAbort, { once: true });
-	return () => signal.removeEventListener("abort", onAbort);
+	signal.addEventListener(ABORT_EVENT, onAbort, { once: true });
+	return () => signal.removeEventListener(ABORT_EVENT, onAbort);
 }
 
 function validateFile(file: File, opts: ReadFileOptions): void {
@@ -39,26 +62,26 @@ function validateFile(file: File, opts: ReadFileOptions): void {
 		const allowed = new Set(opts.allowedMime.map((mime) => normalizeMime(mime)));
 		const fileMime = normalizeMime(file.type);
 		if (!allowed.has(fileMime)) {
-			throw new ReadFileError("MIME_NOT_ALLOWED", `Неподдерживаемый MIME тип: ${file.type}`);
+			throw new ReadFileError(READ_FILE_ERROR_MIME_NOT_ALLOWED, `Неподдерживаемый MIME тип: ${file.type}`);
 		}
 	} else if (opts.accept && opts.accept.length > 0) {
 		// Берём расширение файла, если его нет, пытаемся вытащить из MIME
 		const fileMime = getFileExtension(file.name) || file.type.split("/").pop();
 		if (!fileMime) {
 			// NOTE: Если неизвестный mime и нет расширения? Пока запретить такой сценарий
-			throw new ReadFileError("MIME_NOT_ALLOWED", `Неопределенный MIME тип`);
+			throw new ReadFileError(READ_FILE_ERROR_MIME_NOT_ALLOWED, `Неопределенный MIME тип`);
 		}
 
 		const allowed = opts.accept.map((mime) => normalizeMime(mime));
 		const isAllowed = allowed.some((mime) => mime.includes(fileMime));
 
 		if (!isAllowed) {
-			throw new ReadFileError("MIME_NOT_ALLOWED", `Неподдерживаемый MIME тип: ${fileMime}`);
+			throw new ReadFileError(READ_FILE_ERROR_MIME_NOT_ALLOWED, `Неподдерживаемый MIME тип: ${fileMime}`);
 		}
 	}
 
 	if (typeof opts.maxBytes === "number" && file.size > opts.maxBytes) {
-		throw new ReadFileError("FILE_TOO_LARGE", `Файл слишком большой: ${file.size} > ${opts.maxBytes}`);
+		throw new ReadFileError(READ_FILE_ERROR_FILE_TOO_LARGE, `Файл слишком большой: ${file.size} > ${opts.maxBytes}`);
 	}
 }
 
@@ -70,19 +93,19 @@ function readAsDataUrl(file: File, opts: ReadFileOptions): Promise<string> {
 
 		reader.onerror = () => {
 			detachAbort?.();
-			reject(new ReadFileError("READ_FAILED", "Не удалось прочитать файл как DataURL", reader.error));
+			reject(new ReadFileError(READ_FILE_ERROR_READ_FAILED, "Не удалось прочитать файл как DataURL", reader.error));
 		};
 
 		reader.onabort = () => {
 			detachAbort?.();
-			reject(new ReadFileError("READ_ABORTED", "Чтение файла прервано"));
+			reject(new ReadFileError(READ_FILE_ERROR_READ_ABORTED, READ_ABORTED_MESSAGE));
 		};
 
 		reader.onload = () => {
 			detachAbort?.();
 			const result = reader.result;
 			if (typeof result !== "string") {
-				reject(new ReadFileError("READ_FAILED", "Неожиданный тип результата FileReader"));
+				reject(new ReadFileError(READ_FILE_ERROR_READ_FAILED, UNEXPECTED_READER_RESULT_MESSAGE));
 				return;
 			}
 			resolve(result);
@@ -92,7 +115,7 @@ function readAsDataUrl(file: File, opts: ReadFileOptions): Promise<string> {
 			reader.readAsDataURL(file);
 		} catch (cause) {
 			detachAbort?.();
-			reject(new ReadFileError("READ_FAILED", "При чтении DataURL функция FileReader выдала ошибку", cause));
+			reject(new ReadFileError(READ_FILE_ERROR_READ_FAILED, "При чтении DataURL функция FileReader выдала ошибку", cause));
 		}
 	});
 }
@@ -105,19 +128,19 @@ function readAsArrayBuffer(file: File, opts: ReadFileOptions): Promise<ArrayBuff
 
 		reader.onerror = () => {
 			detachAbort?.();
-			reject(new ReadFileError("READ_FAILED", "Не удалось прочитать файл как ArrayBuffer.", reader.error));
+			reject(new ReadFileError(READ_FILE_ERROR_READ_FAILED, "Не удалось прочитать файл как ArrayBuffer.", reader.error));
 		};
 
 		reader.onabort = () => {
 			detachAbort?.();
-			reject(new ReadFileError("READ_ABORTED", "Чтение файла прервано"));
+			reject(new ReadFileError(READ_FILE_ERROR_READ_ABORTED, READ_ABORTED_MESSAGE));
 		};
 
 		reader.onload = () => {
 			detachAbort?.();
 			const result = reader.result;
 			if (!(result instanceof ArrayBuffer)) {
-				reject(new ReadFileError("READ_FAILED", "Неожиданный тип результата FileReader"));
+				reject(new ReadFileError(READ_FILE_ERROR_READ_FAILED, UNEXPECTED_READER_RESULT_MESSAGE));
 				return;
 			}
 			resolve(result);
@@ -127,34 +150,28 @@ function readAsArrayBuffer(file: File, opts: ReadFileOptions): Promise<ArrayBuff
 			reader.readAsArrayBuffer(file);
 		} catch (cause) {
 			detachAbort?.();
-			reject(new ReadFileError("READ_FAILED", "При чтении ArrayBuffer возникла ошибка FileReader", cause));
+			reject(new ReadFileError(READ_FILE_ERROR_READ_FAILED, "При чтении ArrayBuffer возникла ошибка FileReader", cause));
 		}
 	});
 }
 
 // Перегрузки для строгой типизации результата
 
-export async function readFile(
-	file: File,
-	opts?: Omit<ReadFileOptions, "mode"> & { mode?: "data-url" }
-): Promise<Extract<ReadFileResult, { mode: "data-url" }>>;
-export async function readFile(
-	file: File,
-	opts: Omit<ReadFileOptions, "mode"> & { mode: "array-buffer" }
-): Promise<Extract<ReadFileResult, { mode: "array-buffer" }>>;
+export async function readFile(file: File, opts?: ReadFileAsDataUrlOptions): Promise<ReadFileAsDataUrlResult>;
+export async function readFile(file: File, opts: ReadFileAsArrayBufferOptions): Promise<ReadFileAsArrayBufferResult>;
 
 export async function readFile(file: File, opts: ReadFileOptions = {}): Promise<ReadFileResult> {
 	assertNotAborted(opts.signal);
 	validateFile(file, opts);
 
-	const mode: ReadMode = opts.mode ?? "data-url";
+	const mode: ReadMode = opts.mode ?? READ_FILE_MODE_DATA_URL;
 	const meta = buildMeta(file);
 
-	if (mode === "array-buffer") {
+	if (mode === READ_FILE_MODE_ARRAY_BUFFER) {
 		const buffer = await readAsArrayBuffer(file, opts);
-		return { mode: "array-buffer", meta, buffer, file };
+		return { mode: READ_FILE_MODE_ARRAY_BUFFER, meta, buffer, file };
 	}
 
 	const dataUrl = await readAsDataUrl(file, opts);
-	return { mode: "data-url", meta, dataUrl, file };
+	return { mode: READ_FILE_MODE_DATA_URL, meta, dataUrl, file };
 }

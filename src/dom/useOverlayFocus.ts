@@ -1,4 +1,9 @@
-import { RefObject, useEffect, useEffectEvent, useRef } from "react";
+import { type RefObject, useEffect, useEffectEvent, useRef } from "react";
+
+import { KEYBOARD_KEY_TAB } from "../utils/keyboardConstants";
+
+import { DOM_KEYDOWN_EVENT } from "./domEventConstants";
+import { OVERLAY_INITIAL_FOCUS_AUTO, OVERLAY_INITIAL_FOCUS_CONTAINER } from "./overlayFocusConstants";
 
 const focusableElementsSelector =
 	'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"]:not([tabindex="-1"]), [contenteditable=""]:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"]):not([disabled])';
@@ -7,7 +12,8 @@ export interface UseOverlayFocusOptions<T extends HTMLElement> {
 	active: boolean;
 	trapFocus?: boolean;
 	restoreFocus?: boolean;
-	initialFocus?: "auto" | "container" | ((container: T) => HTMLElement | null | undefined);
+	initialFocus?:
+		typeof OVERLAY_INITIAL_FOCUS_AUTO | typeof OVERLAY_INITIAL_FOCUS_CONTAINER | ((container: T) => HTMLElement | null | undefined);
 	restoreFocusTarget?: () => HTMLElement | null | undefined;
 	containerRef?: RefObject<T | null>;
 }
@@ -22,7 +28,7 @@ export function useOverlayFocus<T extends HTMLElement>({
 	active,
 	trapFocus = false,
 	restoreFocus = true,
-	initialFocus = "auto",
+	initialFocus = OVERLAY_INITIAL_FOCUS_AUTO,
 	restoreFocusTarget,
 	containerRef
 }: UseOverlayFocusOptions<T>) {
@@ -43,7 +49,7 @@ export function useOverlayFocus<T extends HTMLElement>({
 	 * Вычисляет стартовый фокус при открытии overlay.
 	 */
 	const resolveInitialFocus = useEffectEvent((container: T) => {
-		if (initialFocus === "container") {
+		if (initialFocus === OVERLAY_INITIAL_FOCUS_CONTAINER) {
 			return container;
 		}
 
@@ -89,7 +95,7 @@ export function useOverlayFocus<T extends HTMLElement>({
 			}
 
 			if (trapFocus) {
-				overlayElement.addEventListener("keydown", handleTabKey);
+				overlayElement.addEventListener(DOM_KEYDOWN_EVENT, handleTabKey);
 			}
 		};
 
@@ -97,7 +103,7 @@ export function useOverlayFocus<T extends HTMLElement>({
 		 * Зацикливает Tab внутри overlay, пока он открыт как модальный слой.
 		 */
 		const handleTabKey = (event: KeyboardEvent) => {
-			if (!trapFocus || event.key !== "Tab" || !overlayElement) {
+			if (!trapFocus || event.key !== KEYBOARD_KEY_TAB || !overlayElement) {
 				return;
 			}
 
@@ -131,7 +137,7 @@ export function useOverlayFocus<T extends HTMLElement>({
 		return () => {
 			window.cancelAnimationFrame(rafId);
 			if (trapFocus && overlayElement) {
-				overlayElement.removeEventListener("keydown", handleTabKey);
+				overlayElement.removeEventListener(DOM_KEYDOWN_EVENT, handleTabKey);
 			}
 
 			if (!restoreFocus) {

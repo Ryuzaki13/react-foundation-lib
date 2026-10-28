@@ -1,4 +1,10 @@
 import {
+	TABLE_CELL_SELECTION_ACTIVATION_DIRECT,
+	TABLE_CELL_SELECTION_ACTIVATION_PRIMARY_MODIFIER,
+	TABLE_SELECTION_MODE_NONE,
+	TABLE_SELECTION_MODE_SINGLE
+} from "./tableSelectionConstants";
+import {
 	type TableCellCoordinates,
 	type TableCellSelectionActivationMode,
 	type TableCellSelectionMode,
@@ -6,7 +12,10 @@ import {
 	type TableSelectionModifierEvent
 } from "./types";
 
-const TABLE_CELL_SELECTION_ACTIVATION_MODES: ReadonlySet<TableCellSelectionActivationMode> = new Set(["direct", "primary-modifier"]);
+const TABLE_CELL_SELECTION_ACTIVATION_MODES: ReadonlySet<TableCellSelectionActivationMode> = new Set([
+	TABLE_CELL_SELECTION_ACTIVATION_DIRECT,
+	TABLE_CELL_SELECTION_ACTIVATION_PRIMARY_MODIFIER
+]);
 
 /** Строит collision-safe identity координат для дедупликации и сравнения. */
 function buildTableCellKey(cell: TableCellCoordinates): string {
@@ -37,7 +46,7 @@ export function pruneTableCellSelection(
 	availableColumnIds: readonly string[],
 	selectionMode: TableCellSelectionMode
 ): TableCellCoordinates[] {
-	if (selectionMode === "none" || !selection?.length) {
+	if (selectionMode === TABLE_SELECTION_MODE_NONE || !selection?.length) {
 		return [];
 	}
 
@@ -67,7 +76,7 @@ export function pruneTableCellSelection(
 			return (columnOrder.get(left.columnId) ?? 0) - (columnOrder.get(right.columnId) ?? 0);
 		});
 
-	if (selectionMode === "single") {
+	if (selectionMode === TABLE_SELECTION_MODE_SINGLE) {
 		const lastCell = nextSelection.at(-1);
 		return lastCell ? [lastCell] : [];
 	}
@@ -86,14 +95,14 @@ export function toggleTableCellSelection(
 	cell: TableCellCoordinates,
 	selectionMode: TableCellSelectionMode
 ): TableCellCoordinates[] {
-	if (selectionMode === "none") {
+	if (selectionMode === TABLE_SELECTION_MODE_NONE) {
 		return [];
 	}
 
 	const cellKey = buildTableCellKey(cell);
 	const hasCell = selection.some((item) => buildTableCellKey(item) === cellKey);
 
-	if (selectionMode === "single") {
+	if (selectionMode === TABLE_SELECTION_MODE_SINGLE) {
 		return hasCell ? [] : [cell];
 	}
 
@@ -103,7 +112,7 @@ export function toggleTableCellSelection(
 /** Нормализует способ активации ячейки на внешней config-boundary. */
 export function normalizeTableCellSelectionActivationMode(
 	value: unknown,
-	fallback: TableCellSelectionActivationMode = "direct"
+	fallback: TableCellSelectionActivationMode = TABLE_CELL_SELECTION_ACTIVATION_DIRECT
 ): TableCellSelectionActivationMode {
 	return typeof value === "string" && TABLE_CELL_SELECTION_ACTIVATION_MODES.has(value as TableCellSelectionActivationMode)
 		? (value as TableCellSelectionActivationMode)
@@ -120,7 +129,7 @@ export function shouldActivateTableCellSelection(
 	event: TableSelectionModifierEvent,
 	activationMode: TableCellSelectionActivationMode
 ): boolean {
-	if (activationMode === "direct") {
+	if (activationMode === TABLE_CELL_SELECTION_ACTIVATION_DIRECT) {
 		return true;
 	}
 

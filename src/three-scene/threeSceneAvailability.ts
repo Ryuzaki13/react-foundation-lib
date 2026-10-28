@@ -1,8 +1,26 @@
-export type ThreeSceneWebGLVersion = "webgl" | "webgl2";
+import {
+	THREE_SCENE_WEBGL_VERSION_1,
+	THREE_SCENE_WEBGL_VERSION_2,
+	THREE_SCENE_DISABLED_STORAGE_VALUE,
+	type THREE_SCENE_STATUS_PENDING,
+	type THREE_SCENE_STATUS_AVAILABLE,
+	type THREE_SCENE_STATUS_UNAVAILABLE,
+	type THREE_SCENE_REASON_SSR,
+	type THREE_SCENE_REASON_SESSION_DISABLED,
+	type THREE_SCENE_REASON_REDUCED_MOTION,
+	type THREE_SCENE_REASON_WEBGL_UNSUPPORTED
+} from "./threeSceneConstants";
 
-export type ThreeSceneAvailabilityStatus = "pending" | "available" | "unavailable";
+export type ThreeSceneWebGLVersion = typeof THREE_SCENE_WEBGL_VERSION_1 | typeof THREE_SCENE_WEBGL_VERSION_2;
 
-export type ThreeSceneUnavailableReason = "ssr" | "sessionDisabled" | "reducedMotion" | "webglUnsupported";
+export type ThreeSceneAvailabilityStatus =
+	typeof THREE_SCENE_STATUS_PENDING | typeof THREE_SCENE_STATUS_AVAILABLE | typeof THREE_SCENE_STATUS_UNAVAILABLE;
+
+export type ThreeSceneUnavailableReason =
+	| typeof THREE_SCENE_REASON_SSR
+	| typeof THREE_SCENE_REASON_SESSION_DISABLED
+	| typeof THREE_SCENE_REASON_REDUCED_MOTION
+	| typeof THREE_SCENE_REASON_WEBGL_UNSUPPORTED;
 
 export type ThreeSceneAvailability = {
 	readonly status: ThreeSceneAvailabilityStatus;
@@ -16,8 +34,8 @@ export type ThreeSceneSupportOptions = {
 type ThreeSceneWebGLContext = WebGLRenderingContext | WebGL2RenderingContext;
 
 const webGLContextNames: Record<ThreeSceneWebGLVersion, readonly string[]> = {
-	webgl: ["webgl2", "webgl", "experimental-webgl"],
-	webgl2: ["webgl2"]
+	webgl: [THREE_SCENE_WEBGL_VERSION_2, THREE_SCENE_WEBGL_VERSION_1, "experimental-webgl"],
+	webgl2: [THREE_SCENE_WEBGL_VERSION_2]
 };
 
 export const threeSceneDefaultDisabledStorageKey = `${__APP_ID__}:three-scene:disabled`;
@@ -28,7 +46,7 @@ export function isThreeSceneDisabledForSession(storageKey = threeSceneDefaultDis
 	}
 
 	try {
-		return window.sessionStorage.getItem(storageKey) === "1";
+		return window.sessionStorage.getItem(storageKey) === THREE_SCENE_DISABLED_STORAGE_VALUE;
 	} catch {
 		return false;
 	}
@@ -40,13 +58,13 @@ export function disableThreeSceneForSession(storageKey = threeSceneDefaultDisabl
 	}
 
 	try {
-		window.sessionStorage.setItem(storageKey, "1");
+		window.sessionStorage.setItem(storageKey, THREE_SCENE_DISABLED_STORAGE_VALUE);
 	} catch {
 		// sessionStorage может быть недоступен в приватном режиме или при пользовательских политиках браузера.
 	}
 }
 
-export function isThreeSceneSupported({ webGLVersion = "webgl2" }: ThreeSceneSupportOptions = {}): boolean {
+export function isThreeSceneSupported({ webGLVersion = THREE_SCENE_WEBGL_VERSION_2 }: ThreeSceneSupportOptions = {}): boolean {
 	if (typeof document === "undefined") {
 		return false;
 	}

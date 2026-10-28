@@ -1,3 +1,5 @@
+import { type TABLE_DOCUMENT_VERSION } from "./tableDocumentConstants";
+
 /** Координаты относятся к полной сетке, включая скрытые объединением ячейки. */
 export type TableDocumentPosition = { readonly row: number; readonly column: number };
 
@@ -15,7 +17,7 @@ export type TableDocumentColumn = { readonly id: string; readonly width: number 
  * Это исключает устаревшие spans у скрытых ячеек после повторного merge/split.
  */
 export type TableDocument<T> = {
-	readonly version: 1;
+	readonly version: typeof TABLE_DOCUMENT_VERSION;
 	readonly caption: string;
 	readonly columns: readonly TableDocumentColumn[];
 	readonly rows: readonly TableDocumentRow<T>[];

@@ -1,3 +1,4 @@
+import { ANALYTICAL_EXPANSION_ALL } from "../runtime/analyticalViewConstants";
 import { type AnalyticalModelRow, type AnalyticalTableModel } from "../types";
 
 import { resolveRowsProjection } from "./resolveRowsProjection";
@@ -20,9 +21,9 @@ function replaceExpandedRows<T>(
 /** Раскрытие меняет только затронутые ветви; формулы и итоги остаются результатом базовой модели. */
 export function projectAnalyticalTableExpansion<T>(
 	model: AnalyticalTableModel<T>,
-	expandedRowIds: readonly string[] | "all"
+	expandedRowIds: readonly string[] | typeof ANALYTICAL_EXPANSION_ALL
 ): AnalyticalTableModel<T> {
-	const expandAll = expandedRowIds === "all";
+	const expandAll = expandedRowIds === ANALYTICAL_EXPANSION_ALL;
 	const expanded = new Set(expandAll ? [] : expandedRowIds);
 	const replacements = new Map<AnalyticalModelRow<T>, AnalyticalModelRow<T>>();
 

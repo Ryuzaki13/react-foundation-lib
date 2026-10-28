@@ -1,5 +1,7 @@
 import { type Query, type QueryClient } from "@tanstack/react-query";
 
+import { QUERY_REFETCH_ACTIVE } from "./queryCacheEventConstants";
+import { SESSION_QUERY_RESET_COMPLETED, SESSION_QUERY_RESET_FAILED } from "./sessionScopedResetConstants";
 import { beginSessionScopedQueryReset } from "./sessionScopedResetLifecycle";
 import {
 	type InstalledSessionScopedQueryReset,
@@ -65,7 +67,7 @@ export async function resetSessionScopedQueries(queryClient: QueryClient, option
 			await queryClient.refetchQueries(
 				{
 					predicate: (query) => isSessionScopedQuery(query) && query.getObserversCount() > 0,
-					type: "active"
+					type: QUERY_REFETCH_ACTIVE
 				},
 				{ cancelRefetch: true }
 			);
@@ -75,7 +77,9 @@ export async function resetSessionScopedQueries(queryClient: QueryClient, option
 	} catch (error) {
 		failures.push(error);
 	} finally {
-		failures.push(...(await boundary.complete({ status: failures.length === 0 ? "completed" : "failed" })));
+		failures.push(
+			...(await boundary.complete({ status: failures.length === 0 ? SESSION_QUERY_RESET_COMPLETED : SESSION_QUERY_RESET_FAILED }))
+		);
 	}
 	if (failures.length === 1) throw failures[0];
 	if (failures.length > 1) throw new AggregateError(failures, "Не удалось завершить сброс session-scoped Query");

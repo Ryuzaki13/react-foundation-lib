@@ -1,4 +1,5 @@
-import { Breakpoint } from "./breakpoints";
+import { BREAKPOINT_MOBILE, BREAKPOINT_TABLET, BREAKPOINT_LAPTOP } from "./breakpointConstants";
+import { type Breakpoint } from "./breakpoints";
 
 export type ResponsiveMap<T> = {
 	mobile?: T;
@@ -12,7 +13,7 @@ export function isResponsiveMap<T>(v: ResponsiveValue<T>): v is ResponsiveMap<T>
 	if (typeof v !== "object" || v === null) return false;
 
 	// ключевой момент: отличаем “responsive-map” от произвольного объекта T
-	return "mobile" in v || "tablet" in v || "laptop" in v || "desktop" in v;
+	return BREAKPOINT_MOBILE in v || BREAKPOINT_TABLET in v || BREAKPOINT_LAPTOP in v || "desktop" in v;
 }
 
 /**
@@ -36,8 +37,8 @@ export function resolveResponsiveValue<T>(value: ResponsiveValue<T> | undefined,
 		return value;
 	}
 
-	if (bp === "mobile") return value.mobile ?? value.tablet ?? value.laptop;
-	if (bp === "tablet") return value.tablet ?? value.mobile ?? value.laptop;
+	if (bp === BREAKPOINT_MOBILE) return value.mobile ?? value.tablet ?? value.laptop;
+	if (bp === BREAKPOINT_TABLET) return value.tablet ?? value.mobile ?? value.laptop;
 
 	return value.laptop ?? value.tablet ?? value.mobile;
 }

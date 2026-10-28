@@ -4,6 +4,13 @@ import { downloadFileFromBlob } from "../dom";
 import { escapeXmlValue } from "../xml";
 
 import { resolveExcelSheetNames } from "./excel";
+import { EXCEL_COLUMN_ALPHABET_LENGTH, EXCEL_COLUMN_FIRST_CHARACTER_CODE, EXCEL_WORKBOOK_EMPTY_MESSAGE } from "./excelWorkbookConstants";
+
+// XML-имена согласованы между типами допустимых элементов и их формированием.
+const EXCEL_HEADER_FOOTER_ELEMENT = "headerFooter";
+const EXCEL_COLUMN_BREAKS_ELEMENT = "colBreaks";
+const EXCEL_ROW_BREAKS_ELEMENT = "rowBreaks";
+const EXCEL_DEFINED_NAMES_END_TAG = "</definedNames>";
 
 type BrowserExcelFileContent = File | Blob | ArrayBuffer;
 
@@ -45,7 +52,7 @@ export type ExcelPrintArea = {
  */
 export type ExcelPrintSetup = {
 	readonly orientation: "portrait" | "landscape";
-	readonly paperSize?: "a4" | "a3";
+	readonly paperSize?: keyof typeof PAPER_SIZE;
 	readonly fitToWidthPages?: number;
 	readonly fitToHeightPages?: number;
 	readonly pageOrder?: "downThenOver" | "overThenDown";
@@ -96,6 +103,9 @@ const DEFAULT_PRINT_MARGINS = {
 } as const satisfies ExcelPrintMargins;
 
 const PAPER_SIZE = { a4: 9, a3: 8 } as const;
+const DEFAULT_PAPER_SIZE: keyof typeof PAPER_SIZE = "a4";
+// Сохраняет прежнюю верхнюю границу индекса в XML ручного разрыва страницы.
+const PAGE_BREAK_MAX_INDEX = 16383;
 
 function escapeHeaderFooterText(value: string): string {
 	return escapeXmlValue(value.replaceAll("&", "&&"));
@@ -105,9 +115,9 @@ function numberToColumnName(index: number): string {
 	let value = index;
 	let result = "";
 	while (value > 0) {
-		const remainder = (value - 1) % 26;
-		result = String.fromCharCode(65 + remainder) + result;
-		value = Math.floor((value - 1) / 26);
+		const remainder = (value - 1) % EXCEL_COLUMN_ALPHABET_LENGTH;
+		result = String.fromCharCode(EXCEL_COLUMN_FIRST_CHARACTER_CODE + remainder) + result;
+		value = Math.floor((value - 1) / EXCEL_COLUMN_ALPHABET_LENGTH);
 	}
 	return result;
 }
@@ -146,7 +156,7 @@ function validatePrintSetup(print: ExcelPrintSetup): void {
 }
 
 function buildHeaderFooterXml(
-	tagName: "headerFooter",
+	tagName: typeof EXCEL_HEADER_FOOTER_ELEMENT,
 	header: ExcelPrintHeaderFooter | undefined,
 	footer: ExcelPrintHeaderFooter | undefined
 ): string {
@@ -166,11 +176,14 @@ function buildHeaderFooterXml(
 	return `<${tagName}>${oddHeader ? `<oddHeader>${oddHeader}</oddHeader>` : ""}${oddFooter ? `<oddFooter>${oddFooter}</oddFooter>` : ""}</${tagName}>`;
 }
 
-function buildBreaksXml(tagName: "colBreaks" | "rowBreaks", values: readonly number[] | undefined): string {
+function buildBreaksXml(
+	tagName: typeof EXCEL_COLUMN_BREAKS_ELEMENT | typeof EXCEL_ROW_BREAKS_ELEMENT,
+	values: readonly number[] | undefined
+): string {
 	if (!values || values.length === 0) return "";
 	const uniqueValues = [...new Set(values)].sort((left, right) => left - right);
 	return `<${tagName} count="${uniqueValues.length}" manualBreakCount="${uniqueValues.length}">${uniqueValues
-		.map((value) => `<brk id="${value}" min="0" max="16383" man="1"/>`)
+		.map((value) => `<brk id="${value}" min="0" max="${PAGE_BREAK_MAX_INDEX}" man="1"/>`)
 		.join("")}</${tagName}>`;
 }
 
@@ -181,7 +194,7 @@ function applyWorksheetPrintSetup(content: string, print: ExcelPrintSetup): stri
 	const result = sheetProperties ? content.replace("<sheetViews", `${sheetProperties}<sheetViews`) : content;
 	const pageMargins = `<pageMargins left="${margins.left}" right="${margins.right}" top="${margins.top}" bottom="${margins.bottom}" header="${margins.header}" footer="${margins.footer}"/>`;
 	const pageSetupAttributes = [
-		`paperSize="${PAPER_SIZE[print.paperSize ?? "a4"]}"`,
+		`paperSize="${PAPER_SIZE[print.paperSize ?? DEFAULT_PAPER_SIZE]}"`,
 		`orientation="${print.orientation}"`,
 		print.fitToWidthPages !== undefined ? `fitToWidth="${print.fitToWidthPages}"` : "",
 		print.fitToHeightPages !== undefined ? `fitToHeight="${print.fitToHeightPages}"` : "",
@@ -193,9 +206,9 @@ function applyWorksheetPrintSetup(content: string, print: ExcelPrintSetup): stri
 	const additions = [
 		pageMargins,
 		`<pageSetup ${pageSetupAttributes}/>`,
-		buildHeaderFooterXml("headerFooter", print.header, print.footer),
-		buildBreaksXml("rowBreaks", print.rowBreaksAfter),
-		buildBreaksXml("colBreaks", print.columnBreaksAfter)
+		buildHeaderFooterXml(EXCEL_HEADER_FOOTER_ELEMENT, print.header, print.footer),
+		buildBreaksXml(EXCEL_ROW_BREAKS_ELEMENT, print.rowBreaksAfter),
+		buildBreaksXml(EXCEL_COLUMN_BREAKS_ELEMENT, print.columnBreaksAfter)
 	].join("");
 	const drawingIndex = result.indexOf("<drawing");
 	return drawingIndex >= 0
@@ -242,8 +255,8 @@ function applyWorkbookDefinedNames(content: string, definedNames: string): strin
 	if (/<definedNames\s*\/>/.test(content)) {
 		return content.replace(/<definedNames\s*\/>/, `<definedNames>${definedNames}</definedNames>`);
 	}
-	if (content.includes("</definedNames>")) {
-		return content.replace("</definedNames>", `${definedNames}</definedNames>`);
+	if (content.includes(EXCEL_DEFINED_NAMES_END_TAG)) {
+		return content.replace(EXCEL_DEFINED_NAMES_END_TAG, `${definedNames}</definedNames>`);
 	}
 	return content.replace("</sheets>", `</sheets><definedNames>${definedNames}</definedNames>`);
 }
@@ -279,7 +292,7 @@ function createMatrixPrintFeature(
  * выполняет отдельный browser-owner. KTK-specific layout сюда не передаётся.
  */
 export async function createExcelMatrixWorkbookBlob(args: ExcelMatrixWorkbookArgs): Promise<Blob> {
-	if (args.sheets.length === 0) throw new Error("Для формирования Excel-книги нужен минимум один лист");
+	if (args.sheets.length === 0) throw new Error(EXCEL_WORKBOOK_EMPTY_MESSAGE);
 	if (args.defaultFont) {
 		if (!args.defaultFont.fontFamily.trim()) throw new Error("Имя базового шрифта Excel-книги не может быть пустым");
 		if (!Number.isFinite(args.defaultFont.fontSize) || args.defaultFont.fontSize <= 0) {

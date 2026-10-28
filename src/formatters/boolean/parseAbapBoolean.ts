@@ -1,5 +1,7 @@
+import { ABAP_BOOLEAN_TRUE } from "../../types/abapBooleanConstants";
+
 export function parseAbapBoolean(value: unknown): boolean {
-	if (value && typeof value === "string" && value === "X") return true;
+	if (value && typeof value === "string" && value === ABAP_BOOLEAN_TRUE) return true;
 	return false;
 }
 

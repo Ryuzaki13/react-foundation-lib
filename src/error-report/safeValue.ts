@@ -1,13 +1,38 @@
 import { getErrorReportCaptureOptions } from "./captureOptions";
+import { ERROR_REPORT_VALUE_POLICY_VERBATIM } from "./capturePolicyConstants";
+import {
+	ERROR_REPORT_SAFE_STRING_MAX_LENGTH,
+	ERROR_REPORT_SAFE_ARRAY_MAX_ITEMS,
+	ERROR_REPORT_SAFE_OBJECT_MAX_KEYS
+} from "./errorReportCaptureLimits";
+import {
+	ERROR_REPORT_SCOPE_QUERY_KEY,
+	ERROR_REPORT_SCOPE_MUTATION_KEY,
+	ERROR_REPORT_SCOPE_PERSISTED_QUERY_KEY,
+	ERROR_REPORT_SCOPE_CONTEXT
+} from "./errorReportContractConstants";
+import {
+	REDACTED_VALUE,
+	HIGH_SURROGATE_FIRST,
+	HIGH_SURROGATE_LAST,
+	SAFE_VALUE_TYPE_TRUNCATED,
+	SAFE_VALUE_TYPE_NON_FINITE_NUMBER,
+	SAFE_VALUE_TYPE_UNDEFINED,
+	SAFE_VALUE_TYPE_INVALID_DATE,
+	SAFE_VALUE_TYPE_CIRCULAR,
+	SAFE_VALUE_TYPE_UNREADABLE,
+	SAFE_VALUE_TYPE_FUNCTION,
+	SAFE_VALUE_TYPE_SYMBOL,
+	SAFE_VALUE_TYPE_UNKNOWN
+} from "./safeValueMarkerConstants";
 
 import type { ErrorReportSafeValue, ErrorReportSanitizationContext, ErrorReportSanitizer } from "./types";
 
 const MAX_DEPTH = 4;
-const MAX_ARRAY_ITEMS = 20;
-const MAX_OBJECT_KEYS = 40;
 const MAX_DIAGNOSTIC_STRING_LENGTH = 4_096;
-const MAX_VERBATIM_KEY_STRING_LENGTH = 8_192;
-const REDACTED_VALUE = "[REDACTED]";
+const MAX_ARRAY_SHAPE_ITEMS = 3;
+const RELATIVE_URL_ORIGIN = "https://error-report.invalid";
+const TRUNCATED_TEXT_MARKER = "[TRUNCATED]";
 const SENSITIVE_KEY_PARTS = [
 	"apikey",
 	"authorization",
@@ -43,9 +68,9 @@ function looksLikeUrlWithPrivateParts(value: string) {
 
 function stripUrlSearchAndHash(value: string) {
 	try {
-		const parsed = new URL(value, "https://error-report.invalid");
+		const parsed = new URL(value, RELATIVE_URL_ORIGIN);
 		const pathname = parsed.pathname;
-		return parsed.origin === "https://error-report.invalid" ? pathname : `${parsed.origin}${pathname}`;
+		return parsed.origin === RELATIVE_URL_ORIGIN ? pathname : `${parsed.origin}${pathname}`;
 	} catch {
 		return value.split(/[?#]/, 1)[0] ?? value;
 	}
@@ -57,13 +82,13 @@ function stripUrlSearchAndHash(value: string) {
  * обязано исключить своим allow-list sanitizer.
  */
 export function sanitizeDiagnosticText(value: string, maxLength = MAX_DIAGNOSTIC_STRING_LENGTH) {
-	if (getErrorReportCaptureOptions().valuePolicy === "verbatim") {
+	if (getErrorReportCaptureOptions().valuePolicy === ERROR_REPORT_VALUE_POLICY_VERBATIM) {
 		if (value.length <= maxLength) return value;
 		const marker = `… [TRUNCATED: ${value.length} characters total]`;
-		if (marker.length > maxLength) return "[TRUNCATED]".slice(0, Math.max(0, maxLength));
+		if (marker.length > maxLength) return TRUNCATED_TEXT_MARKER.slice(0, Math.max(0, maxLength));
 		const prefix = value.slice(0, Math.max(0, maxLength - marker.length));
 		const lastCodeUnit = prefix.charCodeAt(prefix.length - 1);
-		const safePrefix = lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff ? prefix.slice(0, -1) : prefix;
+		const safePrefix = lastCodeUnit >= HIGH_SURROGATE_FIRST && lastCodeUnit <= HIGH_SURROGATE_LAST ? prefix.slice(0, -1) : prefix;
 		return `${safePrefix}${marker}`;
 	}
 	let sanitizedValue = value.slice(0, maxLength);
@@ -88,11 +113,11 @@ export function getUtf8TextSize(value: string) {
  * размеру transport payload.
  */
 export function sanitizeDiagnosticTextBytes(value: string, maxBytes: number) {
-	if (getErrorReportCaptureOptions().valuePolicy === "verbatim") {
+	if (getErrorReportCaptureOptions().valuePolicy === ERROR_REPORT_VALUE_POLICY_VERBATIM) {
 		const originalBytes = getUtf8TextSize(value);
 		if (originalBytes <= maxBytes) return value;
 		const marker = `… [TRUNCATED: ${originalBytes} UTF-8 bytes total]`;
-		if (getUtf8TextSize(marker) > maxBytes) return "[TRUNCATED]".slice(0, Math.max(0, maxBytes));
+		if (getUtf8TextSize(marker) > maxBytes) return TRUNCATED_TEXT_MARKER.slice(0, Math.max(0, maxBytes));
 		const prefixLimit = Math.max(0, maxBytes - getUtf8TextSize(marker));
 		let left = 0;
 		let right = value.length;
@@ -102,7 +127,7 @@ export function sanitizeDiagnosticTextBytes(value: string, maxBytes: number) {
 			else right = middle - 1;
 		}
 		const lastCodeUnit = value.charCodeAt(left - 1);
-		const safeEnd = lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff ? left - 1 : left;
+		const safeEnd = lastCodeUnit >= HIGH_SURROGATE_FIRST && lastCodeUnit <= HIGH_SURROGATE_LAST ? left - 1 : left;
 		return `${value.slice(0, safeEnd)}${marker}`;
 	}
 	const sanitizedValue = sanitizeDiagnosticText(value, maxBytes);
@@ -117,7 +142,7 @@ export function sanitizeDiagnosticTextBytes(value: string, maxBytes: number) {
 	}
 
 	const lastCodeUnit = sanitizedValue.charCodeAt(left - 1);
-	const safeEnd = lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff ? left - 1 : left;
+	const safeEnd = lastCodeUnit >= HIGH_SURROGATE_FIRST && lastCodeUnit <= HIGH_SURROGATE_LAST ? left - 1 : left;
 	return sanitizedValue.slice(0, safeEnd);
 }
 
@@ -127,32 +152,38 @@ type DiagnosticValueState = {
 };
 
 function createDiagnosticValueInternal(value: unknown, depth: number, state: DiagnosticValueState, key?: string): ErrorReportSafeValue {
-	const verbatim = getErrorReportCaptureOptions().valuePolicy === "verbatim";
+	const verbatim = getErrorReportCaptureOptions().valuePolicy === ERROR_REPORT_VALUE_POLICY_VERBATIM;
 	if (!verbatim && key && isSensitiveKey(key)) return REDACTED_VALUE;
-	if (depth >= MAX_DEPTH) return { type: "truncated" };
+	if (depth >= MAX_DEPTH) return { type: SAFE_VALUE_TYPE_TRUNCATED };
 	if (value === null || typeof value === "boolean") return value;
-	if (typeof value === "number") return Number.isFinite(value) ? value : { type: "non-finite-number" };
+	if (typeof value === "number") return Number.isFinite(value) ? value : { type: SAFE_VALUE_TYPE_NON_FINITE_NUMBER };
 	if (typeof value === "string") {
 		const normalizedValue =
 			!verbatim && ((key && isUrlKey(key)) || looksLikeUrlWithPrivateParts(value)) ? stripUrlSearchAndHash(value) : value;
 		return sanitizeDiagnosticText(normalizedValue, state.maxStringLength);
 	}
-	if (value === undefined) return { type: "undefined" };
-	if (value instanceof Date) return Number.isNaN(value.getTime()) ? { type: "invalid-date" } : value.toISOString();
+	if (value === undefined) return { type: SAFE_VALUE_TYPE_UNDEFINED };
+	if (value instanceof Date) return Number.isNaN(value.getTime()) ? { type: SAFE_VALUE_TYPE_INVALID_DATE } : value.toISOString();
 	if (typeof value === "object") {
-		if (state.seen.has(value)) return { type: "circular" };
+		if (state.seen.has(value)) return { type: SAFE_VALUE_TYPE_CIRCULAR };
 		state.seen.add(value);
 	}
 	if (Array.isArray(value)) {
-		const keptItems = verbatim && value.length > MAX_ARRAY_ITEMS ? MAX_ARRAY_ITEMS - 1 : MAX_ARRAY_ITEMS;
+		const keptItems =
+			verbatim && value.length > ERROR_REPORT_SAFE_ARRAY_MAX_ITEMS
+				? ERROR_REPORT_SAFE_ARRAY_MAX_ITEMS - 1
+				: ERROR_REPORT_SAFE_ARRAY_MAX_ITEMS;
 		const items = value.slice(0, keptItems).map((item) => createDiagnosticValueInternal(item, depth + 1, state));
-		if (verbatim && value.length > keptItems) items.push({ type: "truncated", omittedItems: value.length - keptItems });
+		if (verbatim && value.length > keptItems) items.push({ type: SAFE_VALUE_TYPE_TRUNCATED, omittedItems: value.length - keptItems });
 		return items;
 	}
 	if (typeof value === "object") {
 		try {
 			const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right));
-			const keptKeys = verbatim && entries.length > MAX_OBJECT_KEYS ? MAX_OBJECT_KEYS - 1 : MAX_OBJECT_KEYS;
+			const keptKeys =
+				verbatim && entries.length > ERROR_REPORT_SAFE_OBJECT_MAX_KEYS
+					? ERROR_REPORT_SAFE_OBJECT_MAX_KEYS - 1
+					: ERROR_REPORT_SAFE_OBJECT_MAX_KEYS;
 			const result: Record<string, ErrorReportSafeValue> = Object.fromEntries(
 				entries
 					.slice(0, keptKeys)
@@ -161,18 +192,18 @@ function createDiagnosticValueInternal(value: unknown, depth: number, state: Dia
 			if (verbatim && entries.length > keptKeys) {
 				let markerKey = "$truncated";
 				while (Object.hasOwn(value, markerKey)) markerKey += "_";
-				result[markerKey] = { type: "truncated", omittedKeys: entries.length - keptKeys };
+				result[markerKey] = { type: SAFE_VALUE_TYPE_TRUNCATED, omittedKeys: entries.length - keptKeys };
 			}
 			return result;
 		} catch {
-			return { type: "unreadable" };
+			return { type: SAFE_VALUE_TYPE_UNREADABLE };
 		}
 	}
-	if (typeof value === "function") return { type: "function" };
-	if (typeof value === "symbol") return { type: "symbol" };
+	if (typeof value === "function") return { type: SAFE_VALUE_TYPE_FUNCTION };
+	if (typeof value === "symbol") return { type: SAFE_VALUE_TYPE_SYMBOL };
 	if (typeof value === "bigint") return value.toString();
 
-	return { type: "unknown" };
+	return { type: SAFE_VALUE_TYPE_UNKNOWN };
 }
 
 /**
@@ -192,18 +223,18 @@ export function createDiagnosticValue(value: unknown, depth = 0): ErrorReportSaf
  * Описывает форму данных кеша без самих значений: типы, размеры массивов и ключи объектов.
  */
 export function createDataShape(value: unknown, depth = 0): ErrorReportSafeValue {
-	if (depth >= MAX_DEPTH) return { type: "truncated" };
+	if (depth >= MAX_DEPTH) return { type: SAFE_VALUE_TYPE_TRUNCATED };
 	if (value === null) return { type: "null" };
-	if (value === undefined) return { type: "undefined" };
+	if (value === undefined) return { type: SAFE_VALUE_TYPE_UNDEFINED };
 	if (Array.isArray(value)) {
 		return {
 			type: "array",
 			length: value.length,
-			firstItemsShape: value.slice(0, 3).map((item) => createDataShape(item, depth + 1))
+			firstItemsShape: value.slice(0, MAX_ARRAY_SHAPE_ITEMS).map((item) => createDataShape(item, depth + 1))
 		};
 	}
 	if (typeof value === "object") {
-		const entries = Object.entries(value as Record<string, unknown>).slice(0, MAX_OBJECT_KEYS);
+		const entries = Object.entries(value as Record<string, unknown>).slice(0, ERROR_REPORT_SAFE_OBJECT_MAX_KEYS);
 
 		return {
 			type: "object",
@@ -232,10 +263,13 @@ export function sanitizeErrorReportValue(
 	context: ErrorReportSanitizationContext,
 	maxStringLength = MAX_DIAGNOSTIC_STRING_LENGTH
 ) {
-	const keyScope = context.scope === "query-key" || context.scope === "mutation-key" || context.scope === "persisted-query-key";
+	const keyScope =
+		context.scope === ERROR_REPORT_SCOPE_QUERY_KEY ||
+		context.scope === ERROR_REPORT_SCOPE_MUTATION_KEY ||
+		context.scope === ERROR_REPORT_SCOPE_PERSISTED_QUERY_KEY;
 	const effectiveMaxStringLength =
-		getErrorReportCaptureOptions().valuePolicy === "verbatim" && keyScope
-			? Math.max(maxStringLength, MAX_VERBATIM_KEY_STRING_LENGTH)
+		getErrorReportCaptureOptions().valuePolicy === ERROR_REPORT_VALUE_POLICY_VERBATIM && keyScope
+			? Math.max(maxStringLength, ERROR_REPORT_SAFE_STRING_MAX_LENGTH)
 			: maxStringLength;
 	const createBoundedValue = (candidate: unknown) =>
 		createDiagnosticValueInternal(candidate, 0, { seen: new WeakSet(), maxStringLength: effectiveMaxStringLength });
@@ -254,7 +288,7 @@ export function sanitizeErrorReportValue(
 
 export function sanitizeDetail(
 	detail: Record<string, unknown> | undefined,
-	context: ErrorReportSanitizationContext = { scope: "context" }
+	context: ErrorReportSanitizationContext = { scope: ERROR_REPORT_SCOPE_CONTEXT }
 ): Record<string, ErrorReportSafeValue> | undefined {
 	if (!detail) return undefined;
 

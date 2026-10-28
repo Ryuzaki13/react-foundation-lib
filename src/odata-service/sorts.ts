@@ -1,3 +1,7 @@
+// Направления сортировки одинаково сериализуются в обоих построителях order by.
+const ODATA_SORT_DESCENDING = "desc";
+const ODATA_SORT_ASCENDING = "asc";
+
 export interface Sort<T> {
 	key: T;
 	/**
@@ -11,7 +15,7 @@ export function getSortIndex<T>(sorting: Sort<keyof T>[], key: keyof T): number 
 }
 
 export function buildODataOrder<T>(sorting: Sort<keyof T>[]): string {
-	return sorting.map((s) => `${String(s.key)} ${s.desc ? "desc" : "asc"}`).join(",");
+	return sorting.map((s) => `${String(s.key)} ${s.desc ? ODATA_SORT_DESCENDING : ODATA_SORT_ASCENDING}`).join(",");
 }
 
 export function toggleSort<T>(sorting: Sort<keyof T>[], key: keyof T, multi: boolean): Sort<keyof T>[] {
@@ -52,7 +56,7 @@ export function resolveEffectiveSorts<TKey extends PropertyKey>(grouping: TKey[]
 
 export function buildODataOrderBy<T>(grouping: (keyof T)[], sorting: Sort<keyof T>[]): string | undefined {
 	const effectiveSorting = resolveEffectiveSorts(grouping, sorting);
-	const parts = effectiveSorting.map((item) => `${String(item.key)} ${item.desc ? "desc" : "asc"}`);
+	const parts = effectiveSorting.map((item) => `${String(item.key)} ${item.desc ? ODATA_SORT_DESCENDING : ODATA_SORT_ASCENDING}`);
 
 	return parts.length ? parts.join(",") : undefined;
 }

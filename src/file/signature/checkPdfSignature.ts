@@ -1,4 +1,4 @@
-import { FILE_SIGNATURE_RESULT } from "../fileSignatureConstants";
+import { FILE_SIGNATURE_RESULT_MATCH, FILE_SIGNATURE_RESULT_MISMATCH, FILE_SIGNATURE_RESULT_UNSUPPORTED } from "../fileSignatureConstants";
 import { type FileSignatureCheckResult } from "../fileSignatureTypes";
 
 import { hasSignatureBytes, isTruncatedSignature } from "./hasSignatureBytes";
@@ -26,7 +26,7 @@ const PDF_VERSION_2_MINOR = 0x30;
  * не объявляем mismatch. Версия в header не доказывает структуру документа.
  */
 export function checkPdfSignature(bytes: Uint8Array): FileSignatureCheckResult {
-	if (isTruncatedSignature(bytes, PDF_FAMILY)) return FILE_SIGNATURE_RESULT.MISMATCH;
+	if (isTruncatedSignature(bytes, PDF_FAMILY)) return FILE_SIGNATURE_RESULT_MISMATCH;
 	const limit = Math.min(bytes.length, PDF_SCAN_LIMIT);
 	let malformedHeader = false;
 	let unknownRepresentation = false;
@@ -56,13 +56,13 @@ export function checkPdfSignature(bytes: Uint8Array): FileSignatureCheckResult {
 			(major === PDF_VERSION_1_MAJOR && minor <= PDF_VERSION_1_MINOR_LAST) ||
 			(major === PDF_VERSION_2_MAJOR && minor === PDF_VERSION_2_MINOR)
 		)
-			return FILE_SIGNATURE_RESULT.MATCH;
+			return FILE_SIGNATURE_RESULT_MATCH;
 		unknownRepresentation = true;
 	}
 
 	return unknownRepresentation
-		? FILE_SIGNATURE_RESULT.UNSUPPORTED
+		? FILE_SIGNATURE_RESULT_UNSUPPORTED
 		: malformedHeader
-			? FILE_SIGNATURE_RESULT.MISMATCH
-			: FILE_SIGNATURE_RESULT.UNSUPPORTED;
+			? FILE_SIGNATURE_RESULT_MISMATCH
+			: FILE_SIGNATURE_RESULT_UNSUPPORTED;
 }

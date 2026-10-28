@@ -1,6 +1,22 @@
-export type State = "" | "none" | "information" | "success" | "warning" | "error";
+import { type ABAP_BOOLEAN_FALSE, type ABAP_BOOLEAN_TRUE } from "./abapBooleanConstants";
+import {
+	type VALUE_STATE_EMPTY,
+	type VALUE_STATE_ERROR,
+	type VALUE_STATE_INFORMATION,
+	type VALUE_STATE_NONE,
+	type VALUE_STATE_SUCCESS,
+	type VALUE_STATE_WARNING
+} from "./valueStateConstants";
 
-export type AbapBoolean = "X" | " ";
+export type State =
+	| typeof VALUE_STATE_EMPTY
+	| typeof VALUE_STATE_NONE
+	| typeof VALUE_STATE_INFORMATION
+	| typeof VALUE_STATE_SUCCESS
+	| typeof VALUE_STATE_WARNING
+	| typeof VALUE_STATE_ERROR;
+
+export type AbapBoolean = typeof ABAP_BOOLEAN_TRUE | typeof ABAP_BOOLEAN_FALSE;
 
 export type Primitive = string | number | boolean | null | undefined;
 export type BaseType = Date | Primitive;

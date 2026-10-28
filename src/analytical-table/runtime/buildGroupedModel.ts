@@ -1,3 +1,4 @@
+import { ANALYTICAL_AGGREGATE_SCOPE_GRAND, ANALYTICAL_TOTALS_SCOPE_ALL } from "../definition/analyticalDefinitionConstants";
 import { type AnalyticalGroupingLevel, type CompiledAnalyticalTableDefinition } from "../definition/types";
 import { indexAnalyticalRows } from "../projections/indexAnalyticalRows";
 
@@ -40,9 +41,9 @@ export function buildGroupedAnalyticalModel<T>(args: {
 	const grandTotals = definition.grandTotals
 		? calculateAnalyticalTotals({
 				definition,
-				nodes: definition.grandTotalsScope === "all" ? source.rows : filteredRows,
+				nodes: definition.grandTotalsScope === ANALYTICAL_TOTALS_SCOPE_ALL ? source.rows : filteredRows,
 				aggregateRowIds: source.aggregateRowIds,
-				scope: "grand"
+				scope: ANALYTICAL_AGGREGATE_SCOPE_GRAND
 			})
 		: null;
 

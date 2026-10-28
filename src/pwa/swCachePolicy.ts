@@ -1,4 +1,12 @@
-export type SwCachePolicyMode = "off" | "ttl" | "bust";
+// Значения wire-политики общие для parser, builder и публичного union-типа.
+const SW_CACHE_MODE_OFF = "off";
+const SW_CACHE_MODE_TTL = "ttl";
+const SW_CACHE_MODE_BUST = "bust";
+const SW_CACHE_DURATION_FOREVER = "forever";
+const DEFAULT_SW_CACHE_AMOUNT = 24;
+const DEFAULT_SW_CACHE_UNIT = "h";
+
+export type SwCachePolicyMode = typeof SW_CACHE_MODE_OFF | typeof SW_CACHE_MODE_TTL | typeof SW_CACHE_MODE_BUST;
 export type SwCacheDurationUnit = "ms" | "s" | "m" | "h" | "d";
 
 export interface ParsedSwCachePolicy {
@@ -42,9 +50,9 @@ export function normalizeSwCacheName(value: string | undefined): string | undefi
 
 function parseDurationToken(value: string): DurationParseResult | undefined {
 	const normalized = value.trim().toLowerCase();
-	if (normalized === "forever") {
+	if (normalized === SW_CACHE_DURATION_FOREVER) {
 		return {
-			durationLabel: "forever",
+			durationLabel: SW_CACHE_DURATION_FOREVER,
 			ttlMs: Infinity
 		};
 	}
@@ -92,7 +100,7 @@ function createCacheName(duration: DurationParseResult, name: string | undefined
 export function parseSwCachePolicy(value: string | null | undefined): ParsedSwCachePolicy | undefined {
 	const normalized = value?.trim();
 	if (!normalized) return undefined;
-	if (normalized.toLowerCase() === "off") return { mode: "off" };
+	if (normalized.toLowerCase() === SW_CACHE_MODE_OFF) return { mode: SW_CACHE_MODE_OFF };
 
 	const parts = normalized
 		.split(/[;,]/)
@@ -101,7 +109,7 @@ export function parseSwCachePolicy(value: string | null | undefined): ParsedSwCa
 	const [modePart, ...optionParts] = parts;
 	const [rawMode, rawDuration] = modePart?.split("=", 2) ?? [];
 	const mode = rawMode?.toLowerCase();
-	if ((mode !== "ttl" && mode !== "bust") || !rawDuration) return undefined;
+	if ((mode !== SW_CACHE_MODE_TTL && mode !== SW_CACHE_MODE_BUST) || !rawDuration) return undefined;
 
 	const duration = parseDurationToken(rawDuration);
 	if (!duration) return undefined;
@@ -130,14 +138,15 @@ export function parseSwCachePolicy(value: string | null | undefined): ParsedSwCa
 
 export function resolveSwCacheCacheNameByPolicy(value: string | undefined): string | undefined {
 	const parsed = parseSwCachePolicy(value);
-	return parsed?.mode === "ttl" || parsed?.mode === "bust" ? parsed.cacheName : undefined;
+	return parsed?.mode === SW_CACHE_MODE_TTL || parsed?.mode === SW_CACHE_MODE_BUST ? parsed.cacheName : undefined;
 }
 
 export function buildSwCachePolicyValue(draft: SwCachePolicyDraft): string {
-	if (draft.mode === "off") return "off";
+	if (draft.mode === SW_CACHE_MODE_OFF) return SW_CACHE_MODE_OFF;
 
-	const amount = typeof draft.amount === "number" && Number.isFinite(draft.amount) && draft.amount > 0 ? draft.amount : 24;
-	const unit = draft.unit ?? "h";
+	const amount =
+		typeof draft.amount === "number" && Number.isFinite(draft.amount) && draft.amount > 0 ? draft.amount : DEFAULT_SW_CACHE_AMOUNT;
+	const unit = draft.unit ?? DEFAULT_SW_CACHE_UNIT;
 	const maxEntries =
 		typeof draft.maxEntries === "number" && Number.isInteger(draft.maxEntries) && draft.maxEntries > 0
 			? Math.min(draft.maxEntries, MAX_ODATA_CACHE_MAX_ENTRIES)

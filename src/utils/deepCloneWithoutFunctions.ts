@@ -1,9 +1,11 @@
+import { ARRAY_FUNCTION_STRATEGY_OMIT, type ARRAY_FUNCTION_STRATEGY_UNDEFINED } from "./cloneFunctionStrategyConstants";
+
 type DeepCloneOptions = {
 	/**
 	 * undefined — сохраняет длину массива и индексную структуру.
 	 * omit — удаляет элементы-функции из массива.
 	 */
-	arrayFunctionStrategy?: "undefined" | "omit";
+	arrayFunctionStrategy?: typeof ARRAY_FUNCTION_STRATEGY_UNDEFINED | typeof ARRAY_FUNCTION_STRATEGY_OMIT;
 
 	/**
 	 * false — возвращает plain object.
@@ -107,7 +109,7 @@ export function deepCloneWithoutFunctions<T>(value: T, options: DeepCloneOptions
 				const clonedItem = clone(input[index]);
 
 				if (clonedItem === SKIP) {
-					if (options.arrayFunctionStrategy === "omit") {
+					if (options.arrayFunctionStrategy === ARRAY_FUNCTION_STRATEGY_OMIT) {
 						continue;
 					}
 
@@ -115,14 +117,14 @@ export function deepCloneWithoutFunctions<T>(value: T, options: DeepCloneOptions
 					continue;
 				}
 
-				if (options.arrayFunctionStrategy === "omit") {
+				if (options.arrayFunctionStrategy === ARRAY_FUNCTION_STRATEGY_OMIT) {
 					result.push(clonedItem);
 				} else {
 					result[index] = clonedItem;
 				}
 			}
 
-			if (options.arrayFunctionStrategy !== "omit") {
+			if (options.arrayFunctionStrategy !== ARRAY_FUNCTION_STRATEGY_OMIT) {
 				result.length = input.length;
 			}
 

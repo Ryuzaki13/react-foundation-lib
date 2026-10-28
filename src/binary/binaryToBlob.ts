@@ -1,40 +1,68 @@
-const DEFAULT_BLOB_MIME_TYPE = "application/octet-stream";
-const DEFAULT_DOCUMENT_MIME_TYPE = "application/pdf";
+import {
+	MIME_TYPE_DOCX,
+	MIME_TYPE_IMAGE_GIF,
+	MIME_TYPE_IMAGE_JPEG,
+	MIME_TYPE_IMAGE_PNG,
+	MIME_TYPE_IMAGE_TIFF,
+	MIME_TYPE_IMAGE_WEBP,
+	MIME_TYPE_MSWORD,
+	MIME_TYPE_OCTET_STREAM,
+	MIME_TYPE_PDF,
+	MIME_TYPE_PPT,
+	MIME_TYPE_PPTX,
+	MIME_TYPE_XLS,
+	MIME_TYPE_XLSX,
+	MIME_TYPE_XML,
+	MIME_TYPE_ZIP
+} from "../file/mimeTypeConstants";
+import { hasSignatureBytes } from "../file/signature/hasSignatureBytes";
+
+import { BASE64_ENCODED_BLOCK_CHARACTERS, BASE64_PADDING } from "./base64Constants";
+
 const BASE64_DATA_URL_PATTERN = /^data:([^,]*);base64,([\s\S]*)$/i;
+const BASE64_HEADER_SCAN_CHARACTERS = 128;
+const XML_HEADER_SCAN_CHARACTERS = 16;
+// Здесь распознаётся только прежний короткий prefix, без усиления проверки формата.
+const PDF_HEADER_PREFIX = [0x25, 0x50, 0x44, 0x46];
+const JPEG_HEADER_PREFIX = [0xff, 0xd8, 0xff];
+const PNG_HEADER_PREFIX = [0x89, 0x50, 0x4e, 0x47];
+const GIF_HEADER_PREFIX = [0x47, 0x49, 0x46];
+const WEBP_HEADER_PREFIX = [0x52, 0x49, 0x46, 0x46];
+const ZIP_HEADER_PREFIX = [0x50, 0x4b];
 
 const MIME_TYPE_BY_EXTENSION: Record<string, string> = {
 	bmp: "image/bmp",
 	csv: "text/csv",
-	doc: "application/msword",
-	docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-	gif: "image/gif",
-	jpeg: "image/jpeg",
-	jpg: "image/jpeg",
+	doc: MIME_TYPE_MSWORD,
+	docx: MIME_TYPE_DOCX,
+	gif: MIME_TYPE_IMAGE_GIF,
+	jpeg: MIME_TYPE_IMAGE_JPEG,
+	jpg: MIME_TYPE_IMAGE_JPEG,
 	json: "application/json",
-	pdf: "application/pdf",
-	png: "image/png",
-	ppt: "application/vnd.ms-powerpoint",
-	pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	pdf: MIME_TYPE_PDF,
+	png: MIME_TYPE_IMAGE_PNG,
+	ppt: MIME_TYPE_PPT,
+	pptx: MIME_TYPE_PPTX,
 	svg: "image/svg+xml",
-	tif: "image/tiff",
-	tiff: "image/tiff",
+	tif: MIME_TYPE_IMAGE_TIFF,
+	tiff: MIME_TYPE_IMAGE_TIFF,
 	txt: "text/plain",
-	webp: "image/webp",
-	xls: "application/vnd.ms-excel",
-	xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-	xml: "application/xml",
-	zip: "application/zip"
+	webp: MIME_TYPE_IMAGE_WEBP,
+	xls: MIME_TYPE_XLS,
+	xlsx: MIME_TYPE_XLSX,
+	xml: MIME_TYPE_XML,
+	zip: MIME_TYPE_ZIP
 };
 
 const normalizeBase64 = (value: string): string => {
 	const normalized = value.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
-	const paddingRest = normalized.length % 4;
+	const paddingRest = normalized.length % BASE64_ENCODED_BLOCK_CHARACTERS;
 
 	if (paddingRest === 1 || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) {
 		throw new Error("Некорректный формат base64");
 	}
 
-	return paddingRest === 0 ? normalized : `${normalized}${"=".repeat(4 - paddingRest)}`;
+	return paddingRest === 0 ? normalized : `${normalized}${BASE64_PADDING.repeat(BASE64_ENCODED_BLOCK_CHARACTERS - paddingRest)}`;
 };
 
 const getBase64RawPayload = (binaryData: string): { data: string; mimeType: string | null } => {
@@ -108,7 +136,7 @@ const copyBytesToArrayBuffer = (byteArray: Uint8Array): ArrayBuffer => {
 const decodeHeaderFromBase64 = (binaryData: string): string | null => {
 	try {
 		const { data } = getBase64RawPayload(binaryData);
-		const headerData = data.slice(0, 128);
+		const headerData = data.slice(0, BASE64_HEADER_SCAN_CHARACTERS);
 		const binaryString = atob(normalizeBase64(headerData));
 
 		return binaryString;
@@ -130,37 +158,37 @@ const detectMimeTypeBySignature = (binaryData: string): string | null => {
 		bytes[index] = header.charCodeAt(index);
 	}
 
-	if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
-		return "application/pdf";
+	if (hasSignatureBytes(bytes, PDF_HEADER_PREFIX)) {
+		return MIME_TYPE_PDF;
 	}
 
-	if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-		return "image/jpeg";
+	if (hasSignatureBytes(bytes, JPEG_HEADER_PREFIX)) {
+		return MIME_TYPE_IMAGE_JPEG;
 	}
 
-	if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
-		return "image/png";
+	if (hasSignatureBytes(bytes, PNG_HEADER_PREFIX)) {
+		return MIME_TYPE_IMAGE_PNG;
 	}
 
-	if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
-		return "image/gif";
+	if (hasSignatureBytes(bytes, GIF_HEADER_PREFIX)) {
+		return MIME_TYPE_IMAGE_GIF;
 	}
 
-	if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
-		return "image/webp";
+	if (hasSignatureBytes(bytes, WEBP_HEADER_PREFIX)) {
+		return MIME_TYPE_IMAGE_WEBP;
 	}
 
-	if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
-		return "application/zip";
+	if (hasSignatureBytes(bytes, ZIP_HEADER_PREFIX)) {
+		return MIME_TYPE_ZIP;
 	}
 
 	const textHeader = header
 		.replace(/^\uFEFF/, "")
 		.trimStart()
-		.slice(0, 16);
+		.slice(0, XML_HEADER_SCAN_CHARACTERS);
 
 	if (textHeader.startsWith("<?xml") || textHeader.startsWith("<")) {
-		return "application/xml";
+		return MIME_TYPE_XML;
 	}
 
 	return null;
@@ -171,7 +199,7 @@ const detectMimeTypeBySignature = (binaryData: string): string | null => {
  *
  * Data URL с префиксом `data:*;base64,` поддерживается, сам URL здесь не создаётся.
  */
-export const binaryToBlob = (binaryData: string, mimeType: string = DEFAULT_BLOB_MIME_TYPE, isBase64 = true): Blob => {
+export const binaryToBlob = (binaryData: string, mimeType: string = MIME_TYPE_OCTET_STREAM, isBase64 = true): Blob => {
 	if (!binaryData) {
 		throw new Error("Не переданы бинарные данные");
 	}
@@ -183,7 +211,7 @@ export const binaryToBlob = (binaryData: string, mimeType: string = DEFAULT_BLOB
 			throw new Error("После преобразования не осталось данных");
 		}
 
-		return new Blob([copyBytesToArrayBuffer(byteArray)], { type: mimeType.trim() || DEFAULT_BLOB_MIME_TYPE });
+		return new Blob([copyBytesToArrayBuffer(byteArray)], { type: mimeType.trim() || MIME_TYPE_OCTET_STREAM });
 	} catch (error) {
 		if (error instanceof Error) {
 			throw error;
@@ -220,5 +248,5 @@ export const detectMimeType = (fileName?: string, binaryData?: string): string =
 		}
 	}
 
-	return DEFAULT_DOCUMENT_MIME_TYPE;
+	return MIME_TYPE_PDF;
 };

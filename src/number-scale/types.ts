@@ -1,8 +1,10 @@
+import { type NUMBER_SCALE_MARKS_POSITION_VALUE, type NUMBER_SCALE_MARKS_POSITION_INDEX } from "./marksPositionConstants";
+
 /**
  * Режим расчёта визуальных позиций marks.
  * `value` использует числовую пропорцию, `index` расставляет marks равномерно.
  */
-export type NumberScaleMarksPosition = "value" | "index";
+export type NumberScaleMarksPosition = typeof NUMBER_SCALE_MARKS_POSITION_VALUE | typeof NUMBER_SCALE_MARKS_POSITION_INDEX;
 
 export interface NumberScaleMark {
 	/**

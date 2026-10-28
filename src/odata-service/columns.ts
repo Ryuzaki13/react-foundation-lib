@@ -1,10 +1,11 @@
+import { ODATA_COLUMN_SEMANTIC_CODE } from "./odataMetadataConstants";
 import { EntityColumnProperty } from "./types";
 
 /**
  * Возвращает code-like filterable-колонки.
  */
 export function collectFilterableColumns(columns: readonly Readonly<EntityColumnProperty>[]): Readonly<EntityColumnProperty>[] {
-	return columns.filter((column) => column.semanticType === "code" && column.filterable);
+	return columns.filter((column) => column.semanticType === ODATA_COLUMN_SEMANTIC_CODE && column.filterable);
 }
 
 /**

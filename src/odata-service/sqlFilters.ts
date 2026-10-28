@@ -1,12 +1,20 @@
+import { type FILTER_LOGICAL_AND, FILTER_LOGICAL_OR } from "./filterOperationConstants";
+
+// SQL-like дискриминанты сохраняют отдельный контракт от URL-операторов OData.
+const SQL_FILTER_OPERATION_EQ = "eq";
+const SQL_FILTER_OPERATION_IN = "in";
+const SQL_FILTER_OPERATION_GROUP = "group";
+const SQL_FILTER_AND_SEPARATOR = " AND ";
+
 export type SqlFilterScalarValue = string | number | boolean;
 
-export type SqlFilterOperation = "eq" | "in";
+export type SqlFilterOperation = typeof SQL_FILTER_OPERATION_EQ | typeof SQL_FILTER_OPERATION_IN;
 
 export type SqlFilterEqualCondition = {
 	/** Имя SQL-поля после всех доменных маппингов. */
 	fieldId: string;
 	/** Оператор строгого равенства. */
-	operation: "eq";
+	operation: typeof SQL_FILTER_OPERATION_EQ;
 	/** Исходное значение фильтра. Неподдерживаемые и пустые значения не сериализуются. */
 	value: unknown;
 };
@@ -15,14 +23,14 @@ export type SqlFilterInCondition = {
 	/** Имя SQL-поля после всех доменных маппингов. */
 	fieldId: string;
 	/** Оператор включения в список значений. */
-	operation: "in";
+	operation: typeof SQL_FILTER_OPERATION_IN;
 	/** Исходные значения фильтра. Неподдерживаемые и пустые значения не сериализуются. */
 	values: readonly unknown[] | null | undefined;
 };
 
 export type SqlFilterCondition = SqlFilterEqualCondition | SqlFilterInCondition;
 
-export type SqlFilterConjunction = "and" | "or";
+export type SqlFilterConjunction = typeof FILTER_LOGICAL_AND | typeof FILTER_LOGICAL_OR;
 
 /**
  * Явная группа SQL-like выражений с собственным логическим оператором.
@@ -30,7 +38,7 @@ export type SqlFilterConjunction = "and" | "or";
  * объединении с соседними выражениями верхнего уровня через `AND`.
  */
 export type SqlFilterGroup = {
-	operation: "group";
+	operation: typeof SQL_FILTER_OPERATION_GROUP;
 	conjunction: SqlFilterConjunction;
 	expressions: readonly SqlFilterExpression[];
 };
@@ -51,11 +59,11 @@ export function assertSqlFilterFieldId(fieldId: string): void {
 }
 
 export function createSqlFilterEqual(fieldId: string, value: unknown): SqlFilterEqualCondition {
-	return { fieldId, operation: "eq", value };
+	return { fieldId, operation: SQL_FILTER_OPERATION_EQ, value };
 }
 
 export function createSqlFilterIn(fieldId: string, values: readonly unknown[] | null | undefined): SqlFilterInCondition {
-	return { fieldId, operation: "in", values };
+	return { fieldId, operation: SQL_FILTER_OPERATION_IN, values };
 }
 
 /**
@@ -64,7 +72,7 @@ export function createSqlFilterIn(fieldId: string, values: readonly unknown[] | 
  * альтернативные физические поля, а сам остаётся частью общего `AND`-выражения.
  */
 export function createSqlFilterGroup(expressions: readonly SqlFilterExpression[], conjunction: SqlFilterConjunction): SqlFilterGroup {
-	return { operation: "group", conjunction, expressions };
+	return { operation: SQL_FILTER_OPERATION_GROUP, conjunction, expressions };
 }
 
 function normalizeSqlFilterValue(value: unknown): string | undefined {
@@ -83,17 +91,17 @@ function normalizeSqlFilterValue(value: unknown): string | undefined {
 }
 
 function buildSqlFilterExpression(expression: SqlFilterExpression): string | undefined {
-	if (expression.operation === "group") {
+	if (expression.operation === SQL_FILTER_OPERATION_GROUP) {
 		const nestedExpressions = expression.expressions
 			.map((nestedExpression) => buildSqlFilterExpression(nestedExpression))
 			.filter((nestedExpression): nestedExpression is string => Boolean(nestedExpression));
 		if (!nestedExpressions.length) return undefined;
 
-		const separator = expression.conjunction === "or" ? " OR " : " AND ";
+		const separator = expression.conjunction === FILTER_LOGICAL_OR ? " OR " : SQL_FILTER_AND_SEPARATOR;
 		return `(${nestedExpressions.join(separator)})`;
 	}
 
-	if (expression.operation === "eq") {
+	if (expression.operation === SQL_FILTER_OPERATION_EQ) {
 		const formattedValue = normalizeSqlFilterValue(expression.value);
 		if (!formattedValue) return undefined;
 
@@ -123,5 +131,5 @@ export function buildSqlFilter(expressions: readonly SqlFilterExpression[] | und
 	return expressions
 		.map((expression) => buildSqlFilterExpression(expression))
 		.filter((expression): expression is string => Boolean(expression))
-		.join(" AND ");
+		.join(SQL_FILTER_AND_SEPARATOR);
 }

@@ -10,6 +10,15 @@ import {
 	type ThreeSceneAvailability,
 	type ThreeSceneWebGLVersion
 } from "./threeSceneAvailability";
+import {
+	THREE_SCENE_WEBGL_VERSION_2,
+	THREE_SCENE_STATUS_AVAILABLE,
+	THREE_SCENE_STATUS_UNAVAILABLE,
+	THREE_SCENE_REASON_SSR,
+	THREE_SCENE_REASON_SESSION_DISABLED,
+	THREE_SCENE_REASON_REDUCED_MOTION,
+	THREE_SCENE_REASON_WEBGL_UNSUPPORTED
+} from "./threeSceneConstants";
 
 export type UseThreeSceneAvailabilityOptions = {
 	readonly disabledStorageKey?: string;
@@ -20,27 +29,27 @@ export type UseThreeSceneAvailabilityOptions = {
 export function useThreeSceneAvailability({
 	disabledStorageKey = threeSceneDefaultDisabledStorageKey,
 	disableWhenReducedMotion = false,
-	webGLVersion = "webgl2"
+	webGLVersion = THREE_SCENE_WEBGL_VERSION_2
 }: UseThreeSceneAvailabilityOptions = {}): ThreeSceneAvailability {
 	const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 	const [availability, setAvailability] = useState<ThreeSceneAvailability>({
-		status: "unavailable",
-		reason: "ssr"
+		status: THREE_SCENE_STATUS_UNAVAILABLE,
+		reason: THREE_SCENE_REASON_SSR
 	});
 
 	useEffect(() => {
 		if (disableWhenReducedMotion && prefersReducedMotion) {
 			setAvailability({
-				status: "unavailable",
-				reason: "reducedMotion"
+				status: THREE_SCENE_STATUS_UNAVAILABLE,
+				reason: THREE_SCENE_REASON_REDUCED_MOTION
 			});
 			return;
 		}
 
 		if (isThreeSceneDisabledForSession(disabledStorageKey)) {
 			setAvailability({
-				status: "unavailable",
-				reason: "sessionDisabled"
+				status: THREE_SCENE_STATUS_UNAVAILABLE,
+				reason: THREE_SCENE_REASON_SESSION_DISABLED
 			});
 			return;
 		}
@@ -48,14 +57,14 @@ export function useThreeSceneAvailability({
 		if (!isThreeSceneSupported({ webGLVersion })) {
 			disableThreeSceneForSession(disabledStorageKey);
 			setAvailability({
-				status: "unavailable",
-				reason: "webglUnsupported"
+				status: THREE_SCENE_STATUS_UNAVAILABLE,
+				reason: THREE_SCENE_REASON_WEBGL_UNSUPPORTED
 			});
 			return;
 		}
 
 		setAvailability({
-			status: "available"
+			status: THREE_SCENE_STATUS_AVAILABLE
 		});
 	}, [disableWhenReducedMotion, disabledStorageKey, prefersReducedMotion, webGLVersion]);
 

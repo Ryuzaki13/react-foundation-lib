@@ -1,5 +1,11 @@
 import { addUnique } from "../../array";
 
+import {
+	PIPELINE_FORMATTER_RESOLVE_VALUE_STATE,
+	PIPELINE_FORMATTER_ROW_BASED_OVERRIDE,
+	PIPELINE_OVERRIDE_MODE_FIELD,
+	PIPELINE_STATE_SOURCE_FORMULA
+} from "./formattersPipelineConstants";
 import { validateFormattersPipelineConfig } from "./validate";
 
 import type { FormattersPipelineConfig } from "./types";
@@ -41,16 +47,16 @@ export function collectFormattersPipelineDependencyIds(config: FormattersPipelin
 	const seen = new Set<string>();
 
 	for (const step of validation.plan.steps) {
-		if (step.type === "resolveValueState" && step.config.valueSource?.kind === "formula") {
+		if (step.type === PIPELINE_FORMATTER_RESOLVE_VALUE_STATE && step.config.valueSource?.kind === PIPELINE_STATE_SOURCE_FORMULA) {
 			for (const dependencyId of step.config.valueSource.dependencyIds) {
 				addUnique(dependencyIds, seen, dependencyId);
 			}
 			continue;
 		}
 
-		if (step.type !== "rowBasedOverride") continue;
+		if (step.type !== PIPELINE_FORMATTER_ROW_BASED_OVERRIDE) continue;
 
-		if (step.config.mode === "field") {
+		if (step.config.mode === PIPELINE_OVERRIDE_MODE_FIELD) {
 			addUnique(dependencyIds, seen, step.config.fieldKey);
 			continue;
 		}

@@ -1,6 +1,9 @@
-import type { FormattersPipelineTypedValueContext } from "../formatters/pipeline";
-import type { EntityColumnProperty } from "../odata-service";
-import type { TableColumnAlign, TableColumnDef, TableColumnFormattingMetaInput } from "./types";
+import { type FormattersPipelineTypedValueContext } from "../formatters/pipeline";
+import { SCALAR_ROLE_MEASURE } from "../metadata/scalarTypeConstants";
+import { type EntityColumnProperty } from "../odata-service";
+
+import { TABLE_COLUMN_ALIGN_LEFT, TABLE_COLUMN_ALIGN_RIGHT } from "./tableColumnConstants";
+import { type TableColumnAlign, type TableColumnDef, type TableColumnFormattingMetaInput } from "./types";
 
 /**
  * Опции генерации колонок по OData metadata.
@@ -49,7 +52,7 @@ export function resolveTableColumnFormattingContextFromODataColumn(column: Entit
 	const forceMeasure = type === "decimal" || type === "float" || type === "double" || type === "int" || type === "byte";
 
 	return {
-		role: forceMeasure ? "measure" : role,
+		role: forceMeasure ? SCALAR_ROLE_MEASURE : role,
 		type: type
 	};
 }
@@ -60,7 +63,7 @@ export function resolveTableColumnFormattingContextFromODataColumn(column: Entit
  * NOTE: "не аналитические" все поля возвращают как "dimension"...
  */
 function resolveTableColumnAlignFromODataColumn(columnContext: FormattersPipelineTypedValueContext): TableColumnAlign {
-	return columnContext.role === "measure" ? "right" : "left";
+	return columnContext.role === SCALAR_ROLE_MEASURE ? TABLE_COLUMN_ALIGN_RIGHT : TABLE_COLUMN_ALIGN_LEFT;
 }
 
 /**

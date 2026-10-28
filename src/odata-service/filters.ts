@@ -1,18 +1,33 @@
+import { SCALAR_TYPE_BOOLEAN, SCALAR_TYPE_DATETIME, SCALAR_TYPE_INT, SCALAR_TYPE_STRING } from "../metadata/scalarTypeConstants";
+
+import {
+	FILTER_LOGICAL_AND,
+	FILTER_LOGICAL_OR,
+	FILTER_OPERATION_CONTAINS,
+	FILTER_OPERATION_ENDSWITH,
+	FILTER_OPERATION_EQ,
+	FILTER_OPERATION_GE,
+	FILTER_OPERATION_GT,
+	FILTER_OPERATION_LE,
+	FILTER_OPERATION_LT,
+	FILTER_OPERATION_NE,
+	FILTER_OPERATION_STARTSWITH
+} from "./filterOperationConstants";
 import { odataFormatValue } from "./formatters";
 
 import type { BaseType, RowRecord } from "../types";
 import type { ODataMetaType } from "./types";
 
 export const FilterOperation = Object.freeze({
-	eq: "eq",
-	ne: "ne",
-	gt: "gt",
-	ge: "ge",
-	lt: "lt",
-	le: "le",
-	startswith: "startswith",
-	endswith: "endswith",
-	contains: "contains"
+	eq: FILTER_OPERATION_EQ,
+	ne: FILTER_OPERATION_NE,
+	gt: FILTER_OPERATION_GT,
+	ge: FILTER_OPERATION_GE,
+	lt: FILTER_OPERATION_LT,
+	le: FILTER_OPERATION_LE,
+	startswith: FILTER_OPERATION_STARTSWITH,
+	endswith: FILTER_OPERATION_ENDSWITH,
+	contains: FILTER_OPERATION_CONTAINS
 } as const);
 
 export type FilterOperation = (typeof FilterOperation)[keyof typeof FilterOperation];
@@ -76,30 +91,30 @@ function getODataTypeFromValue(value: unknown): ODataMetaType {
 		case "bigint":
 		case "number":
 			// NOTE: тут теперь может возникнуть проблема, когда нужен будет long
-			return "int";
+			return SCALAR_TYPE_INT;
 		case "boolean":
-			return "boolean";
+			return SCALAR_TYPE_BOOLEAN;
 		case "object":
 			if (value instanceof Date) {
-				return "datetime";
+				return SCALAR_TYPE_DATETIME;
 			}
 	}
 
-	return "string";
+	return SCALAR_TYPE_STRING;
 }
 
 // Функция для построения условия
 function buildCondition<T>(condition: FilterCondition<T>): string {
-	const { key, operation = "eq", value, type } = condition;
+	const { key, operation = FILTER_OPERATION_EQ, value, type } = condition;
 	const odataType = type ?? getODataTypeFromValue(value);
 	const escapedValue = odataFormatValue(odataType, value);
 
 	// Специальные операторы для строк
-	if (operation === "contains") {
+	if (operation === FILTER_OPERATION_CONTAINS) {
 		return `substringof(${escapedValue},${String(key)})`;
 	}
 
-	if (operation === "startswith" || operation === "endswith") {
+	if (operation === FILTER_OPERATION_STARTSWITH || operation === FILTER_OPERATION_ENDSWITH) {
 		return `${operation}(${String(key)}, ${escapedValue})`;
 	}
 
@@ -146,7 +161,7 @@ export function buildODataFilter<T>(expression: FilterExpression<T> | undefined)
 			return buildCondition(conditions[0]);
 		}
 
-		const operator = and ? "and" : "or";
+		const operator = and ? FILTER_LOGICAL_AND : FILTER_LOGICAL_OR;
 		const conditionsString = conditions.map(buildCondition).join(` ${operator} `);
 		return `(${conditionsString})`;
 	}
@@ -163,7 +178,7 @@ export function buildODataFilter<T>(expression: FilterExpression<T> | undefined)
 			return buildODataFilter(filters[0]);
 		}
 
-		const operator = and ? "and" : "or";
+		const operator = and ? FILTER_LOGICAL_AND : FILTER_LOGICAL_OR;
 		const filterStrings = compactExpressionStrings(filters, buildODataFilter);
 
 		if (filterStrings.length === 0) {
@@ -191,7 +206,7 @@ export function buildODataFilterRecursive<T>(expression: FilterExpression<T> | u
 			if (conditions.length === 0) return "";
 			if (conditions.length === 1) return buildCondition(conditions[0]);
 
-			const operator = and ? "and" : "or";
+			const operator = and ? FILTER_LOGICAL_AND : FILTER_LOGICAL_OR;
 			return `(${conditions.map(buildCondition).join(` ${operator} `)})`;
 		}
 
@@ -201,7 +216,7 @@ export function buildODataFilterRecursive<T>(expression: FilterExpression<T> | u
 			if (filters.length === 0) return "";
 			if (filters.length === 1) return processExpression(filters[0]);
 
-			const operator = and ? "and" : "or";
+			const operator = and ? FILTER_LOGICAL_AND : FILTER_LOGICAL_OR;
 			const filterStrings = compactExpressionStrings(filters, processExpression).map((result) => {
 				return result.includes(" ") ? `(${result})` : result;
 			});
@@ -264,12 +279,12 @@ export function createFilterBetween<T, V extends BaseType>(key: keyof T, values:
 	if (value1 === null || value1 === undefined || value2 === null || value2 === undefined) {
 		if (value1) {
 			return {
-				conditions: [{ key, value: value1, operation: "ge" }]
+				conditions: [{ key, value: value1, operation: FILTER_OPERATION_GE }]
 			};
 		}
 		if (value2) {
 			return {
-				conditions: [{ key, value: value2, operation: "le" }]
+				conditions: [{ key, value: value2, operation: FILTER_OPERATION_LE }]
 			};
 		}
 		return { conditions: [] };
@@ -278,8 +293,8 @@ export function createFilterBetween<T, V extends BaseType>(key: keyof T, values:
 	return {
 		and: true,
 		conditions: [
-			{ key, value: value1, operation: "ge" },
-			{ key, value: value2, operation: "le" }
+			{ key, value: value1, operation: FILTER_OPERATION_GE },
+			{ key, value: value2, operation: FILTER_OPERATION_LE }
 		]
 	};
 }
@@ -295,11 +310,11 @@ export function createFilterBetween<T, V extends BaseType>(key: keyof T, values:
  * Если `value` массив, то выражение формируется с оператором `or`: `(E1 or E2 or E3)`
  */
 export function createFilterEqual<T, V extends BaseType>(key: keyof T, value: (V | V[]) | null | undefined): FilterExpression<T> {
-	return createFilter(key, value, "eq");
+	return createFilter(key, value, FILTER_OPERATION_EQ);
 }
 
 export function createFilterEqualFalsy<T, V extends BaseType>(key: keyof T, value: (V | V[]) | null | undefined): FilterExpression<T> {
-	return createFilter(key, Array.isArray(value) ? value.map((v) => v || null) : value || null, "eq");
+	return createFilter(key, Array.isArray(value) ? value.map((v) => v || null) : value || null, FILTER_OPERATION_EQ);
 }
 
 /**
@@ -313,7 +328,7 @@ export function createFilterEqualFalsy<T, V extends BaseType>(key: keyof T, valu
  * Если `value` массив, то выражение формируется с оператором `or`: `(E1 or E2 or E3)`
  */
 export function createFilterContains<T, V extends BaseType>(key: keyof T, value: (V | V[]) | null | undefined): FilterExpression<T> {
-	return createFilter(key, value, "contains");
+	return createFilter(key, value, FILTER_OPERATION_CONTAINS);
 }
 
 export function mergeFilterExpressions(

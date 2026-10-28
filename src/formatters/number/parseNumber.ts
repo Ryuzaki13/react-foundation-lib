@@ -1,3 +1,7 @@
+import { SPACE_CODE, NO_BREAK_SPACE_CODE, NARROW_NO_BREAK_SPACE_CODE } from "../strings/spaceCharacterConstants";
+
+const APOSTROPHE_GROUP_SEPARATOR_CODE = 39;
+
 /**
  * SAP-like парсер: пробелы/NBSP как группировка, ',' как десятичный.
  * Возвращает только finite number или undefined.
@@ -17,7 +21,13 @@ export function toFiniteNumber(v: unknown): number | undefined {
 	let s = "";
 	for (let i = 0; i < trimmed.length; i++) {
 		const c = trimmed.charCodeAt(i);
-		if (c === 32 || c === 160 || c === 8239 || c === 39 /*'*/) continue;
+		if (
+			c === SPACE_CODE ||
+			c === NO_BREAK_SPACE_CODE ||
+			c === NARROW_NO_BREAK_SPACE_CODE ||
+			c === APOSTROPHE_GROUP_SEPARATOR_CODE /*'*/
+		)
+			continue;
 		s += trimmed[i];
 	}
 

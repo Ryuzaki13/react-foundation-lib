@@ -1,4 +1,10 @@
 import { isErrorReportBuildId, isPrivateSourceMapApplicationId, parsePrivateSourceMapManifest } from "./manifest";
+import {
+	SOURCE_MAP_MANIFEST_FILE_NAME,
+	SOURCE_MAP_TEXT_ENCODING,
+	SOURCE_MAP_HASH_ALGORITHM,
+	SOURCE_MAP_HASH_ENCODING
+} from "./sourceMapArtifactConstants";
 import { PRIVATE_SOURCE_MAP_MANIFEST_MAX_BYTES, type LoadedPrivateSourceMapArtifact, type PrivateSourceMapManifestEntry } from "./types";
 
 import { createHash } from "node:crypto";
@@ -55,7 +61,7 @@ export async function loadPrivateSourceMapArtifact(
 	let manifestContent: Buffer;
 	try {
 		manifestContent = await readBoundedRegularFile(
-			path.join(buildDirectory, "manifest.json"),
+			path.join(buildDirectory, SOURCE_MAP_MANIFEST_FILE_NAME),
 			buildDirectory,
 			PRIVATE_SOURCE_MAP_MANIFEST_MAX_BYTES
 		);
@@ -67,7 +73,7 @@ export async function loadPrivateSourceMapArtifact(
 
 	let rawManifest: unknown;
 	try {
-		rawManifest = JSON.parse(manifestContent.toString("utf8"));
+		rawManifest = JSON.parse(manifestContent.toString(SOURCE_MAP_TEXT_ENCODING));
 	} catch {
 		throw new PrivateSourceMapArtifactError();
 	}
@@ -88,10 +94,13 @@ export async function readPrivateSourceMap(
 ): Promise<string> {
 	try {
 		const content = await readBoundedRegularFile(path.join(artifact.buildDirectory, entry.map), artifact.buildDirectory, entry.size);
-		if (content.byteLength !== entry.size || createHash("sha256").update(content).digest("hex") !== entry.sha256) {
+		if (
+			content.byteLength !== entry.size ||
+			createHash(SOURCE_MAP_HASH_ALGORITHM).update(content).digest(SOURCE_MAP_HASH_ENCODING) !== entry.sha256
+		) {
 			throw new PrivateSourceMapArtifactError();
 		}
-		return content.toString("utf8");
+		return content.toString(SOURCE_MAP_TEXT_ENCODING);
 	} catch (error) {
 		if (error instanceof PrivateSourceMapArtifactError) throw error;
 		throw new PrivateSourceMapArtifactError();

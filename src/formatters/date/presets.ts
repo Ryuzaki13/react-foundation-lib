@@ -1,3 +1,62 @@
+import { MS_IN_SECOND, SECONDS_PER_HOUR, SECONDS_PER_MINUTE } from "./calendarDateConstants";
+import {
+	DEFAULT_DATE_LOCALE,
+	INTL_DATE_PART_TWO_DIGIT,
+	INTL_DATE_PART_NUMERIC,
+	INTL_DATE_HOUR_CYCLE_23,
+	DATE_FORMAT_STYLE_SHORT,
+	DATE_FORMAT_STYLE_MEDIUM,
+	DATE_FORMAT_STYLE_LONG,
+	DATE_FORMAT_PRECISION_DAY,
+	DATE_FORMAT_PRECISION_MONTH,
+	DATE_FORMAT_PRECISION_YEAR,
+	INTL_DATE_MONTH_SHORT,
+	INTL_DATE_MONTH_LONG,
+	INTL_DATE_PART_YEAR,
+	INTL_DATE_PART_MONTH
+} from "./dateFormatConstants";
+import {
+	DATE_PATTERN_TIME_MINUTES,
+	DATE_PATTERN_TIME_SECONDS,
+	DATE_PATTERN_ISO_DATE,
+	DATE_PATTERN_ISO_DATE_TIME,
+	DATE_PATTERN_ABAP_DATE_TIME,
+	DATE_PATTERN_ABAP_DATE,
+	DATE_PATTERN_TOKEN_YEAR,
+	DATE_PATTERN_TOKEN_SHORT_YEAR,
+	DATE_PATTERN_TOKEN_MONTH,
+	DATE_PATTERN_TOKEN_DAY,
+	DATE_PATTERN_TOKEN_HOURS,
+	DATE_PATTERN_TOKEN_MINUTES,
+	DATE_PATTERN_TOKEN_SECONDS
+} from "./datePatternConstants";
+import {
+	DATE_PRESET_NAME_DATE,
+	DATE_PRESET_NAME_DATE_SHORT,
+	DATE_PRESET_NAME_DATE_MEDIUM,
+	DATE_PRESET_NAME_DATE_LONG,
+	DATE_PRESET_NAME_MONTH_YEAR_MEDIUM,
+	DATE_PRESET_NAME_MONTH_YEAR_LONG,
+	DATE_PRESET_NAME_DATETIME,
+	DATE_PRESET_NAME_DATETIME_SECONDS,
+	DATE_PRESET_NAME_TIME,
+	DATE_PRESET_NAME_TIME_SECONDS,
+	DATE_PRESET_NAME_ODATA_DATE,
+	DATE_PRESET_NAME_ODATA_DATETIME,
+	DATE_PRESET_NAME_ABAP_DATETIME,
+	DATE_PRESET_NAME_ABAP_DATE,
+	DATE_PRESET_NAME_ABAP_MONTH,
+	DATE_PRESET_NAME_ABAP_YEAR,
+	DATE_PRESET_NAME_MONTH_SHORT,
+	DATE_PRESET_NAME_MONTH_MEDIUM,
+	DATE_PRESET_NAME_MONTH_LONG,
+	DATE_PRESET_NAME_DATETIME_SHORT,
+	DATE_PRESET_NAME_DATETIME_MEDIUM,
+	DATE_PRESET_NAME_DATETIME_LONG,
+	DATE_PRESET_NAME_TIME_SHORT,
+	DATE_PRESET_NAME_TIME_MEDIUM,
+	DATE_PRESET_NAME_TIME_LONG
+} from "./datePresetNameConstants";
 import {
 	containsDatePatternToken,
 	DATE_PATTERN_DATE_TOKENS,
@@ -23,22 +82,17 @@ export interface CompiledDateFormatPreset extends DateFormatPreset {
 }
 
 /**
- * Локаль форматирования дат по умолчанию.
- */
-const DEFAULT_LOCALE = "ru-RU";
-
-/**
  * Уровни детализации, для которых создаются встроенные style-пресеты.
  */
-const FORMAT_STYLES = Object.freeze(["short", "medium", "long"] as const);
-const FORMAT_PRECISIONS = Object.freeze(["day", "month", "year"] as const);
+const FORMAT_STYLES = Object.freeze([DATE_FORMAT_STYLE_SHORT, DATE_FORMAT_STYLE_MEDIUM, DATE_FORMAT_STYLE_LONG] as const);
+const FORMAT_PRECISIONS = Object.freeze([DATE_FORMAT_PRECISION_DAY, DATE_FORMAT_PRECISION_MONTH, DATE_FORMAT_PRECISION_YEAR] as const);
 
 /**
  * Значения по умолчанию для предустановок форматирования дат.
  */
 export const DATE_FORMAT_DEFAULTS: Omit<DateFormatPreset, "name" | "intlOptions"> & { intlOptions: Intl.DateTimeFormatOptions } = {
-	locale: DEFAULT_LOCALE,
-	intlOptions: { day: "2-digit", month: "2-digit", year: "numeric" },
+	locale: DEFAULT_DATE_LOCALE,
+	intlOptions: { day: INTL_DATE_PART_TWO_DIGIT, month: INTL_DATE_PART_TWO_DIGIT, year: INTL_DATE_PART_NUMERIC },
 	invalidFallback: ""
 };
 
@@ -46,40 +100,40 @@ export const DATE_FORMAT_DEFAULTS: Omit<DateFormatPreset, "name" | "intlOptions"
  * Имена встроенных предустановок.
  */
 export const DEFAULT_DATE_PRESET_NAMES = Object.freeze({
-	date: "date",
-	dateShort: "date-short",
-	dateMedium: "date-medium",
-	dateLong: "date-long",
-	monthShort: "month-short",
-	monthMedium: "month-medium",
-	monthLong: "month-long",
-	monthYearMedium: "month-year-medium",
-	monthYearLong: "month-year-long",
-	datetime: "datetime",
-	datetimeSeconds: "datetime-seconds",
-	datetimeShort: "datetime-short",
-	datetimeMedium: "datetime-medium",
-	datetimeLong: "datetime-long",
-	time: "time",
-	timeSeconds: "time-seconds",
-	timeShort: "time-short",
-	timeMedium: "time-medium",
-	timeLong: "time-long",
-	odataDate: "odata-date",
-	odataDatetime: "odata-datetime",
-	abapDatetime: "abap-datetime",
-	abapDate: "abap-date",
-	abapMonth: "abap-month",
-	abapYear: "abap-year"
+	date: DATE_PRESET_NAME_DATE,
+	dateShort: DATE_PRESET_NAME_DATE_SHORT,
+	dateMedium: DATE_PRESET_NAME_DATE_MEDIUM,
+	dateLong: DATE_PRESET_NAME_DATE_LONG,
+	monthShort: DATE_PRESET_NAME_MONTH_SHORT,
+	monthMedium: DATE_PRESET_NAME_MONTH_MEDIUM,
+	monthLong: DATE_PRESET_NAME_MONTH_LONG,
+	monthYearMedium: DATE_PRESET_NAME_MONTH_YEAR_MEDIUM,
+	monthYearLong: DATE_PRESET_NAME_MONTH_YEAR_LONG,
+	datetime: DATE_PRESET_NAME_DATETIME,
+	datetimeSeconds: DATE_PRESET_NAME_DATETIME_SECONDS,
+	datetimeShort: DATE_PRESET_NAME_DATETIME_SHORT,
+	datetimeMedium: DATE_PRESET_NAME_DATETIME_MEDIUM,
+	datetimeLong: DATE_PRESET_NAME_DATETIME_LONG,
+	time: DATE_PRESET_NAME_TIME,
+	timeSeconds: DATE_PRESET_NAME_TIME_SECONDS,
+	timeShort: DATE_PRESET_NAME_TIME_SHORT,
+	timeMedium: DATE_PRESET_NAME_TIME_MEDIUM,
+	timeLong: DATE_PRESET_NAME_TIME_LONG,
+	odataDate: DATE_PRESET_NAME_ODATA_DATE,
+	odataDatetime: DATE_PRESET_NAME_ODATA_DATETIME,
+	abapDatetime: DATE_PRESET_NAME_ABAP_DATETIME,
+	abapDate: DATE_PRESET_NAME_ABAP_DATE,
+	abapMonth: DATE_PRESET_NAME_ABAP_MONTH,
+	abapYear: DATE_PRESET_NAME_ABAP_YEAR
 });
 
 /**
  * Алиасы style-форматов даты к именам встроенных date-пресетов.
  */
 export const DATE_FORMAT_STYLE_PRESET_NAMES: Readonly<Record<DateFormatStyle, string>> = Object.freeze({
-	short: DEFAULT_DATE_PRESET_NAMES.dateShort,
-	medium: DEFAULT_DATE_PRESET_NAMES.dateMedium,
-	long: DEFAULT_DATE_PRESET_NAMES.dateLong
+	short: DATE_PRESET_NAME_DATE_SHORT,
+	medium: DATE_PRESET_NAME_DATE_MEDIUM,
+	long: DATE_PRESET_NAME_DATE_LONG
 });
 
 const patternPresetCache = new Map<string, DateFormatPreset>();
@@ -88,28 +142,41 @@ const patternPresetCache = new Map<string, DateFormatPreset>();
  * Встроенные предустановки форматирования дат.
  */
 const BUILTIN_PRESETS: DateFormatPresetConfig[] = [
-	{ name: DEFAULT_DATE_PRESET_NAMES.date, intlOptions: { day: "2-digit", month: "2-digit", year: "numeric" } },
 	{
-		name: DEFAULT_DATE_PRESET_NAMES.datetime,
-		intlDateOptions: { day: "2-digit", month: "2-digit", year: "numeric" },
-		intlTimeOptions: { hour: "2-digit", minute: "2-digit", hourCycle: "h23" },
+		name: DATE_PRESET_NAME_DATE,
+		intlOptions: { day: INTL_DATE_PART_TWO_DIGIT, month: INTL_DATE_PART_TWO_DIGIT, year: INTL_DATE_PART_NUMERIC }
+	},
+	{
+		name: DATE_PRESET_NAME_DATETIME,
+		intlDateOptions: { day: INTL_DATE_PART_TWO_DIGIT, month: INTL_DATE_PART_TWO_DIGIT, year: INTL_DATE_PART_NUMERIC },
+		intlTimeOptions: { hour: INTL_DATE_PART_TWO_DIGIT, minute: INTL_DATE_PART_TWO_DIGIT, hourCycle: INTL_DATE_HOUR_CYCLE_23 },
 		intlJoiner: " "
 	},
 	{
-		name: DEFAULT_DATE_PRESET_NAMES.datetimeSeconds,
-		intlDateOptions: { day: "2-digit", month: "2-digit", year: "numeric" },
-		intlTimeOptions: { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" },
+		name: DATE_PRESET_NAME_DATETIME_SECONDS,
+		intlDateOptions: { day: INTL_DATE_PART_TWO_DIGIT, month: INTL_DATE_PART_TWO_DIGIT, year: INTL_DATE_PART_NUMERIC },
+		intlTimeOptions: {
+			hour: INTL_DATE_PART_TWO_DIGIT,
+			minute: INTL_DATE_PART_TWO_DIGIT,
+			second: INTL_DATE_PART_TWO_DIGIT,
+			hourCycle: INTL_DATE_HOUR_CYCLE_23
+		},
 		intlJoiner: " "
 	},
 	{
-		name: DEFAULT_DATE_PRESET_NAMES.time,
-		intlOptions: { hour: "2-digit", minute: "2-digit", hourCycle: "h23" },
-		durationPattern: "HH:mm"
+		name: DATE_PRESET_NAME_TIME,
+		intlOptions: { hour: INTL_DATE_PART_TWO_DIGIT, minute: INTL_DATE_PART_TWO_DIGIT, hourCycle: INTL_DATE_HOUR_CYCLE_23 },
+		durationPattern: DATE_PATTERN_TIME_MINUTES
 	},
 	{
-		name: DEFAULT_DATE_PRESET_NAMES.timeSeconds,
-		intlOptions: { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" },
-		durationPattern: "HH:mm:ss"
+		name: DATE_PRESET_NAME_TIME_SECONDS,
+		intlOptions: {
+			hour: INTL_DATE_PART_TWO_DIGIT,
+			minute: INTL_DATE_PART_TWO_DIGIT,
+			second: INTL_DATE_PART_TWO_DIGIT,
+			hourCycle: INTL_DATE_HOUR_CYCLE_23
+		},
+		durationPattern: DATE_PATTERN_TIME_SECONDS
 	},
 	...FORMAT_STYLES.map((style) => ({
 		name: `date-${style}`,
@@ -120,17 +187,17 @@ const BUILTIN_PRESETS: DateFormatPresetConfig[] = [
 		intlOptions: getMonthStyleIntlOptions(style)
 	})),
 	{
-		name: DEFAULT_DATE_PRESET_NAMES.monthYearMedium,
-		intlOptions: { month: "short", year: "numeric" }
+		name: DATE_PRESET_NAME_MONTH_YEAR_MEDIUM,
+		intlOptions: { month: INTL_DATE_MONTH_SHORT, year: INTL_DATE_PART_NUMERIC }
 	},
 	{
-		name: DEFAULT_DATE_PRESET_NAMES.monthYearLong,
-		intlOptions: { month: "long", year: "numeric" }
+		name: DATE_PRESET_NAME_MONTH_YEAR_LONG,
+		intlOptions: { month: INTL_DATE_MONTH_LONG, year: INTL_DATE_PART_NUMERIC }
 	},
 	...FORMAT_STYLES.map((style) => ({
 		name: `time-${style}`,
 		intlOptions: getTimeStyleIntlOptions(style),
-		durationPattern: style === "short" ? "HH:mm" : "HH:mm:ss"
+		durationPattern: style === DATE_FORMAT_STYLE_SHORT ? DATE_PATTERN_TIME_MINUTES : DATE_PATTERN_TIME_SECONDS
 	})),
 	...FORMAT_STYLES.map((style) => ({
 		name: `datetime-${style}`,
@@ -138,20 +205,20 @@ const BUILTIN_PRESETS: DateFormatPresetConfig[] = [
 		intlTimeOptions: getTimeStyleIntlOptions(style),
 		intlJoiner: ", "
 	})),
-	{ name: DEFAULT_DATE_PRESET_NAMES.odataDate, pattern: "yyyy-MM-dd" },
-	{ name: DEFAULT_DATE_PRESET_NAMES.odataDatetime, pattern: "yyyy-MM-ddTHH:mm:ss" },
-	{ name: DEFAULT_DATE_PRESET_NAMES.abapDatetime, pattern: "yyyyMMddHHmmss" },
-	{ name: DEFAULT_DATE_PRESET_NAMES.abapDate, pattern: "yyyyMMdd" },
-	{ name: DEFAULT_DATE_PRESET_NAMES.abapMonth, pattern: "yyyyMM" },
-	{ name: DEFAULT_DATE_PRESET_NAMES.abapYear, pattern: "yyyy" }
+	{ name: DATE_PRESET_NAME_ODATA_DATE, pattern: DATE_PATTERN_ISO_DATE },
+	{ name: DATE_PRESET_NAME_ODATA_DATETIME, pattern: DATE_PATTERN_ISO_DATE_TIME },
+	{ name: DATE_PRESET_NAME_ABAP_DATETIME, pattern: DATE_PATTERN_ABAP_DATE_TIME },
+	{ name: DATE_PRESET_NAME_ABAP_DATE, pattern: DATE_PATTERN_ABAP_DATE },
+	{ name: DATE_PRESET_NAME_ABAP_MONTH, pattern: "yyyyMM" },
+	{ name: DATE_PRESET_NAME_ABAP_YEAR, pattern: DATE_PATTERN_TOKEN_YEAR }
 ];
 
 /**
  * Текстовая детализация месяца для встроенных пресетов `месяц + год`.
  */
-const MONTH_YEAR_PRESET_STYLES: ReadonlyMap<string, "short" | "long"> = new Map([
-	[DEFAULT_DATE_PRESET_NAMES.monthYearMedium, "short"],
-	[DEFAULT_DATE_PRESET_NAMES.monthYearLong, "long"]
+const MONTH_YEAR_PRESET_STYLES: ReadonlyMap<string, typeof INTL_DATE_MONTH_SHORT | typeof INTL_DATE_MONTH_LONG> = new Map([
+	[DATE_PRESET_NAME_MONTH_YEAR_MEDIUM, INTL_DATE_MONTH_SHORT],
+	[DATE_PRESET_NAME_MONTH_YEAR_LONG, INTL_DATE_MONTH_LONG]
 ]);
 
 /**
@@ -169,18 +236,23 @@ function padDatePart(value: number, size = 2): string {
 /**
  * Возвращает настройки Intl для dateStyle-подобного формата без timezone-семантики.
  */
-function getDateStyleIntlOptions(style: DateFormatStyle, precision: DateFormatPrecision = "day"): Intl.DateTimeFormatOptions {
-	if (precision === "year") return { year: "numeric" };
+function getDateStyleIntlOptions(
+	style: DateFormatStyle,
+	precision: DateFormatPrecision = DATE_FORMAT_PRECISION_DAY
+): Intl.DateTimeFormatOptions {
+	if (precision === DATE_FORMAT_PRECISION_YEAR) return { year: INTL_DATE_PART_NUMERIC };
 
-	if (precision === "month") {
-		if (style === "short") return { month: "2-digit", year: "numeric" };
-		if (style === "medium") return { month: "short", year: "numeric" };
-		return { month: "long", year: "numeric" };
+	if (precision === DATE_FORMAT_PRECISION_MONTH) {
+		if (style === DATE_FORMAT_STYLE_SHORT) return { month: INTL_DATE_PART_TWO_DIGIT, year: INTL_DATE_PART_NUMERIC };
+		if (style === DATE_FORMAT_STYLE_MEDIUM) return { month: INTL_DATE_MONTH_SHORT, year: INTL_DATE_PART_NUMERIC };
+		return { month: INTL_DATE_MONTH_LONG, year: INTL_DATE_PART_NUMERIC };
 	}
 
-	if (style === "short") return { day: "2-digit", month: "2-digit", year: "numeric" };
-	if (style === "medium") return { day: "numeric", month: "short", year: "numeric" };
-	return { day: "numeric", month: "long", year: "numeric" };
+	if (style === DATE_FORMAT_STYLE_SHORT)
+		return { day: INTL_DATE_PART_TWO_DIGIT, month: INTL_DATE_PART_TWO_DIGIT, year: INTL_DATE_PART_NUMERIC };
+	if (style === DATE_FORMAT_STYLE_MEDIUM)
+		return { day: INTL_DATE_PART_NUMERIC, month: INTL_DATE_MONTH_SHORT, year: INTL_DATE_PART_NUMERIC };
+	return { day: INTL_DATE_PART_NUMERIC, month: INTL_DATE_MONTH_LONG, year: INTL_DATE_PART_NUMERIC };
 }
 
 /**
@@ -190,9 +262,9 @@ function getDateStyleIntlOptions(style: DateFormatStyle, precision: DateFormatPr
  * числовой short, сокращённый текстовый medium и полный текстовый long.
  */
 function getMonthStyleIntlOptions(style: DateFormatStyle): Intl.DateTimeFormatOptions {
-	if (style === "short") return { day: "2-digit", month: "2-digit" };
-	if (style === "medium") return { day: "numeric", month: "short" };
-	return { day: "numeric", month: "long" };
+	if (style === DATE_FORMAT_STYLE_SHORT) return { day: INTL_DATE_PART_TWO_DIGIT, month: INTL_DATE_PART_TWO_DIGIT };
+	if (style === DATE_FORMAT_STYLE_MEDIUM) return { day: INTL_DATE_PART_NUMERIC, month: INTL_DATE_MONTH_SHORT };
+	return { day: INTL_DATE_PART_NUMERIC, month: INTL_DATE_MONTH_LONG };
 }
 
 /**
@@ -203,8 +275,14 @@ function getMonthStyleIntlOptions(style: DateFormatStyle): Intl.DateTimeFormatOp
  * без вывода GMT/UTC-метки.
  */
 function getTimeStyleIntlOptions(style: DateFormatStyle): Intl.DateTimeFormatOptions {
-	if (style === "short") return { hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
-	return { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" };
+	if (style === DATE_FORMAT_STYLE_SHORT)
+		return { hour: INTL_DATE_PART_TWO_DIGIT, minute: INTL_DATE_PART_TWO_DIGIT, hourCycle: INTL_DATE_HOUR_CYCLE_23 };
+	return {
+		hour: INTL_DATE_PART_TWO_DIGIT,
+		minute: INTL_DATE_PART_TWO_DIGIT,
+		second: INTL_DATE_PART_TWO_DIGIT,
+		hourCycle: INTL_DATE_HOUR_CYCLE_23
+	};
 }
 
 /**
@@ -230,20 +308,23 @@ function hasIntlDateFields(options: Intl.DateTimeFormatOptions): boolean {
  */
 function resolveIntlDatePrecisionOptions(options: Intl.DateTimeFormatOptions, precision: DateFormatPrecision): Intl.DateTimeFormatOptions {
 	const safeOptions = sanitizeIntlOptions(options);
-	if (precision === "day" || !hasIntlDateFields(safeOptions)) return safeOptions;
+	if (precision === DATE_FORMAT_PRECISION_DAY || !hasIntlDateFields(safeOptions)) return safeOptions;
 
 	if (safeOptions.dateStyle) {
-		const style = safeOptions.dateStyle === "short" || safeOptions.dateStyle === "medium" ? safeOptions.dateStyle : "long";
+		const style =
+			safeOptions.dateStyle === DATE_FORMAT_STYLE_SHORT || safeOptions.dateStyle === DATE_FORMAT_STYLE_MEDIUM
+				? safeOptions.dateStyle
+				: DATE_FORMAT_STYLE_LONG;
 		return getDateStyleIntlOptions(style, precision);
 	}
 
-	if (precision === "year") {
-		return { year: safeOptions.year ?? "numeric" };
+	if (precision === DATE_FORMAT_PRECISION_YEAR) {
+		return { year: safeOptions.year ?? INTL_DATE_PART_NUMERIC };
 	}
 
 	return {
-		month: safeOptions.month ?? "2-digit",
-		year: safeOptions.year ?? "numeric"
+		month: safeOptions.month ?? INTL_DATE_PART_TWO_DIGIT,
+		year: safeOptions.year ?? INTL_DATE_PART_NUMERIC
 	};
 }
 
@@ -258,13 +339,15 @@ function createIntlFormatter(locale: string, options: Intl.DateTimeFormatOptions
 	const precisionFormatters = new Map<DateFormatPrecision, Intl.DateTimeFormat>();
 
 	if (safeOptions.timeStyle) {
-		const timeOptions = getTimeStyleIntlOptions(safeOptions.timeStyle === "short" ? "short" : "medium");
+		const timeOptions = getTimeStyleIntlOptions(
+			safeOptions.timeStyle === DATE_FORMAT_STYLE_SHORT ? DATE_FORMAT_STYLE_SHORT : DATE_FORMAT_STYLE_MEDIUM
+		);
 
 		if (safeOptions.dateStyle) {
 			const dateFormatter = new Intl.DateTimeFormat(locale, { dateStyle: safeOptions.dateStyle });
 			const timeFormatter = new Intl.DateTimeFormat(locale, timeOptions);
-			return (date, precision = "day") => {
-				if (precision === "day") return `${dateFormatter.format(date)}, ${timeFormatter.format(date)}`;
+			return (date, precision = DATE_FORMAT_PRECISION_DAY) => {
+				if (precision === DATE_FORMAT_PRECISION_DAY) return `${dateFormatter.format(date)}, ${timeFormatter.format(date)}`;
 
 				const precisionOptions = resolveIntlDatePrecisionOptions({ dateStyle: safeOptions.dateStyle }, precision);
 				let precisionFormatter = precisionFormatters.get(precision);
@@ -281,8 +364,8 @@ function createIntlFormatter(locale: string, options: Intl.DateTimeFormatOptions
 	}
 
 	const defaultFormatter = new Intl.DateTimeFormat(locale, safeOptions);
-	return (date, precision = "day") => {
-		if (precision === "day") return defaultFormatter.format(date);
+	return (date, precision = DATE_FORMAT_PRECISION_DAY) => {
+		if (precision === DATE_FORMAT_PRECISION_DAY) return defaultFormatter.format(date);
 
 		let precisionFormatter = precisionFormatters.get(precision);
 		if (!precisionFormatter) {
@@ -301,19 +384,19 @@ function getPatternTokenValue(token: string, date: Date): string {
 	const fullYear = String(date.getFullYear());
 
 	switch (token) {
-		case "yyyy":
+		case DATE_PATTERN_TOKEN_YEAR:
 			return fullYear;
-		case "yy":
+		case DATE_PATTERN_TOKEN_SHORT_YEAR:
 			return fullYear.slice(-2);
-		case "MM":
+		case DATE_PATTERN_TOKEN_MONTH:
 			return padDatePart(date.getMonth() + 1);
-		case "dd":
+		case DATE_PATTERN_TOKEN_DAY:
 			return padDatePart(date.getDate());
-		case "HH":
+		case DATE_PATTERN_TOKEN_HOURS:
 			return padDatePart(date.getHours());
-		case "mm":
+		case DATE_PATTERN_TOKEN_MINUTES:
 			return padDatePart(date.getMinutes());
-		case "ss":
+		case DATE_PATTERN_TOKEN_SECONDS:
 			return padDatePart(date.getSeconds());
 		default:
 			return token;
@@ -325,16 +408,16 @@ function getPatternTokenValue(token: string, date: Date): string {
  */
 function compileFixedPatternFormatter(pattern: string): CompiledDateFormatter {
 	switch (pattern) {
-		case "yyyyMMdd":
+		case DATE_PATTERN_ABAP_DATE:
 			return (date) => `${date.getFullYear()}${padDatePart(date.getMonth() + 1)}${padDatePart(date.getDate())}`;
-		case "yyyyMMddHHmmss":
+		case DATE_PATTERN_ABAP_DATE_TIME:
 			return (date) =>
 				`${date.getFullYear()}${padDatePart(date.getMonth() + 1)}${padDatePart(date.getDate())}${padDatePart(date.getHours())}${padDatePart(
 					date.getMinutes()
 				)}${padDatePart(date.getSeconds())}`;
-		case "yyyy-MM-dd":
+		case DATE_PATTERN_ISO_DATE:
 			return (date) => `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
-		case "yyyy-MM-ddTHH:mm:ss":
+		case DATE_PATTERN_ISO_DATE_TIME:
 			return (date) =>
 				`${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${padDatePart(date.getHours())}:${padDatePart(
 					date.getMinutes()
@@ -350,14 +433,14 @@ function compileFixedPatternFormatter(pattern: string): CompiledDateFormatter {
 function compilePatternFormatter(pattern: string): CompiledDateFormatter {
 	const precisionFormatters = new Map<DateFormatPrecision, CompiledDateFormatter>();
 
-	return (date, precision = "day") => {
+	return (date, precision = DATE_FORMAT_PRECISION_DAY) => {
 		let formatter = precisionFormatters.get(precision);
 		if (!formatter) {
 			formatter = compileFixedPatternFormatter(resolveDatePatternPrecision(pattern, precision));
 			precisionFormatters.set(precision, formatter);
 		}
 
-		return formatter(date, "day");
+		return formatter(date, DATE_FORMAT_PRECISION_DAY);
 	};
 }
 
@@ -394,16 +477,20 @@ function formatDurationByPattern(durationMs: number, pattern: string, fallback: 
 	if (!containsDatePatternToken(pattern, DATE_PATTERN_TIME_TOKENS)) return fallback;
 
 	const sign = durationMs < 0 ? "-" : "";
-	const absoluteSeconds = Math.trunc(Math.abs(durationMs) / 1_000);
-	const hours = Math.trunc(absoluteSeconds / 3_600);
-	const minutes = Math.trunc((absoluteSeconds % 3_600) / 60);
-	const seconds = absoluteSeconds % 60;
+	const absoluteSeconds = Math.trunc(Math.abs(durationMs) / MS_IN_SECOND);
+	const hours = Math.trunc(absoluteSeconds / SECONDS_PER_HOUR);
+	const minutes = Math.trunc((absoluteSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+	const seconds = absoluteSeconds % SECONDS_PER_MINUTE;
 
-	if (pattern === "HH:mm") return `${sign}${padDatePart(hours)}:${padDatePart(minutes)}`;
-	if (pattern === "HH:mm:ss") return `${sign}${padDatePart(hours)}:${padDatePart(minutes)}:${padDatePart(seconds)}`;
+	if (pattern === DATE_PATTERN_TIME_MINUTES) return `${sign}${padDatePart(hours)}:${padDatePart(minutes)}`;
+	if (pattern === DATE_PATTERN_TIME_SECONDS) return `${sign}${padDatePart(hours)}:${padDatePart(minutes)}:${padDatePart(seconds)}`;
 
 	return (
-		sign + pattern.replaceAll("HH", padDatePart(hours)).replaceAll("mm", padDatePart(minutes)).replaceAll("ss", padDatePart(seconds))
+		sign +
+		pattern
+			.replaceAll(DATE_PATTERN_TOKEN_HOURS, padDatePart(hours))
+			.replaceAll(DATE_PATTERN_TOKEN_MINUTES, padDatePart(minutes))
+			.replaceAll(DATE_PATTERN_TOKEN_SECONDS, padDatePart(seconds))
 	);
 }
 
@@ -434,8 +521,8 @@ function createPresetFormatter(preset: DateFormatPreset): CompiledDateFormatter 
 		const timeFormatter = createIntlFormatter(preset.locale, preset.intlTimeOptions);
 		const joiner = preset.intlJoiner ?? " ";
 
-		return (date, precision = "day") => {
-			if (precision !== "day") return dateFormatter(date, precision);
+		return (date, precision = DATE_FORMAT_PRECISION_DAY) => {
+			if (precision !== DATE_FORMAT_PRECISION_DAY) return dateFormatter(date, precision);
 			return `${dateFormatter(date)}${joiner}${timeFormatter(date)}`;
 		};
 	}
@@ -450,28 +537,34 @@ function createPresetFormatter(preset: DateFormatPreset): CompiledDateFormatter 
  * Пресет предназначен для компактного отображения месячной точности в DateInput,
  * поэтому собирает только содержательные части `month` и `year`.
  */
-function createMonthYearFormatter(locale: string, monthStyle: "short" | "long"): CompiledDateFormatter {
+function createMonthYearFormatter(
+	locale: string,
+	monthStyle: typeof INTL_DATE_MONTH_SHORT | typeof INTL_DATE_MONTH_LONG
+): CompiledDateFormatter {
 	// Русская локаль сокращает название месяца только в контексте даты с днём.
 	// День нужен Intl для правильной формы, но в итоговую строку не включается.
 	const monthYearFormatter = new Intl.DateTimeFormat(
 		locale,
-		monthStyle === "short" ? { day: "numeric", month: monthStyle, year: "numeric" } : { month: monthStyle, year: "numeric" }
+		monthStyle === INTL_DATE_MONTH_SHORT
+			? { day: INTL_DATE_PART_NUMERIC, month: monthStyle, year: INTL_DATE_PART_NUMERIC }
+			: { month: monthStyle, year: INTL_DATE_PART_NUMERIC }
 	);
-	const standaloneMonthFormatter = new Intl.DateTimeFormat(locale, { month: "long" });
-	const yearFormatter = new Intl.DateTimeFormat(locale, { year: "numeric" });
+	const standaloneMonthFormatter = new Intl.DateTimeFormat(locale, { month: INTL_DATE_MONTH_LONG });
+	const yearFormatter = new Intl.DateTimeFormat(locale, { year: INTL_DATE_PART_NUMERIC });
 
-	return (date, precision = "day") => {
-		const formatter = precision === "year" ? yearFormatter : monthYearFormatter;
+	return (date, precision = DATE_FORMAT_PRECISION_DAY) => {
+		const formatter = precision === DATE_FORMAT_PRECISION_YEAR ? yearFormatter : monthYearFormatter;
 		const parts = formatter.formatToParts(date);
-		const year = parts.find((part) => part.type === "year")?.value ?? "";
-		if (precision === "year") return year;
+		const year = parts.find((part) => part.type === INTL_DATE_PART_YEAR)?.value ?? "";
+		if (precision === DATE_FORMAT_PRECISION_YEAR) return year;
 
-		const contextualMonth = parts.find((part) => part.type === "month")?.value ?? "";
+		const contextualMonth = parts.find((part) => part.type === INTL_DATE_PART_MONTH)?.value ?? "";
 		// Для мая Intl возвращает нескорочённую родительную форму `мая`.
 		// Если сокращение с точкой отсутствует, берём самостоятельную форму `май`.
 		const month =
-			monthStyle === "short" && !contextualMonth.endsWith(".")
-				? (standaloneMonthFormatter.formatToParts(date).find((part) => part.type === "month")?.value ?? contextualMonth)
+			monthStyle === INTL_DATE_MONTH_SHORT && !contextualMonth.endsWith(".")
+				? (standaloneMonthFormatter.formatToParts(date).find((part) => part.type === INTL_DATE_PART_MONTH)?.value ??
+					contextualMonth)
 				: contextualMonth;
 
 		return `${month} ${year}`;
@@ -541,7 +634,7 @@ export function isDateFormatPrecision(value: string): value is DateFormatPrecisi
 /**
  * Нормализует имя пресета, алиас style-формата или ручной шаблон.
  */
-export function resolveDateFormatName(dateFormat?: string, defaultFormat: string = DEFAULT_DATE_PRESET_NAMES.date): string {
+export function resolveDateFormatName(dateFormat?: string, defaultFormat: string = DATE_PRESET_NAME_DATE): string {
 	const normalizedFormat = dateFormat?.trim();
 	if (!normalizedFormat) return defaultFormat;
 
@@ -592,9 +685,9 @@ export interface ResolveDateFormatPresetOptions {
 export function resolveDateFormatPreset(
 	dateFormat?: string,
 	{
-		defaultFormat = DEFAULT_DATE_PRESET_NAMES.date,
+		defaultFormat = DATE_PRESET_NAME_DATE,
 		patternPresetName = "__date_pattern__",
-		locale = DEFAULT_LOCALE,
+		locale = DEFAULT_DATE_LOCALE,
 		invalidFallback = ""
 	}: ResolveDateFormatPresetOptions = {}
 ): string | DateFormatPreset {

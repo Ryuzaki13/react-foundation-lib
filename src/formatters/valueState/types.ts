@@ -1,3 +1,5 @@
+import { type THRESHOLD_BOUNDARY_LOWER, type THRESHOLD_BOUNDARY_UPPER } from "./valueStateResolverConstants";
+
 import type { State } from "../../types";
 
 /**
@@ -5,7 +7,7 @@ import type { State } from "../../types";
  * - `"lower"` — пороговое значение включено в нижний сегмент (`≤`)
  * - `"upper"` — пороговое значение включено в верхний сегмент (`≥`)
  */
-export type ThresholdBoundary = "lower" | "upper";
+export type ThresholdBoundary = typeof THRESHOLD_BOUNDARY_LOWER | typeof THRESHOLD_BOUNDARY_UPPER;
 
 /** Расширенное определение порога с настройкой включения границы */
 export interface ThresholdDefinition {

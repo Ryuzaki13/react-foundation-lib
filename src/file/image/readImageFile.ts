@@ -1,5 +1,7 @@
 import { assertNotAborted, readFile } from "../read-file";
+import { READ_FILE_MODE_ARRAY_BUFFER, type READ_FILE_MODE_DATA_URL } from "../read-file/readFileConstants";
 
+import { READ_IMAGE_ERROR_NOT_AN_IMAGE } from "./imageReadConstants";
 import { ReadImageError } from "./types";
 
 import type { ImageDimensions, ReadImageAsArrayBufferResult, ReadImageAsDataUrlResult, ReadImageOptions } from "./types";
@@ -51,11 +53,11 @@ async function decodeImageDimensions(dataUrl: string, signal?: AbortSignal): Pro
 
 export async function readImageFile(
 	file: File,
-	opts?: Omit<ReadImageOptions, "mode"> & { mode?: "data-url" }
+	opts?: Omit<ReadImageOptions, "mode"> & { mode?: typeof READ_FILE_MODE_DATA_URL }
 ): Promise<ReadImageAsDataUrlResult>;
 export async function readImageFile(
 	file: File,
-	opts: Omit<ReadImageOptions, "mode"> & { mode: "array-buffer" }
+	opts: Omit<ReadImageOptions, "mode"> & { mode: typeof READ_FILE_MODE_ARRAY_BUFFER }
 ): Promise<ReadImageAsArrayBufferResult>;
 
 export async function readImageFile(
@@ -63,13 +65,13 @@ export async function readImageFile(
 	opts: ReadImageOptions = {}
 ): Promise<ReadImageAsDataUrlResult | ReadImageAsArrayBufferResult> {
 	if (!isImageMime(file.type)) {
-		throw new ReadImageError("NOT_AN_IMAGE", `Файл не является изображением. mime=${file.type || "unknown"}`);
+		throw new ReadImageError(READ_IMAGE_ERROR_NOT_AN_IMAGE, `Файл не является изображением. mime=${file.type || "unknown"}`);
 	}
 
 	const baseOpts = { allowedMime: opts.allowedMime, maxBytes: opts.maxBytes, signal: opts.signal };
 
-	if (opts.mode === "array-buffer") {
-		return readFile(file, { ...baseOpts, mode: "array-buffer" });
+	if (opts.mode === READ_FILE_MODE_ARRAY_BUFFER) {
+		return readFile(file, { ...baseOpts, mode: READ_FILE_MODE_ARRAY_BUFFER });
 	}
 
 	const result = await readFile(file, baseOpts);

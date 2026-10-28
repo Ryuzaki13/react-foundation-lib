@@ -1,13 +1,15 @@
 import { compareStrings } from "../../string-comparison";
 import { State } from "../../types";
+import { VALUE_STATE_NONE } from "../../types/valueStateConstants";
 
 import { FixedValueStateResolverConfig, ValueStateResolver } from "./types";
 import { findResolverByCanonicalKey, registerResolver } from "./valueStateRegistry";
+import { VALUE_STATE_RESOLVER_KIND_FIXED } from "./valueStateResolverConstants";
 
 /** Создать каноническую строку конфигурации (с префиксом типа для изоляции от пороговых резолверов) */
 function createCanonicalKey(sortedEntries: [string, State][], fallbackState: State): string {
 	const entriesPart = sortedEntries.map(([key, state]) => `${key}:${state}`).join(",");
-	return `fixed|${entriesPart}|${fallbackState}`;
+	return `${VALUE_STATE_RESOLVER_KIND_FIXED}|${entriesPart}|${fallbackState}`;
 }
 
 /** Скомпилировать функцию-резолвер из маппинга */
@@ -24,7 +26,7 @@ function compileFixedResolver(entries: Record<string, State>, fallbackState: Sta
 
 /** Нормализовать конфигурацию и вернуть подготовленные данные */
 function prepareConfig(config: FixedValueStateResolverConfig) {
-	const fallbackState: State = config.fallbackState ?? "none";
+	const fallbackState: State = config.fallbackState ?? VALUE_STATE_NONE;
 
 	// Сортировка ключей для детерминированного канонического ключа
 	const sortedEntries = Object.entries(config.entries).sort(([a], [b]) => compareStrings(a, b)) as [string, State][];

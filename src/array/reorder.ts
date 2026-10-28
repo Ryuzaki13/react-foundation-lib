@@ -1,16 +1,22 @@
-export type ReorderAction = "start" | "end" | "up" | "down";
+// Тип действия и его обработка используют одни значения направления перестановки.
+const REORDER_ACTION_START = "start";
+const REORDER_ACTION_END = "end";
+const REORDER_ACTION_UP = "up";
+const REORDER_ACTION_DOWN = "down";
+
+export type ReorderAction = typeof REORDER_ACTION_START | typeof REORDER_ACTION_END | typeof REORDER_ACTION_UP | typeof REORDER_ACTION_DOWN;
 
 function resolveTargetIndex(args: { index: number; size: number; action: ReorderAction }): number {
 	const { index, size, action } = args;
 
 	switch (action) {
-		case "start":
+		case REORDER_ACTION_START:
 			return 0;
-		case "end":
+		case REORDER_ACTION_END:
 			return size - 1;
-		case "up":
+		case REORDER_ACTION_UP:
 			return index - 1;
-		case "down":
+		case REORDER_ACTION_DOWN:
 			return index + 1;
 	}
 }

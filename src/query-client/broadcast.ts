@@ -3,11 +3,26 @@ import { broadcastQueryClient } from "@tanstack/query-broadcast-client-experimen
 import { uuidv4 } from "../crypto";
 import { isRecord } from "../validators";
 
+import {
+	QUERY_CACHE_ACTION_INVALIDATE,
+	QUERY_CACHE_EVENT_SET_DATA,
+	QUERY_CACHE_EVENT_UPDATED,
+	QUERY_REFETCH_NONE,
+	QUERY_REFETCH_ACTIVE,
+	QUERY_REFETCH_INACTIVE,
+	QUERY_REFETCH_ALL
+} from "./queryCacheEventConstants";
+
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 type CacheSyncEvent =
-	| { type: "invalidate"; keys: QueryKey[]; refetchType?: "none" | "all" | "active" | "inactive" }
-	| { type: "setQueryData"; key: QueryKey; data: unknown };
+	| {
+			type: typeof QUERY_CACHE_ACTION_INVALIDATE;
+			keys: QueryKey[];
+			refetchType?:
+				typeof QUERY_REFETCH_NONE | typeof QUERY_REFETCH_ALL | typeof QUERY_REFETCH_ACTIVE | typeof QUERY_REFETCH_INACTIVE;
+	  }
+	| { type: typeof QUERY_CACHE_EVENT_SET_DATA; key: QueryKey; data: unknown };
 
 type InstallBroadcastOptions = {
 	queriesChannel: string;
@@ -52,12 +67,12 @@ export function installReactQueryBroadcast(queryClient: QueryClient, opts: Insta
 	const bc = new BroadcastChannel(opts.eventsChannel);
 	const unsubscribeInvalidationBroadcast = queryClient.getQueryCache().subscribe((queryEvent) => {
 		if (isApplyingRemoteEvent) return;
-		if (queryEvent.type !== "updated" || queryEvent.action.type !== "invalidate") return;
+		if (queryEvent.type !== QUERY_CACHE_EVENT_UPDATED || queryEvent.action.type !== QUERY_CACHE_ACTION_INVALIDATE) return;
 
 		broadcast({
-			type: "invalidate",
+			type: QUERY_CACHE_ACTION_INVALIDATE,
 			keys: [queryEvent.query.queryKey],
-			refetchType: "none"
+			refetchType: QUERY_REFETCH_NONE
 		});
 	});
 
@@ -71,15 +86,15 @@ export function installReactQueryBroadcast(queryClient: QueryClient, opts: Insta
 		isApplyingRemoteEvent = true;
 
 		try {
-			if (e.type === "invalidate") {
-				const refetchType = e.refetchType ?? "none";
+			if (e.type === QUERY_CACHE_ACTION_INVALIDATE) {
+				const refetchType = e.refetchType ?? QUERY_REFETCH_NONE;
 				for (const key of e.keys) {
 					queryClient.invalidateQueries({ queryKey: key, refetchType });
 				}
 				return;
 			}
 
-			if (e.type === "setQueryData") {
+			if (e.type === QUERY_CACHE_EVENT_SET_DATA) {
 				queryClient.setQueryData(e.key, e.data);
 				return;
 			}
@@ -112,14 +127,19 @@ function isWireMessage(v: unknown): v is WireMessage {
 
 function isCacheSyncEvent(v: unknown): v is CacheSyncEvent {
 	if (!isRecord(v)) return false;
-	if (v.type === "invalidate") {
+	if (v.type === QUERY_CACHE_ACTION_INVALIDATE) {
 		// keys: QueryKey[] — runtime мы не сможем валидировать “идеально”,
 		// но проверим что это массив, а refetchType — допустимое значение
 		if (!Array.isArray(v.keys)) return false;
 		if (v.refetchType === undefined) return true;
-		return v.refetchType === "none" || v.refetchType === "active" || v.refetchType === "inactive" || v.refetchType === "all";
+		return (
+			v.refetchType === QUERY_REFETCH_NONE ||
+			v.refetchType === QUERY_REFETCH_ACTIVE ||
+			v.refetchType === QUERY_REFETCH_INACTIVE ||
+			v.refetchType === QUERY_REFETCH_ALL
+		);
 	}
-	if (v.type === "setQueryData") {
+	if (v.type === QUERY_CACHE_EVENT_SET_DATA) {
 		// key должен быть массивом или строкой — QueryKey в рантайме обычно массив
 		// проверим хотя бы наличие поля
 		return "key" in v && "data" in v;

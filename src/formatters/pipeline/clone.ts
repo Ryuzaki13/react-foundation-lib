@@ -1,3 +1,16 @@
+import { VALUE_STATE_RESOLVER_KIND_FIXED, VALUE_STATE_RESOLVER_KIND_THRESHOLD } from "../valueState/valueStateResolverConstants";
+
+import {
+	PIPELINE_OVERRIDE_MODE_FORMULA,
+	PIPELINE_FORMATTER_TYPED_VALUE_FORMAT,
+	PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS,
+	PIPELINE_FORMATTER_ROW_BASED_OVERRIDE,
+	PIPELINE_FORMATTER_RESOLVE_VALUE_STATE,
+	PIPELINE_NODE_SOURCE,
+	PIPELINE_NODE_SINK,
+	PIPELINE_STATE_SOURCE_FORMULA
+} from "./formattersPipelineConstants";
+
 import type {
 	FormattersPipelineConfig,
 	FormattersPipelineGraph,
@@ -23,7 +36,7 @@ export function cloneNormalizeLeadingZerosConfig(
 }
 
 export function cloneRowBasedOverrideConfig(config: FormattersPipelineRowBasedOverrideConfig): FormattersPipelineRowBasedOverrideConfig {
-	return config.mode === "formula"
+	return config.mode === PIPELINE_OVERRIDE_MODE_FORMULA
 		? { ...config, dependencyIds: config.dependencyIds ? [...config.dependencyIds] : undefined }
 		: { ...config };
 }
@@ -31,20 +44,20 @@ export function cloneRowBasedOverrideConfig(config: FormattersPipelineRowBasedOv
 export function cloneResolveValueStateConfig(config: FormattersPipelineResolveValueStateConfig): FormattersPipelineResolveValueStateConfig {
 	return {
 		resolver:
-			config.resolver.kind === "fixed"
+			config.resolver.kind === VALUE_STATE_RESOLVER_KIND_FIXED
 				? {
-						kind: "fixed",
+						kind: VALUE_STATE_RESOLVER_KIND_FIXED,
 						entries: { ...config.resolver.entries },
 						fallbackState: config.resolver.fallbackState
 					}
 				: {
-						kind: "threshold",
+						kind: VALUE_STATE_RESOLVER_KIND_THRESHOLD,
 						thresholds: config.resolver.thresholds.map((item) => (typeof item === "number" ? item : { ...item })),
 						states: [...config.resolver.states],
 						invalidState: config.resolver.invalidState
 					},
 		valueSource:
-			config.valueSource?.kind === "formula"
+			config.valueSource?.kind === PIPELINE_STATE_SOURCE_FORMULA
 				? { ...config.valueSource, dependencyIds: [...config.valueSource.dependencyIds] }
 				: config.valueSource
 					? { ...config.valueSource }
@@ -55,22 +68,22 @@ export function cloneResolveValueStateConfig(config: FormattersPipelineResolveVa
 
 export function cloneFormatterPipelinePlanStep(step: FormattersPipelineStep): FormattersPipelineStep {
 	switch (step.type) {
-		case "typedValueFormat":
+		case PIPELINE_FORMATTER_TYPED_VALUE_FORMAT:
 			return {
 				...step,
 				config: cloneTypedValueFormatConfig(step.config)
 			};
-		case "normalizeLeadingZeros":
+		case PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS:
 			return {
 				...step,
 				config: cloneNormalizeLeadingZerosConfig(step.config)
 			};
-		case "rowBasedOverride":
+		case PIPELINE_FORMATTER_ROW_BASED_OVERRIDE:
 			return {
 				...step,
 				config: cloneRowBasedOverrideConfig(step.config)
 			};
-		case "resolveValueState":
+		case PIPELINE_FORMATTER_RESOLVE_VALUE_STATE:
 			return {
 				...step,
 				config: cloneResolveValueStateConfig(step.config)
@@ -89,25 +102,25 @@ export function cloneFormatterPipelinePlanStepToNode(
 	position: { x: number; y: number }
 ): FormattersPipelineNode {
 	switch (step.type) {
-		case "typedValueFormat":
+		case PIPELINE_FORMATTER_TYPED_VALUE_FORMAT:
 			return {
 				...step,
 				position: { ...position },
 				config: cloneTypedValueFormatConfig(step.config)
 			};
-		case "normalizeLeadingZeros":
+		case PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS:
 			return {
 				...step,
 				position: { ...position },
 				config: cloneNormalizeLeadingZerosConfig(step.config)
 			};
-		case "rowBasedOverride":
+		case PIPELINE_FORMATTER_ROW_BASED_OVERRIDE:
 			return {
 				...step,
 				position: { ...position },
 				config: cloneRowBasedOverrideConfig(step.config)
 			};
-		case "resolveValueState":
+		case PIPELINE_FORMATTER_RESOLVE_VALUE_STATE:
 			return {
 				...step,
 				position: { ...position },
@@ -124,8 +137,8 @@ export function cloneFormatterPipelinePlanStepToNode(
 
 function cloneNode(node: FormattersPipelineNode): FormattersPipelineNode {
 	switch (node.type) {
-		case "source":
-		case "sink":
+		case PIPELINE_NODE_SOURCE:
+		case PIPELINE_NODE_SINK:
 			return {
 				...node,
 				position: { ...node.position }

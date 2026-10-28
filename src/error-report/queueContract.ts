@@ -1,3 +1,16 @@
+import {
+	type QUEUE_FAILURE_HTTP,
+	type QUEUE_FAILURE_NETWORK,
+	type QUEUE_FAILURE_TIMEOUT,
+	type QUEUE_FAILURE_UNKNOWN,
+	type QUEUE_ENQUEUE_ACCEPTED,
+	type QUEUE_ENQUEUE_DUPLICATE,
+	type QUEUE_ENQUEUE_INVALID_PAYLOAD,
+	type QUEUE_ENQUEUE_CAPACITY_EXCEEDED,
+	type QUEUE_TRANSITION_UPDATED,
+	type QUEUE_TRANSITION_MISSING,
+	type QUEUE_TRANSITION_LEASE_MISMATCH
+} from "./queueResultConstants";
 import { type ErrorReportPayload } from "./types";
 
 export const ERROR_REPORT_QUEUE_VERSION = 1 as const;
@@ -5,7 +18,8 @@ export const ERROR_REPORT_QUEUE_MAX_ITEMS = 50;
 export const ERROR_REPORT_QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 export const ERROR_REPORT_QUEUE_LEASE_MS = 30 * 1_000;
 
-export type ErrorReportQueueFailureKind = "http" | "network" | "timeout" | "unknown";
+export type ErrorReportQueueFailureKind =
+	typeof QUEUE_FAILURE_HTTP | typeof QUEUE_FAILURE_NETWORK | typeof QUEUE_FAILURE_TIMEOUT | typeof QUEUE_FAILURE_UNKNOWN;
 
 export type ErrorReportQueueRecord = {
 	readonly queueVersion: typeof ERROR_REPORT_QUEUE_VERSION;
@@ -27,10 +41,10 @@ export type ErrorReportQueueRecord = {
 };
 
 export type ErrorReportQueueEnqueueResult =
-	| { readonly status: "enqueued"; readonly evictedReportId?: string }
-	| { readonly status: "duplicate" }
-	| { readonly status: "invalid-payload" }
-	| { readonly status: "capacity-exceeded" };
+	| { readonly status: typeof QUEUE_ENQUEUE_ACCEPTED; readonly evictedReportId?: string }
+	| { readonly status: typeof QUEUE_ENQUEUE_DUPLICATE }
+	| { readonly status: typeof QUEUE_ENQUEUE_INVALID_PAYLOAD }
+	| { readonly status: typeof QUEUE_ENQUEUE_CAPACITY_EXCEEDED };
 
 export type ErrorReportQueueLeaseOptions = {
 	readonly ownerId: string;
@@ -38,7 +52,8 @@ export type ErrorReportQueueLeaseOptions = {
 	readonly leaseDurationMs?: number;
 };
 
-export type ErrorReportQueueTransitionResult = "updated" | "missing" | "lease-mismatch";
+export type ErrorReportQueueTransitionResult =
+	typeof QUEUE_TRANSITION_UPDATED | typeof QUEUE_TRANSITION_MISSING | typeof QUEUE_TRANSITION_LEASE_MISMATCH;
 
 export type ErrorReportQueueRetry = {
 	readonly nextAttemptUtc: string;

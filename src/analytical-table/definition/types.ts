@@ -1,9 +1,30 @@
 import { type AnalyticalDataRow, type AnalyticalFilter, type AnalyticalValues } from "../runtime/types";
 
-export type AnalyticalAggregation = "sum" | "min" | "max" | "avg" | "count";
+import {
+	type ANALYTICAL_AGGREGATION_SUM,
+	type ANALYTICAL_AGGREGATION_MIN,
+	type ANALYTICAL_AGGREGATION_MAX,
+	type ANALYTICAL_AGGREGATION_AVG,
+	type ANALYTICAL_AGGREGATION_COUNT,
+	type ANALYTICAL_AGGREGATE_SCOPE_GROUP,
+	type ANALYTICAL_AGGREGATE_SCOPE_GRAND,
+	type ANALYTICAL_TOTALS_SCOPE_ALL,
+	type ANALYTICAL_TOTALS_SCOPE_FILTERED,
+	type ANALYTICAL_VALUE_TYPE_STRING,
+	type ANALYTICAL_VALUE_TYPE_NUMBER,
+	type ANALYTICAL_VALUE_TYPE_BOOLEAN,
+	type ANALYTICAL_VALUE_TYPE_DATE
+} from "./analyticalDefinitionConstants";
+
+export type AnalyticalAggregation =
+	| typeof ANALYTICAL_AGGREGATION_SUM
+	| typeof ANALYTICAL_AGGREGATION_MIN
+	| typeof ANALYTICAL_AGGREGATION_MAX
+	| typeof ANALYTICAL_AGGREGATION_AVG
+	| typeof ANALYTICAL_AGGREGATION_COUNT;
 
 export type AnalyticalAggregateContext<TOriginal = unknown> = Readonly<{
-	scope: "group" | "grand";
+	scope: typeof ANALYTICAL_AGGREGATE_SCOPE_GROUP | typeof ANALYTICAL_AGGREGATE_SCOPE_GRAND;
 	/** Только исходные строки выбранной зернистости, без синтетических групп. */
 	rows: readonly AnalyticalDataRow<TOriginal>[];
 	groupingPath: AnalyticalValues;
@@ -17,7 +38,11 @@ export type AnalyticalColumn<TOriginal = unknown> = Readonly<{
 	id: string;
 	label?: string;
 	kind?: "dimension" | "measure";
-	valueType?: "string" | "number" | "boolean" | "date";
+	valueType?:
+		| typeof ANALYTICAL_VALUE_TYPE_STRING
+		| typeof ANALYTICAL_VALUE_TYPE_NUMBER
+		| typeof ANALYTICAL_VALUE_TYPE_BOOLEAN
+		| typeof ANALYTICAL_VALUE_TYPE_DATE;
 	compare?: (left: unknown, right: unknown) => number;
 	filter?: (value: unknown, filter: AnalyticalFilter, row: AnalyticalDataRow<TOriginal>) => boolean;
 	aggregate?: AnalyticalAggregation | ((context: AnalyticalAggregateContext<TOriginal>) => unknown);
@@ -57,7 +82,7 @@ export type AnalyticalTableDefinition<TOriginal = unknown> = Readonly<{
 	/** Общий итог включён по умолчанию. */
 	grandTotals?: boolean;
 	/** По умолчанию общий итог рассчитывается по отфильтрованным строкам выбранной зернистости. */
-	grandTotalsScope?: "all" | "filtered";
+	grandTotalsScope?: typeof ANALYTICAL_TOTALS_SCOPE_ALL | typeof ANALYTICAL_TOTALS_SCOPE_FILTERED;
 }>;
 
 /** Проверенное описание: индексы и формулы подготавливаются один раз до обработки снимка. */
@@ -69,5 +94,5 @@ export type CompiledAnalyticalTableDefinition<TOriginal = unknown> = Readonly<{
 	isAggregateRow?: AnalyticalTableDefinition<TOriginal>["isAggregateRow"];
 	aggregate?: AnalyticalTableDefinition<TOriginal>["aggregate"];
 	grandTotals: boolean;
-	grandTotalsScope: "all" | "filtered";
+	grandTotalsScope: typeof ANALYTICAL_TOTALS_SCOPE_ALL | typeof ANALYTICAL_TOTALS_SCOPE_FILTERED;
 }>;

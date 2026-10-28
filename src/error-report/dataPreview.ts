@@ -1,4 +1,17 @@
 import { getUtf8TextSize } from "./safeValue";
+import {
+	HIGH_SURROGATE_FIRST,
+	HIGH_SURROGATE_LAST,
+	SAFE_VALUE_TYPE_TRUNCATED,
+	SAFE_VALUE_TYPE_NON_FINITE_NUMBER,
+	SAFE_VALUE_TYPE_UNDEFINED,
+	SAFE_VALUE_TYPE_FUNCTION,
+	SAFE_VALUE_TYPE_SYMBOL,
+	SAFE_VALUE_TYPE_INVALID_DATE,
+	SAFE_VALUE_TYPE_UNKNOWN,
+	SAFE_VALUE_TYPE_CIRCULAR,
+	SAFE_VALUE_TYPE_UNREADABLE
+} from "./safeValueMarkerConstants";
 
 import type { ErrorReportDataPreview, ErrorReportSafeValue } from "./types";
 
@@ -7,6 +20,7 @@ const MAX_PREVIEW_ARRAY_ITEMS = 12;
 const MAX_PREVIEW_OBJECT_KEYS = 24;
 const MAX_PREVIEW_STRING_LENGTH = 1_024;
 const MAX_PREVIEW_NODES = 128;
+const MIN_JSON_PREVIEW_BYTES = 4;
 
 type PreviewState = {
 	seen: WeakSet<object>;
@@ -21,23 +35,23 @@ type PreviewState = {
 function describePreviewValue(value: unknown, depth: number, state: PreviewState): ErrorReportSafeValue {
 	if (depth >= MAX_PREVIEW_DEPTH || state.nodesLeft-- <= 0) {
 		state.truncated = true;
-		return { type: "truncated" };
+		return { type: SAFE_VALUE_TYPE_TRUNCATED };
 	}
 	if (value === null || typeof value === "boolean") return value;
-	if (typeof value === "number") return Number.isFinite(value) ? value : { type: "non-finite-number" };
+	if (typeof value === "number") return Number.isFinite(value) ? value : { type: SAFE_VALUE_TYPE_NON_FINITE_NUMBER };
 	if (typeof value === "string") {
 		if (value.length > MAX_PREVIEW_STRING_LENGTH) state.truncated = true;
 		const prefix = value.slice(0, MAX_PREVIEW_STRING_LENGTH);
 		const lastCodeUnit = prefix.charCodeAt(prefix.length - 1);
-		return lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff ? prefix.slice(0, -1) : prefix;
+		return lastCodeUnit >= HIGH_SURROGATE_FIRST && lastCodeUnit <= HIGH_SURROGATE_LAST ? prefix.slice(0, -1) : prefix;
 	}
 	if (typeof value === "bigint") return value.toString();
-	if (value === undefined) return { type: "undefined" };
-	if (typeof value === "function") return { type: "function" };
-	if (typeof value === "symbol") return { type: "symbol" };
-	if (value instanceof Date) return Number.isNaN(value.getTime()) ? { type: "invalid-date" } : value.toISOString();
-	if (typeof value !== "object") return { type: "unknown" };
-	if (state.seen.has(value)) return { type: "circular" };
+	if (value === undefined) return { type: SAFE_VALUE_TYPE_UNDEFINED };
+	if (typeof value === "function") return { type: SAFE_VALUE_TYPE_FUNCTION };
+	if (typeof value === "symbol") return { type: SAFE_VALUE_TYPE_SYMBOL };
+	if (value instanceof Date) return Number.isNaN(value.getTime()) ? { type: SAFE_VALUE_TYPE_INVALID_DATE } : value.toISOString();
+	if (typeof value !== "object") return { type: SAFE_VALUE_TYPE_UNKNOWN };
+	if (state.seen.has(value)) return { type: SAFE_VALUE_TYPE_CIRCULAR };
 	state.seen.add(value);
 
 	if (Array.isArray(value)) {
@@ -52,7 +66,7 @@ function describePreviewValue(value: unknown, depth: number, state: PreviewState
 			entries.slice(0, MAX_PREVIEW_OBJECT_KEYS).map(([key, item]) => [key, describePreviewValue(item, depth + 1, state)])
 		);
 	} catch {
-		return { type: "unreadable" };
+		return { type: SAFE_VALUE_TYPE_UNREADABLE };
 	}
 }
 
@@ -107,7 +121,7 @@ export function createErrorReportDataPreview(value: unknown, maxBytes: number): 
 	const state: PreviewState = { seen: new WeakSet(), nodesLeft: MAX_PREVIEW_NODES, truncated: false };
 	let previewValue = describePreviewValue(value, 0, state);
 	let json = JSON.stringify(previewValue);
-	const byteLimit = Math.max(4, maxBytes);
+	const byteLimit = Math.max(MIN_JSON_PREVIEW_BYTES, maxBytes);
 
 	while (getUtf8TextSize(json) > byteLimit) {
 		state.truncated = true;

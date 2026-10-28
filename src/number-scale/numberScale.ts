@@ -1,4 +1,8 @@
-import { NumberScaleBounds, NumberScaleMark, NumberScaleMarksPosition, NumberScaleOptions } from "./types";
+import { NUMBER_SCALE_MARKS_POSITION_VALUE, NUMBER_SCALE_MARKS_POSITION_INDEX } from "./marksPositionConstants";
+import { type NumberScaleBounds, type NumberScaleMark, type NumberScaleMarksPosition, type NumberScaleOptions } from "./types";
+
+const NUMBER_SCALE_PERCENT_MAX = 100;
+const NUMBER_SCALE_DEFAULT_MAX = 100;
 
 function countFractionDigits(value: number) {
 	if (!Number.isFinite(value)) {
@@ -29,7 +33,7 @@ function roundWithPrecision(value: number, precision: number) {
  */
 export function resolveNumberScaleBounds(min: number, max: number): NumberScaleBounds {
 	if (!Number.isFinite(min) || !Number.isFinite(max)) {
-		return { min: 0, max: 100 };
+		return { min: 0, max: NUMBER_SCALE_DEFAULT_MAX };
 	}
 
 	return min <= max ? { min, max } : { min: max, max: min };
@@ -157,7 +161,7 @@ export function valueToNumberScalePercent(value: number, min: number, max: numbe
 		return 0;
 	}
 
-	return ((clampNumberScaleValue(value, min, max) - min) / (max - min)) * 100;
+	return ((clampNumberScaleValue(value, min, max) - min) / (max - min)) * NUMBER_SCALE_PERCENT_MAX;
 }
 
 export function percentToNumberScaleValue(percent: number, min: number, max: number) {
@@ -165,8 +169,8 @@ export function percentToNumberScaleValue(percent: number, min: number, max: num
 		return min;
 	}
 
-	const safePercent = clampNumberScaleValue(percent, 0, 100);
-	return min + ((max - min) * safePercent) / 100;
+	const safePercent = clampNumberScaleValue(percent, 0, NUMBER_SCALE_PERCENT_MAX);
+	return min + ((max - min) * safePercent) / NUMBER_SCALE_PERCENT_MAX;
 }
 
 /**
@@ -177,13 +181,13 @@ export function getNumberScaleMarkPercent(
 	marks: readonly NumberScaleMark[],
 	min: number,
 	max: number,
-	marksPosition: NumberScaleMarksPosition = "value"
+	marksPosition: NumberScaleMarksPosition = NUMBER_SCALE_MARKS_POSITION_VALUE
 ) {
-	if (marksPosition === "index" && marks.length > 1) {
-		return (markIndex / (marks.length - 1)) * 100;
+	if (marksPosition === NUMBER_SCALE_MARKS_POSITION_INDEX && marks.length > 1) {
+		return (markIndex / (marks.length - 1)) * NUMBER_SCALE_PERCENT_MAX;
 	}
 
-	if (marksPosition === "index") {
+	if (marksPosition === NUMBER_SCALE_MARKS_POSITION_INDEX) {
 		return 0;
 	}
 
@@ -198,13 +202,13 @@ export function findClosestNumberScaleMarkByPercent<TMark extends NumberScaleMar
 	marks: readonly TMark[],
 	min: number,
 	max: number,
-	marksPosition: NumberScaleMarksPosition = "value"
+	marksPosition: NumberScaleMarksPosition = NUMBER_SCALE_MARKS_POSITION_VALUE
 ) {
 	if (!marks.length) {
 		return undefined;
 	}
 
-	const safePercent = clampNumberScaleValue(percent, 0, 100);
+	const safePercent = clampNumberScaleValue(percent, 0, NUMBER_SCALE_PERCENT_MAX);
 	let nearest = marks[0];
 	let distance = Math.abs(safePercent - getNumberScaleMarkPercent(0, marks, min, max, marksPosition));
 

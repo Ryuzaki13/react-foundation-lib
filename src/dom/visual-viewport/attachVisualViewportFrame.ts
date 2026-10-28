@@ -1,3 +1,7 @@
+import { DOM_RESIZE_EVENT } from "../domEventConstants";
+
+const VIEWPORT_SCROLL_EVENT = "scroll";
+
 const properties = ["--visual-viewport-top", "--visual-viewport-left", "--visual-viewport-width", "--visual-viewport-height"] as const;
 
 const attachments = new WeakMap<HTMLElement, { leases: Set<symbol>; detach: () => void }>();
@@ -34,14 +38,14 @@ function createVisualViewportFrame(container: HTMLElement): () => void {
 	};
 
 	update();
-	viewport?.addEventListener("resize", schedule);
-	viewport?.addEventListener("scroll", schedule);
-	view.addEventListener("resize", schedule);
+	viewport?.addEventListener(DOM_RESIZE_EVENT, schedule);
+	viewport?.addEventListener(VIEWPORT_SCROLL_EVENT, schedule);
+	view.addEventListener(DOM_RESIZE_EVENT, schedule);
 	return () => {
 		view.cancelAnimationFrame(frame);
-		viewport?.removeEventListener("resize", schedule);
-		viewport?.removeEventListener("scroll", schedule);
-		view.removeEventListener("resize", schedule);
+		viewport?.removeEventListener(DOM_RESIZE_EVENT, schedule);
+		viewport?.removeEventListener(VIEWPORT_SCROLL_EVENT, schedule);
+		view.removeEventListener(DOM_RESIZE_EVENT, schedule);
 		for (const { name, value, priority } of previous) {
 			// Не затираем новое значение, если внешний owner уже забрал это CSS-свойство.
 			if (style.getPropertyValue(name) !== ownedValues.get(name) || style.getPropertyPriority(name)) continue;

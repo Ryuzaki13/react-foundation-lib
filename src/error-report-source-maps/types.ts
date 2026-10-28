@@ -1,3 +1,10 @@
+import { type SOURCE_MAP_KIND_CLIENT, type SOURCE_MAP_KIND_SERVER } from "./sourceMapArtifactConstants";
+import {
+	type SYMBOLICATION_NOT_REQUIRED,
+	type SYMBOLICATION_RESOLVED,
+	type SYMBOLICATION_MAPS_UNAVAILABLE,
+	type SYMBOLICATION_FAILED
+} from "./symbolicationResultConstants";
 /** Версия immutable manifest, общего для build packager и server reader. */
 export const PRIVATE_SOURCE_MAP_MANIFEST_VERSION = 1 as const;
 
@@ -11,7 +18,7 @@ export const PRIVATE_SOURCE_MAP_ARTIFACT_MAX_BYTES = 256 * 1024 * 1024;
 export const PRIVATE_SOURCE_MAP_ARTIFACT_RETENTION_MS = 97 * 24 * 60 * 60 * 1_000;
 
 export type PrivateSourceMapManifestEntry = {
-	readonly kind: "client" | "server";
+	readonly kind: typeof SOURCE_MAP_KIND_CLIENT | typeof SOURCE_MAP_KIND_SERVER;
 	readonly bundle: string;
 	readonly map: string;
 	readonly sha256: string;
@@ -55,7 +62,11 @@ export type ErrorReportStackFrame = {
 };
 
 export type ErrorReportSymbolicationResult = {
-	readonly status: "not-required" | "resolved" | "maps-unavailable" | "failed";
+	readonly status:
+		| typeof SYMBOLICATION_NOT_REQUIRED
+		| typeof SYMBOLICATION_RESOLVED
+		| typeof SYMBOLICATION_MAPS_UNAVAILABLE
+		| typeof SYMBOLICATION_FAILED;
 	readonly stackTrace?: string;
 	readonly frames?: readonly ErrorReportStackFrame[];
 };

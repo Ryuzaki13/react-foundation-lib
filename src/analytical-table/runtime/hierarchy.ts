@@ -2,12 +2,13 @@ import { buildTreeTableRows, type TreeTableRowNode } from "../../tree-table";
 import { calculateAnalyticalValues } from "../definition/calculations";
 import { type CompiledAnalyticalTableDefinition } from "../definition/types";
 
+import { ANALYTICAL_ROW_KIND_DATA, type ANALYTICAL_ROW_KIND_GROUP } from "./analyticalRowConstants";
 import { type AnalyticalDataRow, type AnalyticalDiagnostics, type AnalyticalSnapshot, type AnalyticalValues } from "./types";
 
 /** Узел до назначения итогового parentId/level: группировка ещё может добавить предков. */
 export type AnalyticalHierarchyNode<T> = Readonly<{
 	id: string;
-	kind: "data" | "group";
+	kind: typeof ANALYTICAL_ROW_KIND_DATA | typeof ANALYTICAL_ROW_KIND_GROUP;
 	sourceRow?: AnalyticalDataRow<T>;
 	values: AnalyticalValues;
 	children: readonly AnalyticalHierarchyNode<T>[];
@@ -41,7 +42,7 @@ export function prepareAnalyticalHierarchy<T>(
 
 	const prepareNode = (node: TreeTableRowNode<AnalyticalDataRow<T>>): AnalyticalHierarchyNode<T> => ({
 		id: node.id,
-		kind: "data",
+		kind: ANALYTICAL_ROW_KIND_DATA,
 		sourceRow: tree.rowById.get(node.id),
 		values: node.values,
 		children: (node.children ?? []).map(prepareNode)

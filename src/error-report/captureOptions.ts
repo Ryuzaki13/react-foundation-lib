@@ -1,9 +1,11 @@
+import { ERROR_REPORT_VALUE_POLICY_REDACTED, type ERROR_REPORT_VALUE_POLICY_VERBATIM } from "./capturePolicyConstants";
+import { ERROR_REPORT_DATA_PREVIEW_MAX_BYTES } from "./errorReportCaptureLimits";
 /**
  * Политика сбора задаётся приложением на время жизни его error-report lifecycle.
  * По умолчанию прежняя очистка остаётся активной для существующих потребителей.
  */
 export type ErrorReportCaptureOptions = {
-	valuePolicy?: "redacted" | "verbatim";
+	valuePolicy?: typeof ERROR_REPORT_VALUE_POLICY_REDACTED | typeof ERROR_REPORT_VALUE_POLICY_VERBATIM;
 	dataPreviewBytes?: {
 		query?: number;
 		persistedQuery?: number;
@@ -12,7 +14,7 @@ export type ErrorReportCaptureOptions = {
 };
 
 type ResolvedErrorReportCaptureOptions = {
-	valuePolicy: "redacted" | "verbatim";
+	valuePolicy: typeof ERROR_REPORT_VALUE_POLICY_REDACTED | typeof ERROR_REPORT_VALUE_POLICY_VERBATIM;
 	dataPreviewBytes: {
 		query: number;
 		persistedQuery: number;
@@ -20,9 +22,8 @@ type ResolvedErrorReportCaptureOptions = {
 	};
 };
 
-const MAX_DATA_PREVIEW_BYTES = 16 * 1_024;
 const DEFAULT_OPTIONS: ResolvedErrorReportCaptureOptions = {
-	valuePolicy: "redacted",
+	valuePolicy: ERROR_REPORT_VALUE_POLICY_REDACTED,
 	dataPreviewBytes: { query: 0, persistedQuery: 0, mutation: 0 }
 };
 
@@ -30,7 +31,7 @@ let captureOptions = DEFAULT_OPTIONS;
 
 function boundedPreviewBytes(value: number | undefined) {
 	if (value === undefined || !Number.isFinite(value)) return 0;
-	return Math.max(0, Math.min(MAX_DATA_PREVIEW_BYTES, Math.trunc(value)));
+	return Math.max(0, Math.min(ERROR_REPORT_DATA_PREVIEW_MAX_BYTES, Math.trunc(value)));
 }
 
 /** `undefined` возвращает policy пакета и отключает сбор данных кэша. */

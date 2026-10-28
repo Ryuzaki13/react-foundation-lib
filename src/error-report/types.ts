@@ -1,10 +1,50 @@
+import {
+	type ERROR_REPORT_CATEGORY_QUERY,
+	type ERROR_REPORT_CATEGORY_MUTATION,
+	type ERROR_REPORT_CATEGORY_RUNTIME,
+	type ERROR_REPORT_CATEGORY_REACT,
+	type ERROR_REPORT_STATUS_PENDING,
+	type ERROR_REPORT_STATUS_SENDING,
+	type ERROR_REPORT_STATUS_SENT,
+	type ERROR_REPORT_STATUS_FAILED,
+	type ERROR_REPORT_BREADCRUMB_ROUTE,
+	type ERROR_REPORT_BREADCRUMB_CLICK,
+	type ERROR_REPORT_BREADCRUMB_VISIBILITY,
+	type ERROR_REPORT_BREADCRUMB_QUERY_ERROR,
+	type ERROR_REPORT_BREADCRUMB_MUTATION_ERROR,
+	type ERROR_REPORT_BREADCRUMB_RUNTIME_ERROR,
+	type ERROR_REPORT_MODE_DEVELOPMENT,
+	type ERROR_REPORT_MODE_PRODUCTION,
+	type ERROR_REPORT_TRUNCATION_PAYLOAD_SIZE,
+	type ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL,
+	type ERROR_REPORT_SCOPE_CONTEXT,
+	type ERROR_REPORT_SCOPE_DRAFT_FAILED_REASON,
+	type ERROR_REPORT_SCOPE_ERROR_MESSAGE,
+	type ERROR_REPORT_SCOPE_MUTATION_KEY,
+	type ERROR_REPORT_SCOPE_MUTATION_META,
+	type ERROR_REPORT_SCOPE_PERSISTED_QUERY_KEY,
+	type ERROR_REPORT_SCOPE_QUERY_DATA_SHAPE,
+	type ERROR_REPORT_SCOPE_QUERY_KEY,
+	type ERROR_REPORT_SCOPE_QUERY_META,
+	type ERROR_REPORT_SCOPE_STACK_TRACE
+} from "./errorReportContractConstants";
+import { type ERROR_REPORT_PAYLOAD_VERSION } from "./payload";
+
 import type { QueryKey } from "@tanstack/react-query";
 
-export type ErrorReportCategory = "query" | "mutation" | "runtime" | "react";
+export type ErrorReportCategory =
+	| typeof ERROR_REPORT_CATEGORY_QUERY
+	| typeof ERROR_REPORT_CATEGORY_MUTATION
+	| typeof ERROR_REPORT_CATEGORY_RUNTIME
+	| typeof ERROR_REPORT_CATEGORY_REACT;
 
-export type ErrorReportStatus = "pending" | "sending" | "sent" | "failed";
+export type ErrorReportStatus =
+	| typeof ERROR_REPORT_STATUS_PENDING
+	| typeof ERROR_REPORT_STATUS_SENDING
+	| typeof ERROR_REPORT_STATUS_SENT
+	| typeof ERROR_REPORT_STATUS_FAILED;
 
-export type ErrorReportPayloadVersion = 1;
+export type ErrorReportPayloadVersion = typeof ERROR_REPORT_PAYLOAD_VERSION;
 
 export type ErrorReportSafeValue = string | number | boolean | null | ErrorReportSafeValue[] | { [key: string]: ErrorReportSafeValue };
 
@@ -24,7 +64,13 @@ export type ErrorReportErrorInfo = {
 
 export type ErrorReportBreadcrumb = {
 	utc: string;
-	type: "route" | "click" | "visibility" | "query-error" | "mutation-error" | "runtime-error";
+	type:
+		| typeof ERROR_REPORT_BREADCRUMB_ROUTE
+		| typeof ERROR_REPORT_BREADCRUMB_CLICK
+		| typeof ERROR_REPORT_BREADCRUMB_VISIBILITY
+		| typeof ERROR_REPORT_BREADCRUMB_QUERY_ERROR
+		| typeof ERROR_REPORT_BREADCRUMB_MUTATION_ERROR
+		| typeof ERROR_REPORT_BREADCRUMB_RUNTIME_ERROR;
 	routeId?: string;
 	appId?: string;
 	viewId?: string;
@@ -81,7 +127,7 @@ export type ErrorReportPayload = {
 	source: string;
 	error: ErrorReportErrorInfo;
 	environment: {
-		mode: "development" | "production";
+		mode: typeof ERROR_REPORT_MODE_DEVELOPMENT | typeof ERROR_REPORT_MODE_PRODUCTION;
 		buildId?: string;
 	};
 	client?: {
@@ -115,7 +161,7 @@ export type ErrorReportPayload = {
 	breadcrumbs: ErrorReportBreadcrumb[];
 	context?: Record<string, ErrorReportSafeValue>;
 	truncation?: {
-		reason: "payload-size";
+		reason: typeof ERROR_REPORT_TRUNCATION_PAYLOAD_SIZE;
 		limitBytes: number;
 		originalBytes: number;
 		droppedSections: string[];
@@ -141,7 +187,7 @@ export type ErrorReportDraftLifecyclePatch = {
 };
 
 export type ErrorReportRuntimeContext = {
-	category?: Extract<ErrorReportCategory, "runtime" | "react">;
+	category?: Extract<ErrorReportCategory, typeof ERROR_REPORT_CATEGORY_RUNTIME | typeof ERROR_REPORT_CATEGORY_REACT>;
 	source?: string;
 	errorInfo?: ErrorReportErrorInfo;
 	componentStack?: string;
@@ -162,17 +208,17 @@ export type ErrorReportMutationContext = {
 };
 
 export type ErrorReportSanitizationScope =
-	| "breadcrumb-detail"
-	| "context"
-	| "draft-failed-reason"
-	| "error-message"
-	| "mutation-key"
-	| "mutation-meta"
-	| "persisted-query-key"
-	| "query-data-shape"
-	| "query-key"
-	| "query-meta"
-	| "stack-trace";
+	| typeof ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL
+	| typeof ERROR_REPORT_SCOPE_CONTEXT
+	| typeof ERROR_REPORT_SCOPE_DRAFT_FAILED_REASON
+	| typeof ERROR_REPORT_SCOPE_ERROR_MESSAGE
+	| typeof ERROR_REPORT_SCOPE_MUTATION_KEY
+	| typeof ERROR_REPORT_SCOPE_MUTATION_META
+	| typeof ERROR_REPORT_SCOPE_PERSISTED_QUERY_KEY
+	| typeof ERROR_REPORT_SCOPE_QUERY_DATA_SHAPE
+	| typeof ERROR_REPORT_SCOPE_QUERY_KEY
+	| typeof ERROR_REPORT_SCOPE_QUERY_META
+	| typeof ERROR_REPORT_SCOPE_STACK_TRACE;
 
 export type ErrorReportSanitizationContext = {
 	scope: ErrorReportSanitizationScope;

@@ -1,6 +1,13 @@
 import { AnyMap, originalPositionFor, sourceContentFor, type TraceMap } from "@jridgewell/trace-mapping";
 
 import { loadPrivateSourceMapArtifact, readPrivateSourceMap } from "./artifact";
+import { SOURCE_MAP_SERVER_BUNDLE_PREFIX } from "./sourceMapArtifactConstants";
+import {
+	SYMBOLICATION_NOT_REQUIRED,
+	SYMBOLICATION_MAPS_UNAVAILABLE,
+	SYMBOLICATION_FAILED,
+	SYMBOLICATION_RESOLVED
+} from "./symbolicationResultConstants";
 import {
 	type ErrorReportStackFrame,
 	type ErrorReportSymbolicationResult,
@@ -8,6 +15,13 @@ import {
 	type PrivateSourceMapManifestEntry,
 	type SymbolicateErrorReportStackOptions
 } from "./types";
+
+const STACK_FRAME_CHROMIUM = "chromium";
+const STACK_FRAME_SAFARI = "safari";
+const SERVER_BUNDLE_PATH_MARKER = "/server/";
+const MAX_FUNCTION_NAME_LENGTH = 256;
+const MAX_ORIGINAL_SOURCE_PATH_LENGTH = 1_024;
+const MAX_ORIGINAL_SOURCE_FILENAME_LENGTH = 512;
 
 const MAX_STACK_FRAMES = 40;
 const MAX_CONTEXT_FRAMES = 10;
@@ -17,7 +31,7 @@ const MAX_SYMBOLICATED_STACK_LENGTH = 262_144;
 
 type ParsedStackFrame = {
 	readonly lineIndex: number;
-	readonly style: "chromium" | "safari";
+	readonly style: typeof STACK_FRAME_CHROMIUM | typeof STACK_FRAME_SAFARI;
 	readonly functionName?: string;
 	readonly source: string;
 	readonly line: number;
@@ -34,7 +48,7 @@ function normalizeFunctionName(value: string | undefined): string | undefined {
 	const normalized = value
 		?.trim()
 		.replace(/^async\s+/, "")
-		.slice(0, 256);
+		.slice(0, MAX_FUNCTION_NAME_LENGTH);
 	return normalized || undefined;
 }
 
@@ -51,9 +65,11 @@ function resolveBundle(source: string): string | null {
 	const urlPathname = safeUrlPathname(withoutLocationSuffix);
 	const normalized = (urlPathname ?? withoutLocationSuffix).replaceAll("\\", "/");
 	if (normalized.startsWith("/static/") || normalized === "/sw.js" || normalized === "/sw.mjs") return normalized;
-	if (normalized.startsWith("server/")) return normalized;
-	const serverMarker = normalized.lastIndexOf("/server/");
-	return serverMarker >= 0 ? `server/${normalized.slice(serverMarker + "/server/".length)}` : null;
+	if (normalized.startsWith(SOURCE_MAP_SERVER_BUNDLE_PREFIX)) return normalized;
+	const serverMarker = normalized.lastIndexOf(SERVER_BUNDLE_PATH_MARKER);
+	return serverMarker >= 0
+		? `${SOURCE_MAP_SERVER_BUNDLE_PREFIX}${normalized.slice(serverMarker + SERVER_BUNDLE_PATH_MARKER.length)}`
+		: null;
 }
 
 function parseStackFrame(line: string, lineIndex: number): ParsedStackFrame | null {
@@ -74,7 +90,7 @@ function parseStackFrame(line: string, lineIndex: number): ParsedStackFrame | nu
 	if (!bundle) return null;
 	return {
 		lineIndex,
-		style: hasSafariFunction ? "safari" : "chromium",
+		style: hasSafariFunction ? STACK_FRAME_SAFARI : STACK_FRAME_CHROMIUM,
 		functionName: normalizeFunctionName(hasChromiumFunction || hasSafariFunction ? match[1] : undefined),
 		source,
 		line: generatedLine,
@@ -90,14 +106,14 @@ function normalizeOriginalSource(source: string): string {
 		.replaceAll("\0", "");
 	for (const marker of ["/src/", "/config/", "/scripts/", "/node_modules/"] as const) {
 		const markerIndex = normalized.lastIndexOf(marker);
-		if (markerIndex >= 0) return normalized.slice(markerIndex + 1).slice(0, 1_024);
+		if (markerIndex >= 0) return normalized.slice(markerIndex + 1).slice(0, MAX_ORIGINAL_SOURCE_PATH_LENGTH);
 	}
 	for (const prefix of ["src/", "config/", "scripts/", "node_modules/"] as const) {
 		const prefixIndex = normalized.indexOf(prefix);
-		if (prefixIndex >= 0) return normalized.slice(prefixIndex).slice(0, 1_024);
+		if (prefixIndex >= 0) return normalized.slice(prefixIndex).slice(0, MAX_ORIGINAL_SOURCE_PATH_LENGTH);
 	}
 	const filename = normalized.split("/").filter(Boolean).at(-1) ?? "unknown-source";
-	return `source/${filename.slice(0, 512)}`;
+	return `source/${filename.slice(0, MAX_ORIGINAL_SOURCE_FILENAME_LENGTH)}`;
 }
 
 function createSourceContext(traceMap: TraceMap, source: string, line: number) {
@@ -117,7 +133,7 @@ function formatSymbolicatedLine(frame: ParsedStackFrame, resolved: ErrorReportSt
 	if (!original) return "";
 	const functionName = original.name ?? frame.functionName;
 	const location = `${original.source}:${original.line}:${original.column}`;
-	if (frame.style === "safari") return `${functionName ?? "global code"}@${location}`;
+	if (frame.style === STACK_FRAME_SAFARI) return `${functionName ?? "global code"}@${location}`;
 	return functionName ? `    at ${functionName} (${location})` : `    at ${location}`;
 }
 
@@ -146,10 +162,10 @@ export async function symbolicateErrorReportStack(
 	stackTrace: string | undefined,
 	options: SymbolicateErrorReportStackOptions = {}
 ): Promise<ErrorReportSymbolicationResult> {
-	if (!stackTrace?.trim()) return { status: "not-required" };
+	if (!stackTrace?.trim()) return { status: SYMBOLICATION_NOT_REQUIRED };
 	const stackLines = stackTrace.split("\n");
 	const parsedFrames = stackLines.map(parseStackFrame).filter((frame): frame is ParsedStackFrame => frame !== null);
-	if (parsedFrames.length === 0) return { status: "not-required" };
+	if (parsedFrames.length === 0) return { status: SYMBOLICATION_NOT_REQUIRED };
 	const boundedFrames = parsedFrames.slice(0, MAX_STACK_FRAMES);
 	const generatedFrames = boundedFrames.map<ErrorReportStackFrame>((frame) => ({
 		...(frame.functionName ? { functionName: frame.functionName } : {}),
@@ -158,7 +174,7 @@ export async function symbolicateErrorReportStack(
 
 	try {
 		const artifact = await findArtifact(options.artifactRoots ?? resolveDefaultArtifactRoots(), application, buildId);
-		if (!artifact) return { status: "maps-unavailable", frames: generatedFrames };
+		if (!artifact) return { status: SYMBOLICATION_MAPS_UNAVAILABLE, frames: generatedFrames };
 		const traceMaps = new Map<string, TraceMap>();
 		const resultFrames: ErrorReportStackFrame[] = [];
 		let failed = parsedFrames.length > MAX_STACK_FRAMES;
@@ -200,7 +216,7 @@ export async function symbolicateErrorReportStack(
 					source: normalizeOriginalSource(original.source),
 					line: original.line,
 					column: original.column + 1,
-					...(original.name ? { name: original.name.slice(0, 256) } : {})
+					...(original.name ? { name: original.name.slice(0, MAX_FUNCTION_NAME_LENGTH) } : {})
 				},
 				...(sourceContext ? { sourceContext } : {})
 			};
@@ -210,11 +226,11 @@ export async function symbolicateErrorReportStack(
 
 		const hasResolvedFrame = resultFrames.some((frame) => frame.original !== undefined);
 		return {
-			status: failed || !hasResolvedFrame ? "failed" : "resolved",
+			status: failed || !hasResolvedFrame ? SYMBOLICATION_FAILED : SYMBOLICATION_RESOLVED,
 			...(hasResolvedFrame ? { stackTrace: stackLines.join("\n").slice(0, MAX_SYMBOLICATED_STACK_LENGTH) } : {}),
 			frames: resultFrames
 		};
 	} catch {
-		return { status: "failed", frames: generatedFrames };
+		return { status: SYMBOLICATION_FAILED, frames: generatedFrames };
 	}
 }

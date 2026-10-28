@@ -1,9 +1,15 @@
-import type { SeoContentType, SeoHeadOptions, SeoHeadParams } from "./types";
+import { SEO_CONTENT_TYPE_ARTICLE, SEO_CONTENT_TYPE_NEWS_ARTICLE, SEO_CONTENT_TYPE_WEB_PAGE } from "./seoContentTypeConstants";
+import { type SeoContentType, type SeoHeadOptions, type SeoHeadParams } from "./types";
+
+// Типы OpenGraph и MIME JSON-LD повторяются в contract и формируемом head.
+const OPEN_GRAPH_TYPE_WEBSITE = "website";
+const OPEN_GRAPH_TYPE_ARTICLE = "article";
+const JSON_LD_SCRIPT_MIME = "application/ld+json";
 
 type MetaTag = Record<string, string>;
 type LinkTag = Record<string, string>;
 type ScriptTag = {
-	type: "application/ld+json";
+	type: typeof JSON_LD_SCRIPT_MIME;
 	children: string;
 };
 
@@ -13,12 +19,12 @@ type SeoHeadResult = {
 	scripts: ScriptTag[];
 };
 
-function toOpenGraphType(type: SeoHeadOptions["type"]): "website" | "article" {
-	if (type === "Article" || type === "NewsArticle") {
-		return "article";
+function toOpenGraphType(type: SeoHeadOptions["type"]): typeof OPEN_GRAPH_TYPE_WEBSITE | typeof OPEN_GRAPH_TYPE_ARTICLE {
+	if (type === SEO_CONTENT_TYPE_ARTICLE || type === SEO_CONTENT_TYPE_NEWS_ARTICLE) {
+		return OPEN_GRAPH_TYPE_ARTICLE;
 	}
 
-	return "website";
+	return OPEN_GRAPH_TYPE_WEBSITE;
 }
 
 function toAbsoluteUrl(pathOrUrl: string, baseUrl: string | undefined): string {
@@ -51,7 +57,7 @@ function buildJsonLd(options: SeoHeadOptions, canonicalUrl: string): ScriptTag {
 		"@context": "https://schema.org",
 		"@type": options.type,
 		mainEntityOfPage: {
-			"@type": "WebPage",
+			"@type": SEO_CONTENT_TYPE_WEB_PAGE,
 			"@id": canonicalUrl
 		},
 		headline: options.caption,
@@ -85,7 +91,7 @@ function buildJsonLd(options: SeoHeadOptions, canonicalUrl: string): ScriptTag {
 	}
 
 	return {
-		type: "application/ld+json",
+		type: JSON_LD_SCRIPT_MIME,
 		children: JSON.stringify(jsonLd)
 	};
 }

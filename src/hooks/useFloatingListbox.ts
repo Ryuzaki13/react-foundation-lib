@@ -5,7 +5,7 @@ import {
 	autoUpdate,
 	flip,
 	offset,
-	Placement,
+	type Placement,
 	shift,
 	size as floatingSize,
 	useDismiss,
@@ -15,6 +15,22 @@ import {
 } from "@floating-ui/react";
 
 import { findFirstEnabledIndex, findLastEnabledIndex, findNextEnabledIndex, handleKeyboardActivation } from "../utils";
+import {
+	KEYBOARD_KEY_ARROW_DOWN,
+	KEYBOARD_KEY_ARROW_UP,
+	KEYBOARD_KEY_HOME,
+	KEYBOARD_KEY_END,
+	KEYBOARD_KEY_ESCAPE,
+	KEYBOARD_KEY_TAB
+} from "../utils/keyboardConstants";
+
+// Общие стратегии размещения и параметры middleware не зависят от текущих options.
+const FLOATING_LISTBOX_PLACEMENT_FLIP = "flip";
+const FLOATING_LISTBOX_PLACEMENT_AUTO = "auto";
+const FLOATING_LISTBOX_DEFAULT_PLACEMENT = "bottom-start";
+const FLOATING_LISTBOX_VIEWPORT_PADDING = 8;
+const FLOATING_LISTBOX_REFERENCE_OFFSET = 4;
+const FLOATING_LISTBOX_MIN_HEIGHT = 120;
 
 /** Геометрия, которую Floating UI вычислил для доступной стороны listbox. */
 export type FloatingListboxSizeContext = {
@@ -42,7 +58,7 @@ export type FloatingListboxSizeStyle = {
 export type FloatingListboxSizeResolver = (context: FloatingListboxSizeContext) => FloatingListboxSizeStyle;
 
 /** Стратегия выбора стороны для floating-элемента относительно reference. */
-export type FloatingListboxPlacementStrategy = "flip" | "auto";
+export type FloatingListboxPlacementStrategy = typeof FLOATING_LISTBOX_PLACEMENT_FLIP | typeof FLOATING_LISTBOX_PLACEMENT_AUTO;
 
 type FloatingListboxStandardSizeProperty = "width" | "minWidth" | "maxWidth" | "maxHeight";
 
@@ -59,7 +75,7 @@ const floatingListboxSizeResolvers = new WeakMap<object, FloatingListboxSizeReso
 
 /** Полный набор выровненных сторон для поиска наиболее просторного положения. */
 const FLOATING_LISTBOX_AUTO_PLACEMENTS: Placement[] = [
-	"bottom-start",
+	FLOATING_LISTBOX_DEFAULT_PLACEMENT,
 	"bottom-end",
 	"top-start",
 	"top-end",
@@ -95,8 +111,8 @@ export function useFloatingListbox<T>({
 	getOptionDisabled,
 	onSelect,
 	disabled,
-	placement = "bottom-start",
-	placementStrategy = "flip",
+	placement = FLOATING_LISTBOX_DEFAULT_PLACEMENT,
+	placementStrategy = FLOATING_LISTBOX_PLACEMENT_FLIP,
 	closeOnSelect = true,
 	focusFloatingOnOpen = true,
 	allowOpenWithoutOptions = false,
@@ -134,7 +150,7 @@ export function useFloatingListbox<T>({
 	};
 	const activeIndex = resolveActiveIndex(currentActiveIndex);
 	const placementMiddleware =
-		placementStrategy === "auto"
+		placementStrategy === FLOATING_LISTBOX_PLACEMENT_AUTO
 			? autoPlacement({
 					allowedPlacements: FLOATING_LISTBOX_AUTO_PLACEMENTS,
 					/*
@@ -143,9 +159,9 @@ export function useFloatingListbox<T>({
 					 * cross axis.
 					 */
 					crossAxis: false,
-					padding: 8
+					padding: FLOATING_LISTBOX_VIEWPORT_PADDING
 				})
-			: flip({ padding: 8 });
+			: flip({ padding: FLOATING_LISTBOX_VIEWPORT_PADDING });
 
 	const { refs, floatingStyles, context, update } = useFloating({
 		open: resolvedOpen,
@@ -154,11 +170,11 @@ export function useFloatingListbox<T>({
 		transform: false,
 		strategy: "fixed",
 		middleware: [
-			offset(4),
+			offset(FLOATING_LISTBOX_REFERENCE_OFFSET),
 			placementMiddleware,
-			shift({ padding: 8 }),
+			shift({ padding: FLOATING_LISTBOX_VIEWPORT_PADDING }),
 			floatingSize({
-				padding: 8,
+				padding: FLOATING_LISTBOX_VIEWPORT_PADDING,
 				apply({ availableWidth, availableHeight, rects, elements }) {
 					const viewport = elements.floating.ownerDocument.documentElement;
 					const floatingStyle = elements.floating.style;
@@ -185,7 +201,7 @@ export function useFloatingListbox<T>({
 					}
 
 					floatingStyle.minWidth = `${rects.reference.width}px`;
-					floatingStyle.maxHeight = `${Math.max(availableHeight, 120)}px`;
+					floatingStyle.maxHeight = `${Math.max(availableHeight, FLOATING_LISTBOX_MIN_HEIGHT)}px`;
 
 					const nextCustomProperties = new Set<`--${string}`>();
 					const nextStandardProperties = new Map<FloatingListboxStandardSizeProperty, string>();
@@ -342,7 +358,7 @@ export function useFloatingListbox<T>({
 			return;
 		}
 
-		if (event.key === "ArrowDown") {
+		if (event.key === KEYBOARD_KEY_ARROW_DOWN) {
 			event.preventDefault();
 
 			if (!resolvedOpen) {
@@ -354,7 +370,7 @@ export function useFloatingListbox<T>({
 			return;
 		}
 
-		if (event.key === "ArrowUp") {
+		if (event.key === KEYBOARD_KEY_ARROW_UP) {
 			event.preventDefault();
 
 			if (!resolvedOpen) {
@@ -366,32 +382,32 @@ export function useFloatingListbox<T>({
 			return;
 		}
 
-		if (event.key === "Home" && resolvedOpen) {
+		if (event.key === KEYBOARD_KEY_HOME && resolvedOpen) {
 			event.preventDefault();
 			moveActiveToFirst();
 			return;
 		}
 
-		if (event.key === "End" && resolvedOpen) {
+		if (event.key === KEYBOARD_KEY_END && resolvedOpen) {
 			event.preventDefault();
 			moveActiveToLast();
 			return;
 		}
 
-		if (event.key === "Escape" && resolvedOpen) {
+		if (event.key === KEYBOARD_KEY_ESCAPE && resolvedOpen) {
 			event.preventDefault();
 			close();
 			return;
 		}
 
-		if (event.key === "Tab" && resolvedOpen) {
+		if (event.key === KEYBOARD_KEY_TAB && resolvedOpen) {
 			close();
 		}
 	};
 
 	const handleFloatingKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
 		if (event.target !== event.currentTarget) {
-			if (event.key === "Escape") {
+			if (event.key === KEYBOARD_KEY_ESCAPE) {
 				event.preventDefault();
 				close();
 			}
@@ -399,25 +415,25 @@ export function useFloatingListbox<T>({
 			return;
 		}
 
-		if (event.key === "ArrowDown") {
+		if (event.key === KEYBOARD_KEY_ARROW_DOWN) {
 			event.preventDefault();
 			setActiveIndex((currentIndex) => findNextEnabledIndex(options, resolveActiveIndex(currentIndex), 1, getOptionDisabled));
 			return;
 		}
 
-		if (event.key === "ArrowUp") {
+		if (event.key === KEYBOARD_KEY_ARROW_UP) {
 			event.preventDefault();
 			setActiveIndex((currentIndex) => findNextEnabledIndex(options, resolveActiveIndex(currentIndex), -1, getOptionDisabled));
 			return;
 		}
 
-		if (event.key === "Home") {
+		if (event.key === KEYBOARD_KEY_HOME) {
 			event.preventDefault();
 			moveActiveToFirst();
 			return;
 		}
 
-		if (event.key === "End") {
+		if (event.key === KEYBOARD_KEY_END) {
 			event.preventDefault();
 			moveActiveToLast();
 			return;
@@ -427,13 +443,13 @@ export function useFloatingListbox<T>({
 			return;
 		}
 
-		if (event.key === "Escape") {
+		if (event.key === KEYBOARD_KEY_ESCAPE) {
 			event.preventDefault();
 			close();
 			return;
 		}
 
-		if (event.key === "Tab") {
+		if (event.key === KEYBOARD_KEY_TAB) {
 			close();
 		}
 	};

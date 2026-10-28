@@ -3,6 +3,8 @@ import writeXlsxFile, { type Cell, type CellObject, type Feature, type Sheet, ty
 import { parseDate } from "../formatters/date";
 import { type State } from "../types";
 
+import { EXCEL_COLUMN_ALPHABET_LENGTH, EXCEL_COLUMN_FIRST_CHARACTER_CODE, EXCEL_WORKBOOK_EMPTY_MESSAGE } from "./excelWorkbookConstants";
+
 export type ExcelColumn = {
 	id: string;
 	header: string;
@@ -78,9 +80,9 @@ function numberToColumnName(index: number): string {
 	let out = "";
 
 	while (value > 0) {
-		const remainder = (value - 1) % 26;
-		out = String.fromCharCode(65 + remainder) + out;
-		value = Math.floor((value - 1) / 26);
+		const remainder = (value - 1) % EXCEL_COLUMN_ALPHABET_LENGTH;
+		out = String.fromCharCode(EXCEL_COLUMN_FIRST_CHARACTER_CODE + remainder) + out;
+		value = Math.floor((value - 1) / EXCEL_COLUMN_ALPHABET_LENGTH);
 	}
 
 	return out;
@@ -224,7 +226,7 @@ export function buildExcelSheetData(args: Omit<DownloadExcelFileArgs, "fileName"
  */
 export async function downloadExcelWorkbook(args: DownloadExcelWorkbookArgs): Promise<void> {
 	if (args.sheets.length === 0) {
-		throw new Error("Для формирования Excel-книги нужен минимум один лист");
+		throw new Error(EXCEL_WORKBOOK_EMPTY_MESSAGE);
 	}
 
 	const sheetNames = resolveExcelSheetNames(args.sheets.map((sheet) => sheet.name));

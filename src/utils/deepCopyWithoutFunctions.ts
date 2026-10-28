@@ -1,6 +1,8 @@
 import { isPlainObject } from "../validators/isRecord";
 
-type CopyFunctionStrategy = "omit" | "undefined";
+import { ARRAY_FUNCTION_STRATEGY_OMIT, ARRAY_FUNCTION_STRATEGY_UNDEFINED } from "./cloneFunctionStrategyConstants";
+
+type CopyFunctionStrategy = typeof ARRAY_FUNCTION_STRATEGY_OMIT | typeof ARRAY_FUNCTION_STRATEGY_UNDEFINED;
 
 type CopyOptions = {
 	arrayFunctionStrategy?: CopyFunctionStrategy;
@@ -21,7 +23,7 @@ type DeepCopyWithoutFunctions<T> = T extends (...args: never[]) => unknown
 const SKIP_CLONE_VALUE = Symbol("SKIP_CLONE_VALUE");
 
 export function deepCopyWithoutFunctions<T>(value: T, options: CopyOptions = {}): DeepCopyWithoutFunctions<T> {
-	const arrayFunctionStrategy = options.arrayFunctionStrategy ?? "omit";
+	const arrayFunctionStrategy = options.arrayFunctionStrategy ?? ARRAY_FUNCTION_STRATEGY_OMIT;
 	const seen = new WeakMap<object, unknown>();
 
 	const clone = (input: unknown): unknown => {
@@ -51,21 +53,21 @@ export function deepCopyWithoutFunctions<T>(value: T, options: CopyOptions = {})
 				const clonedItem = clone(input[index]);
 
 				if (clonedItem === SKIP_CLONE_VALUE) {
-					if (arrayFunctionStrategy === "undefined") {
+					if (arrayFunctionStrategy === ARRAY_FUNCTION_STRATEGY_UNDEFINED) {
 						result[index] = undefined;
 					}
 
 					continue;
 				}
 
-				if (arrayFunctionStrategy === "omit") {
+				if (arrayFunctionStrategy === ARRAY_FUNCTION_STRATEGY_OMIT) {
 					result.push(clonedItem);
 				} else {
 					result[index] = clonedItem;
 				}
 			}
 
-			if (arrayFunctionStrategy === "undefined") {
+			if (arrayFunctionStrategy === ARRAY_FUNCTION_STRATEGY_UNDEFINED) {
 				result.length = input.length;
 			}
 

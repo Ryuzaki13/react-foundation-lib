@@ -1,14 +1,34 @@
+import { DATE_FORMAT_PRECISION_DAY } from "./dateFormatConstants";
+import {
+	DATE_PATTERN_TOKEN_DAY,
+	DATE_PATTERN_TOKEN_MONTH,
+	DATE_PATTERN_TOKEN_YEAR,
+	DATE_PATTERN_TOKEN_SHORT_YEAR,
+	DATE_PATTERN_TOKEN_HOURS,
+	DATE_PATTERN_TOKEN_MINUTES,
+	DATE_PATTERN_TOKEN_SECONDS
+} from "./datePatternConstants";
+
 import type { DateFormatPrecision } from "./types";
 
 /**
  * Токены календарной даты, поддерживаемые ручными шаблонами форматирования.
  */
-export const DATE_PATTERN_DATE_TOKENS = Object.freeze(["dd", "MM", "yyyy", "yy"] as const);
+export const DATE_PATTERN_DATE_TOKENS = Object.freeze([
+	DATE_PATTERN_TOKEN_DAY,
+	DATE_PATTERN_TOKEN_MONTH,
+	DATE_PATTERN_TOKEN_YEAR,
+	DATE_PATTERN_TOKEN_SHORT_YEAR
+] as const);
 
 /**
  * Токены времени, поддерживаемые ручными шаблонами форматирования.
  */
-export const DATE_PATTERN_TIME_TOKENS = Object.freeze(["HH", "mm", "ss"] as const);
+export const DATE_PATTERN_TIME_TOKENS = Object.freeze([
+	DATE_PATTERN_TOKEN_HOURS,
+	DATE_PATTERN_TOKEN_MINUTES,
+	DATE_PATTERN_TOKEN_SECONDS
+] as const);
 
 /**
  * Все токены ручного шаблона даты/времени.
@@ -23,8 +43,8 @@ export const DATE_PATTERN_TOKEN_RE = /(yyyy|yy|MM|dd|HH|mm|ss)/g;
 const DATE_PATTERN_TOKEN_SET = new Set<string>(DATE_PATTERN_TOKENS);
 const DATE_PATTERN_PRECISION_TOKENS: Readonly<Record<DateFormatPrecision, ReadonlySet<string>>> = Object.freeze({
 	day: new Set(DATE_PATTERN_TOKENS),
-	month: new Set(["MM", "yyyy", "yy"]),
-	year: new Set(["yyyy", "yy"])
+	month: new Set([DATE_PATTERN_TOKEN_MONTH, DATE_PATTERN_TOKEN_YEAR, DATE_PATTERN_TOKEN_SHORT_YEAR]),
+	year: new Set([DATE_PATTERN_TOKEN_YEAR, DATE_PATTERN_TOKEN_SHORT_YEAR])
 });
 
 /**
@@ -60,7 +80,7 @@ export function getDatePatternPrecisionTokens(precision: DateFormatPrecision): R
  * Удаляет из ручного шаблона части даты, которые ниже выбранной точности.
  */
 export function resolveDatePatternPrecision(pattern: string, precision: DateFormatPrecision): string {
-	if (precision === "day") return pattern;
+	if (precision === DATE_FORMAT_PRECISION_DAY) return pattern;
 
 	const allowedTokens = getDatePatternPrecisionTokens(precision);
 	const resultSegments: string[] = [];

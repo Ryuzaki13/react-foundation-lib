@@ -1,3 +1,4 @@
+import { READ_FILE_ERROR_READ_ABORTED } from "./readFileConstants";
 import { ReadFileError } from "./types";
 
 const MIME_PART_PATTERN = "[a-z0-9!#$&^_.+-]+";
@@ -33,6 +34,6 @@ export function assertValidAccept(accept?: readonly string[]): void {
 
 export function assertNotAborted(signal?: AbortSignal): void {
 	if (signal?.aborted) {
-		throw new ReadFileError("READ_ABORTED", "Прервано по сигналу");
+		throw new ReadFileError(READ_FILE_ERROR_READ_ABORTED, "Прервано по сигналу");
 	}
 }

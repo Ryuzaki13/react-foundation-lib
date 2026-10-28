@@ -1,11 +1,14 @@
 import { useSyncExternalStore } from "react";
 
+const ONLINE_EVENT = "online";
+const OFFLINE_EVENT = "offline";
+
 function subscribe(onStoreChange: () => void) {
-	window.addEventListener("online", onStoreChange);
-	window.addEventListener("offline", onStoreChange);
+	window.addEventListener(ONLINE_EVENT, onStoreChange);
+	window.addEventListener(OFFLINE_EVENT, onStoreChange);
 	return () => {
-		window.removeEventListener("online", onStoreChange);
-		window.removeEventListener("offline", onStoreChange);
+		window.removeEventListener(ONLINE_EVENT, onStoreChange);
+		window.removeEventListener(OFFLINE_EVENT, onStoreChange);
 	};
 }
 

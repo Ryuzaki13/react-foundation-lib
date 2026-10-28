@@ -1,5 +1,6 @@
 import { loadPrivateSourceMapArtifact, readPrivateSourceMap } from "./artifact";
 import { isErrorReportBuildId } from "./manifest";
+import { SOURCE_MAP_TEXT_ENCODING, SOURCE_MAP_EXCLUSIVE_WRITE_FLAG, SOURCE_MAP_MANIFEST_FILE_NAME } from "./sourceMapArtifactConstants";
 import {
 	PRIVATE_SOURCE_MAP_ARTIFACT_RETENTION_MS,
 	type LoadedPrivateSourceMapArtifact,
@@ -29,11 +30,11 @@ async function copyArtifact(
 			const content = await readPrivateSourceMap(artifact, entry);
 			const targetPath = path.join(temporaryDirectory, entry.map);
 			await mkdir(path.dirname(targetPath), { recursive: true });
-			await writeFile(targetPath, content, { encoding: "utf8", flag: "wx" });
+			await writeFile(targetPath, content, { encoding: SOURCE_MAP_TEXT_ENCODING, flag: SOURCE_MAP_EXCLUSIVE_WRITE_FLAG });
 		}
-		await writeFile(path.join(temporaryDirectory, "manifest.json"), `${JSON.stringify(artifact.manifest, null, 2)}\n`, {
-			encoding: "utf8",
-			flag: "wx"
+		await writeFile(path.join(temporaryDirectory, SOURCE_MAP_MANIFEST_FILE_NAME), `${JSON.stringify(artifact.manifest, null, 2)}\n`, {
+			encoding: SOURCE_MAP_TEXT_ENCODING,
+			flag: SOURCE_MAP_EXCLUSIVE_WRITE_FLAG
 		});
 		await rename(temporaryDirectory, buildDirectory);
 	} catch (error) {

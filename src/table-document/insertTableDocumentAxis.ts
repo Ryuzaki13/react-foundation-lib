@@ -1,4 +1,10 @@
 import { type TableDocument, type TableDocumentCell } from "./tableDocument";
+import {
+	TABLE_DOCUMENT_AXIS_ROW,
+	type TABLE_DOCUMENT_AXIS_COLUMN,
+	TABLE_DOCUMENT_SECTION_HEADER,
+	TABLE_DOCUMENT_SECTION_BODY
+} from "./tableDocumentConstants";
 import { assertTableDocument } from "./tableDocumentGeometry";
 
 /**
@@ -7,19 +13,23 @@ import { assertTableDocument } from "./tableDocumentGeometry";
  */
 export function insertTableDocumentAxis<T>(
 	document: TableDocument<T>,
-	axis: "row" | "column",
+	axis: typeof TABLE_DOCUMENT_AXIS_ROW | typeof TABLE_DOCUMENT_AXIS_COLUMN,
 	index: number,
 	id: string,
 	cells: readonly TableDocumentCell<T>[],
-	section: "header" | "body" = "body"
+	section: typeof TABLE_DOCUMENT_SECTION_HEADER | typeof TABLE_DOCUMENT_SECTION_BODY = TABLE_DOCUMENT_SECTION_BODY
 ): TableDocument<T> {
 	assertTableDocument(document);
-	const count = axis === "row" ? document.rows.length : document.columns.length;
+	const count = axis === TABLE_DOCUMENT_AXIS_ROW ? document.rows.length : document.columns.length;
 	if (!Number.isInteger(index) || index < 0 || index > count) throw new Error("Некорректная позиция вставки.");
-	if (cells.length !== (axis === "row" ? document.columns.length : document.rows.length)) throw new Error("Неверное число новых ячеек.");
-	if (axis === "row" && (section === "header" ? index > document.headerRowCount : index < document.headerRowCount))
+	if (cells.length !== (axis === TABLE_DOCUMENT_AXIS_ROW ? document.columns.length : document.rows.length))
+		throw new Error("Неверное число новых ячеек.");
+	if (
+		axis === TABLE_DOCUMENT_AXIS_ROW &&
+		(section === TABLE_DOCUMENT_SECTION_HEADER ? index > document.headerRowCount : index < document.headerRowCount)
+	)
 		throw new Error("Строка вставляется вне выбранной части таблицы.");
-	const spanKey = axis === "row" ? "rowSpan" : "columnSpan";
+	const spanKey = axis === TABLE_DOCUMENT_AXIS_ROW ? "rowSpan" : "columnSpan";
 	const merges = document.merges.map((merge) =>
 		index <= merge[axis]
 			? { ...merge, [axis]: merge[axis] + 1 }
@@ -28,11 +38,11 @@ export function insertTableDocumentAxis<T>(
 				: merge
 	);
 	const result: TableDocument<T> =
-		axis === "row"
+		axis === TABLE_DOCUMENT_AXIS_ROW
 			? {
 					...document,
 					merges,
-					headerRowCount: document.headerRowCount + (section === "header" ? 1 : 0),
+					headerRowCount: document.headerRowCount + (section === TABLE_DOCUMENT_SECTION_HEADER ? 1 : 0),
 					rows: [...document.rows.slice(0, index), { id, cells }, ...document.rows.slice(index)]
 				}
 			: {

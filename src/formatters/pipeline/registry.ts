@@ -1,6 +1,5 @@
-import { formattersPipelineDefinitions } from "./definitions";
+import { formattersPipelineDefinitions, type FormattersPipelineDefinition } from "./definitions";
 
-import type { FormattersPipelineDefinition } from "./definitions";
 import type { FormattersPipelineFormatterId } from "./types";
 
 const formatterDefinitionsById = new Map<FormattersPipelineFormatterId, FormattersPipelineDefinition>(

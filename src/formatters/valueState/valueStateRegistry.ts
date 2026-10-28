@@ -1,6 +1,11 @@
 import { State } from "../../types";
+import { VALUE_STATE_NONE } from "../../types/valueStateConstants";
 
 import { ValueStateResolver } from "./types";
+
+const VALUE_STATE_HASH_SEED = 5381;
+const VALUE_STATE_HASH_SHIFT = 5;
+const VALUE_STATE_HASH_RADIX = 36;
 
 /** Реестр: id → скомпилированная функция-резолвер */
 const resolverRegistry = new Map<string, ValueStateResolver>();
@@ -13,11 +18,11 @@ const configToIdIndex = new Map<string, string>();
  * Результат — строка вида `"id_1a2b3c4"`.
  */
 export function computeShortHash(input: string): string {
-	let hash = 5381;
+	let hash = VALUE_STATE_HASH_SEED;
 	for (let i = 0; i < input.length; i++) {
-		hash = ((hash << 5) + hash + input.charCodeAt(i)) >>> 0;
+		hash = ((hash << VALUE_STATE_HASH_SHIFT) + hash + input.charCodeAt(i)) >>> 0;
 	}
-	return "id_" + hash.toString(36);
+	return "id_" + hash.toString(VALUE_STATE_HASH_RADIX);
 }
 
 /**
@@ -59,7 +64,7 @@ export function findResolverByCanonicalKey(canonicalKey: string): ValueStateReso
  */
 export function resolveValueState(id: string, value: unknown): State {
 	const resolver = resolverRegistry.get(id);
-	if (!resolver) return "none";
+	if (!resolver) return VALUE_STATE_NONE;
 	return resolver(value);
 }
 

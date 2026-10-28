@@ -1,7 +1,16 @@
+import {
+	NOTIFICATION_TYPE_ERROR,
+	NOTIFICATION_TYPE_INFO,
+	NOTIFICATION_TYPE_SUCCESS,
+	NOTIFICATION_TYPE_WARNING
+} from "./notificationTypeConstants";
 import { type NotificationPushInput, type NotificationsStoreApi, type NotificationUpdatePatch } from "./store";
 import { type NotificationId } from "./types";
 
 let boundStore: NotificationsStoreApi | null = null;
+
+const PROGRESS_SUCCESS_TTL_MS = 2_500;
+const PROGRESS_ERROR_TTL_MS = 5_000;
 
 export const bindNotifications = (store: NotificationsStoreApi) => {
 	boundStore = store;
@@ -30,19 +39,19 @@ export const notify = Object.freeze({
 	success: (message: string, opts?: Omit<NotificationPushInput, "type" | "message">) =>
 		requireStore()
 			.getState()
-			.actions.push({ type: "success", message, ...opts }),
+			.actions.push({ type: NOTIFICATION_TYPE_SUCCESS, message, ...opts }),
 	info: (message: string, opts?: Omit<NotificationPushInput, "type" | "message">) =>
 		requireStore()
 			.getState()
-			.actions.push({ type: "info", message, ...opts }),
+			.actions.push({ type: NOTIFICATION_TYPE_INFO, message, ...opts }),
 	warning: (message: string, opts?: Omit<NotificationPushInput, "type" | "message">) =>
 		requireStore()
 			.getState()
-			.actions.push({ type: "warning", message, ...opts }),
+			.actions.push({ type: NOTIFICATION_TYPE_WARNING, message, ...opts }),
 	error: (message: string, opts?: Omit<NotificationPushInput, "type" | "message">) =>
 		requireStore()
 			.getState()
-			.actions.push({ type: "error", message, ...opts }),
+			.actions.push({ type: NOTIFICATION_TYPE_ERROR, message, ...opts }),
 
 	/**
 	 * Удобный паттерн "долгой операции":
@@ -56,7 +65,7 @@ export const notify = Object.freeze({
 		if (id) {
 			store.getState().actions.upsert({
 				id,
-				type: "info",
+				type: NOTIFICATION_TYPE_INFO,
 				title: opts?.title,
 				message,
 				dismissible: false
@@ -66,7 +75,7 @@ export const notify = Object.freeze({
 		const notificationId =
 			id ??
 			store.getState().actions.push({
-				type: "info",
+				type: NOTIFICATION_TYPE_INFO,
 				title: opts?.title,
 				message,
 				dismissible: false
@@ -75,10 +84,10 @@ export const notify = Object.freeze({
 		return {
 			id: notificationId,
 			update: (nextMessage: string) => notify.update(notificationId, { message: nextMessage }),
-			success: (nextMessage: string, ttlMs = 2500) =>
-				notify.update(notificationId, { type: "success", message: nextMessage, dismissible: true, ttlMs }),
-			error: (nextMessage: string, ttlMs = 5000) =>
-				notify.update(notificationId, { type: "error", message: nextMessage, dismissible: true, ttlMs }),
+			success: (nextMessage: string, ttlMs = PROGRESS_SUCCESS_TTL_MS) =>
+				notify.update(notificationId, { type: NOTIFICATION_TYPE_SUCCESS, message: nextMessage, dismissible: true, ttlMs }),
+			error: (nextMessage: string, ttlMs = PROGRESS_ERROR_TTL_MS) =>
+				notify.update(notificationId, { type: NOTIFICATION_TYPE_ERROR, message: nextMessage, dismissible: true, ttlMs }),
 			dismiss: () => notify.dismiss(notificationId)
 		};
 	}

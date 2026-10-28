@@ -5,6 +5,23 @@ import {
 	type CompiledAnalyticalTableDefinition
 } from "../definition/types";
 
+import { type ANALYTICAL_ROW_KIND_DATA, type ANALYTICAL_ROW_KIND_GROUP } from "./analyticalRowConstants";
+import {
+	type ANALYTICAL_FILTER_EQUALS,
+	type ANALYTICAL_FILTER_NOT_EQUALS,
+	type ANALYTICAL_FILTER_CONTAINS,
+	type ANALYTICAL_FILTER_STARTS_WITH,
+	type ANALYTICAL_FILTER_IN,
+	type ANALYTICAL_FILTER_BETWEEN,
+	type ANALYTICAL_FILTER_GT,
+	type ANALYTICAL_FILTER_GTE,
+	type ANALYTICAL_FILTER_LT,
+	type ANALYTICAL_FILTER_LTE,
+	type ANALYTICAL_FILTER_EMPTY,
+	type ANALYTICAL_FILTER_NOT_EMPTY,
+	type ANALYTICAL_EXPANSION_ALL
+} from "./analyticalViewConstants";
+
 /** Значения таблицы отделены от исходного DTO: runtime не изменяет снимок Query. */
 export type AnalyticalValues = Readonly<Record<string, unknown>>;
 
@@ -28,7 +45,19 @@ export type AnalyticalSorting = Readonly<{
 
 export type AnalyticalFilter = Readonly<{
 	id: string;
-	operator?: "equals" | "notEquals" | "contains" | "startsWith" | "in" | "between" | "gt" | "gte" | "lt" | "lte" | "empty" | "notEmpty";
+	operator?:
+		| typeof ANALYTICAL_FILTER_EQUALS
+		| typeof ANALYTICAL_FILTER_NOT_EQUALS
+		| typeof ANALYTICAL_FILTER_CONTAINS
+		| typeof ANALYTICAL_FILTER_STARTS_WITH
+		| typeof ANALYTICAL_FILTER_IN
+		| typeof ANALYTICAL_FILTER_BETWEEN
+		| typeof ANALYTICAL_FILTER_GT
+		| typeof ANALYTICAL_FILTER_GTE
+		| typeof ANALYTICAL_FILTER_LT
+		| typeof ANALYTICAL_FILTER_LTE
+		| typeof ANALYTICAL_FILTER_EMPTY
+		| typeof ANALYTICAL_FILTER_NOT_EMPTY;
 	value?: unknown;
 }>;
 
@@ -37,13 +66,13 @@ export type AnalyticalViewState = Readonly<{
 	grouping?: readonly AnalyticalGroupingLevel[];
 	sorting?: readonly AnalyticalSorting[];
 	filters?: readonly AnalyticalFilter[];
-	expandedRowIds?: readonly string[] | "all";
+	expandedRowIds?: readonly string[] | typeof ANALYTICAL_EXPANSION_ALL;
 }>;
 
 export type AnalyticalModelRow<TOriginal = unknown> = Readonly<{
 	id: string;
 	parentId: string | null;
-	kind: "data" | "group";
+	kind: typeof ANALYTICAL_ROW_KIND_DATA | typeof ANALYTICAL_ROW_KIND_GROUP;
 	sourceRow?: AnalyticalDataRow<TOriginal>;
 	original?: TOriginal;
 	values: AnalyticalValues;

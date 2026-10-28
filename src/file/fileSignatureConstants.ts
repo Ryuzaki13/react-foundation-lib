@@ -1,20 +1,16 @@
-/** Приватный словарь результатов; значения сохраняют публичный string union. */
-export const FILE_SIGNATURE_RESULT = {
-	MATCH: "match",
-	MISMATCH: "mismatch",
-	UNSUPPORTED: "unsupported"
-} as const;
+/** Приватные результаты проверок сохраняют значения публичного string union. */
+export const FILE_SIGNATURE_RESULT_MATCH = "match";
+export const FILE_SIGNATURE_RESULT_MISMATCH = "mismatch";
+export const FILE_SIGNATURE_RESULT_UNSUPPORTED = "unsupported";
 
 /** Только dispatch поддержанных проверок; это не предметный allowlist caller. */
-export const FILE_SIGNATURE_EXTENSION = {
-	PNG: "png",
-	JPG: "jpg",
-	JPEG: "jpeg",
-	BMP: "bmp",
-	PSD: "psd",
-	RTF: "rtf",
-	RAR: "rar",
-	ZIP: "zip",
-	SEVEN_ZIP: "7z",
-	PDF: "pdf"
-} as const;
+export const FILE_SIGNATURE_EXTENSION_PNG = "png";
+export const FILE_SIGNATURE_EXTENSION_JPG = "jpg";
+export const FILE_SIGNATURE_EXTENSION_JPEG = "jpeg";
+export const FILE_SIGNATURE_EXTENSION_BMP = "bmp";
+export const FILE_SIGNATURE_EXTENSION_PSD = "psd";
+export const FILE_SIGNATURE_EXTENSION_RTF = "rtf";
+export const FILE_SIGNATURE_EXTENSION_RAR = "rar";
+export const FILE_SIGNATURE_EXTENSION_ZIP = "zip";
+export const FILE_SIGNATURE_EXTENSION_SEVEN_ZIP = "7z";
+export const FILE_SIGNATURE_EXTENSION_PDF = "pdf";

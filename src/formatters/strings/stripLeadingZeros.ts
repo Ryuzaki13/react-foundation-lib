@@ -1,3 +1,5 @@
+const NORMALIZED_ZERO = "0";
+
 /**
  * Удаляет ведущие нули из строки.
  * - "00123" -> "123"
@@ -11,7 +13,7 @@ export function stripLeadingZeros(input: string): string {
 
 	// обрезаем пробелы по краям
 	const str = input.trim();
-	if (str === "") return "0";
+	if (str === "") return NORMALIZED_ZERO;
 
 	// проверяем отрицательное число
 	const isNegative = str.startsWith("-");
@@ -24,7 +26,7 @@ export function stripLeadingZeros(input: string): string {
 
 	// удаляем ведущие нули
 	const normalized = core.replace(/^0+/, "");
-	const result = normalized === "" ? "0" : normalized;
+	const result = normalized === "" ? NORMALIZED_ZERO : normalized;
 
 	return isNegative ? `-${result}` : result;
 }

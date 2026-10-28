@@ -1,19 +1,35 @@
+import { ERROR_REPORT_UTC_MAX_LENGTH } from "./errorReportCaptureLimits";
 import {
 	ERROR_REPORT_QUEUE_MAX_ITEMS,
 	ERROR_REPORT_QUEUE_VERSION,
 	type ErrorReportQueueFailureKind,
 	type ErrorReportQueueRecord
 } from "./queueContract";
+import {
+	QUEUE_LEASE_OWNER_MAX_LENGTH,
+	QUEUE_FAILURE_HTTP,
+	QUEUE_FAILURE_NETWORK,
+	QUEUE_FAILURE_TIMEOUT,
+	QUEUE_FAILURE_UNKNOWN
+} from "./queueResultConstants";
 import { parseErrorReportPayload } from "./schema";
 
-const FAILURE_KINDS = new Set<ErrorReportQueueFailureKind>(["http", "network", "timeout", "unknown"]);
+const HTTP_STATUS_FIRST = 100;
+const HTTP_STATUS_LAST = 599;
+
+const FAILURE_KINDS = new Set<ErrorReportQueueFailureKind>([
+	QUEUE_FAILURE_HTTP,
+	QUEUE_FAILURE_NETWORK,
+	QUEUE_FAILURE_TIMEOUT,
+	QUEUE_FAILURE_UNKNOWN
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isUtc(value: unknown): value is string {
-	return typeof value === "string" && value.length <= 64 && Number.isFinite(Date.parse(value));
+	return typeof value === "string" && value.length <= ERROR_REPORT_UTC_MAX_LENGTH && Number.isFinite(Date.parse(value));
 }
 
 function isSafeCount(value: unknown): value is number {
@@ -26,7 +42,10 @@ function parseFailure(value: unknown): ErrorReportQueueRecord["lastFailure"] {
 	if (!FAILURE_KINDS.has(value.kind as ErrorReportQueueFailureKind)) return undefined;
 	if (
 		value.httpStatus !== undefined &&
-		(typeof value.httpStatus !== "number" || !Number.isInteger(value.httpStatus) || value.httpStatus < 100 || value.httpStatus > 599)
+		(typeof value.httpStatus !== "number" ||
+			!Number.isInteger(value.httpStatus) ||
+			value.httpStatus < HTTP_STATUS_FIRST ||
+			value.httpStatus > HTTP_STATUS_LAST)
 	) {
 		return undefined;
 	}
@@ -40,7 +59,12 @@ function parseFailure(value: unknown): ErrorReportQueueRecord["lastFailure"] {
 
 function parseLease(value: unknown): ErrorReportQueueRecord["lease"] {
 	if (value === undefined) return undefined;
-	if (!isRecord(value) || typeof value.ownerId !== "string" || value.ownerId.length === 0 || value.ownerId.length > 128) {
+	if (
+		!isRecord(value) ||
+		typeof value.ownerId !== "string" ||
+		value.ownerId.length === 0 ||
+		value.ownerId.length > QUEUE_LEASE_OWNER_MAX_LENGTH
+	) {
 		return undefined;
 	}
 	if (!isUtc(value.expiresUtc)) return undefined;

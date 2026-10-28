@@ -1,7 +1,21 @@
+import {
+	KEYBOARD_KEY_ARROW_DOWN,
+	KEYBOARD_KEY_ARROW_LEFT,
+	KEYBOARD_KEY_ARROW_RIGHT,
+	KEYBOARD_KEY_ARROW_UP,
+	KEYBOARD_KEY_END,
+	KEYBOARD_KEY_ENTER,
+	KEYBOARD_KEY_HOME,
+	KEYBOARD_KEY_SPACE
+} from "./keyboardConstants";
+
+// Ориентация определяет пару клавиш одного контракта roving focus.
+const ROVING_FOCUS_ORIENTATION_HORIZONTAL = "horizontal";
+
 /**
  * Клавиши, которые должны активировать кастомные элементы с поведением кнопки.
  */
-export const keyboardActivationKeys = ["Enter", " "] as const;
+export const keyboardActivationKeys = [KEYBOARD_KEY_ENTER, KEYBOARD_KEY_SPACE] as const;
 
 export type KeyboardActivationKey = (typeof keyboardActivationKeys)[number];
 
@@ -14,7 +28,7 @@ interface KeyboardActivationEventLike {
  * Проверяет, что нажатая клавиша должна активировать действие элемента.
  */
 export function isKeyboardActivationKey(key: string): key is KeyboardActivationKey {
-	return key === "Enter" || key === " ";
+	return key === KEYBOARD_KEY_ENTER || key === KEYBOARD_KEY_SPACE;
 }
 
 interface HandleKeyboardActivationOptions {
@@ -44,7 +58,7 @@ export interface RovingFocusTargetOptions {
 	currentIndex: number;
 	itemCount: number;
 	key: string;
-	orientation: "horizontal" | "vertical";
+	orientation: typeof ROVING_FOCUS_ORIENTATION_HORIZONTAL | "vertical";
 	wrap?: boolean;
 }
 
@@ -58,14 +72,14 @@ export function getRovingFocusTargetIndex({ currentIndex, itemCount, key, orient
 	}
 
 	const safeCurrentIndex = Math.min(itemCount - 1, Math.max(0, currentIndex));
-	const previousKey = orientation === "horizontal" ? "ArrowLeft" : "ArrowUp";
-	const nextKey = orientation === "horizontal" ? "ArrowRight" : "ArrowDown";
+	const previousKey = orientation === ROVING_FOCUS_ORIENTATION_HORIZONTAL ? KEYBOARD_KEY_ARROW_LEFT : KEYBOARD_KEY_ARROW_UP;
+	const nextKey = orientation === ROVING_FOCUS_ORIENTATION_HORIZONTAL ? KEYBOARD_KEY_ARROW_RIGHT : KEYBOARD_KEY_ARROW_DOWN;
 
-	if (key === "Home") {
+	if (key === KEYBOARD_KEY_HOME) {
 		return 0;
 	}
 
-	if (key === "End") {
+	if (key === KEYBOARD_KEY_END) {
 		return itemCount - 1;
 	}
 

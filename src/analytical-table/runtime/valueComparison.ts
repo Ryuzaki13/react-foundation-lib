@@ -1,6 +1,7 @@
 import { parseDate } from "../../formatters";
 import { compareStrings } from "../../string-comparison";
 import { stableStringify } from "../../utils";
+import { ANALYTICAL_VALUE_TYPE_DATE } from "../definition/analyticalDefinitionConstants";
 import { type AnalyticalColumn, type AnalyticalValues } from "../types";
 
 /** Тип входит в ключ: null, undefined, строка и число не склеивают разные группы. */
@@ -18,7 +19,7 @@ export function compareAnalyticalValues<T>(left: unknown, right: unknown, column
 	if (left === null || left === undefined) return 1;
 	if (right === null || right === undefined) return -1;
 	if (column?.compare) return column.compare(left, right);
-	if (column?.valueType === "date") {
+	if (column?.valueType === ANALYTICAL_VALUE_TYPE_DATE) {
 		const leftDate = parseDate(left);
 		const rightDate = parseDate(right);
 		if (leftDate && rightDate) return leftDate.getTime() - rightDate.getTime();

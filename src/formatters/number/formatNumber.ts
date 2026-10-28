@@ -1,6 +1,23 @@
 import { formatCompactNumberValue } from "./compact";
 import { isZeroValue } from "./isZeroValue";
-import { DEFAULT_NUMBER_PRESET_NAMES, NUMBER_FORMAT_DEFAULTS, resolveNumberPreset } from "./presets";
+import {
+	STANDARD_NUMBER_GROUP_SIZE,
+	FORMATTED_NUMBER_ZERO,
+	NUMBER_FORMAT_LOCALE,
+	INTL_NUMBER_PART_GROUP,
+	INTL_NUMBER_PART_DECIMAL
+} from "./numberFormatConstants";
+import {
+	NUMBER_PRESET_NAME_INTEGER,
+	NUMBER_PRESET_NAME_DECIMAL,
+	NUMBER_PRESET_NAME_DECIMAL2,
+	NUMBER_PRESET_NAME_DECIMAL3,
+	NUMBER_PRESET_NAME_CURRENCY,
+	NUMBER_PRESET_NAME_PRICE,
+	NUMBER_PRESET_NAME_PERCENT,
+	NUMBER_PRESET_NAME_TONNAGE
+} from "./numberPresetNameConstants";
+import { NUMBER_FORMAT_DEFAULTS, resolveNumberPreset } from "./presets";
 
 import type { NumberFormatPreset } from "./types";
 
@@ -18,7 +35,7 @@ function getFormatter(decimals: number, grouping: boolean): Intl.NumberFormat {
 	const key = `${decimals}:${grouping ? 1 : 0}`;
 	let fmt = cache.get(key);
 	if (!fmt) {
-		fmt = new Intl.NumberFormat("ru-RU", {
+		fmt = new Intl.NumberFormat(NUMBER_FORMAT_LOCALE, {
 			minimumFractionDigits: decimals,
 			maximumFractionDigits: decimals,
 			useGrouping: grouping
@@ -31,7 +48,7 @@ function getFormatter(decimals: number, grouping: boolean): Intl.NumberFormat {
 /** Разделители совпадают с ru-RU — можно использовать format() напрямую */
 function isStandard(p: NumberFormatPreset): boolean {
 	return (
-		p.groupingSize === 3 &&
+		p.groupingSize === STANDARD_NUMBER_GROUP_SIZE &&
 		(p.groupingSeparator === NUMBER_FORMAT_DEFAULTS.groupingSeparator || !p.grouping) &&
 		(p.decimalSeparator === "," || p.decimals === 0)
 	);
@@ -50,8 +67,8 @@ function formatCustomSeparator(num: number, preset: NumberFormatPreset): string 
 	const parts = getFormatter(preset.decimals, preset.grouping).formatToParts(num);
 	let result = "";
 	for (const p of parts) {
-		if (p.type === "group") result += preset.groupingSeparator;
-		else if (p.type === "decimal") result += preset.decimalSeparator;
+		if (p.type === INTL_NUMBER_PART_GROUP) result += preset.groupingSeparator;
+		else if (p.type === INTL_NUMBER_PART_DECIMAL) result += preset.decimalSeparator;
 		else result += p.value;
 	}
 	return result;
@@ -85,7 +102,7 @@ function formatPlainNumber(num: number, preset: NumberFormatPreset): string {
 	if (isStandard(preset)) return formatStandard(num, preset.decimals, preset.grouping);
 
 	// Стандартный размер группы (3), но кастомные разделители
-	if (preset.groupingSize === 3 || !preset.grouping) return formatCustomSeparator(num, preset);
+	if (preset.groupingSize === STANDARD_NUMBER_GROUP_SIZE || !preset.grouping) return formatCustomSeparator(num, preset);
 
 	// Нестандартный размер группы
 	return formatManualGroup(num, preset);
@@ -98,10 +115,10 @@ function formatPlainNumber(num: number, preset: NumberFormatPreset): string {
  * Не использовать напрямую! Использовать `formatNumberAs*`
  */
 export function formatNumber(value: unknown, presetOrName: string | NumberFormatPreset): string {
-	if (typeof value === "string" && value.trim() === "") return "0";
+	if (typeof value === "string" && value.trim() === "") return FORMATTED_NUMBER_ZERO;
 
 	const num = Number(value);
-	if (!Number.isFinite(num)) return "0";
+	if (!Number.isFinite(num)) return FORMATTED_NUMBER_ZERO;
 
 	const preset = resolveNumberPreset(presetOrName);
 
@@ -125,56 +142,56 @@ export function formatNumber(value: unknown, presetOrName: string | NumberFormat
  * Форматирование значения пресетом `integer` (0 знаков после запятой)
  */
 export function formatNumberAsInteger(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.integer);
+	return formatNumber(value, NUMBER_PRESET_NAME_INTEGER);
 }
 
 /**
  * Форматирование значения пресетом `currency` (0 знаков после запятой)
  */
 export function formatNumberAsCurrency(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.currency);
+	return formatNumber(value, NUMBER_PRESET_NAME_CURRENCY);
 }
 
 /**
  * Форматирование значения пресетом `decimal` (1 знак после запятой)
  */
 export function formatNumberAsDecimal(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.decimal);
+	return formatNumber(value, NUMBER_PRESET_NAME_DECIMAL);
 }
 
 /**
  * Форматирование значения пресетом `decimal-2` (2 знака после запятой)
  */
 export function formatNumberAsDecimal2(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.decimal2);
+	return formatNumber(value, NUMBER_PRESET_NAME_DECIMAL2);
 }
 
 /**
  * Форматирование значения пресетом `decimal-3` (3 знака после запятой)
  */
 export function formatNumberAsDecimal3(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.decimal3);
+	return formatNumber(value, NUMBER_PRESET_NAME_DECIMAL3);
 }
 
 /**
  * Форматирование значения пресетом `percent` (2 знака после запятой)
  */
 export function formatNumberAsPercent(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.percent);
+	return formatNumber(value, NUMBER_PRESET_NAME_PERCENT);
 }
 
 /**
  * Форматирование значения пресетом `price` (0 знаков после запятой)
  */
 export function formatNumberAsPrice(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.price);
+	return formatNumber(value, NUMBER_PRESET_NAME_PRICE);
 }
 
 /**
  * Форматирование значения пресетом `tonnage` (1 знак после запятой)
  */
 export function formatNumberAsTonnage(value: unknown): string {
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.tonnage);
+	return formatNumber(value, NUMBER_PRESET_NAME_TONNAGE);
 }
 
 /**
@@ -184,7 +201,7 @@ export function formatNumberAsTonnage(value: unknown): string {
  */
 export function formatNumberAsIntegerOrEmpty(value: unknown): string {
 	if (isZeroValue(value)) return "";
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.integer);
+	return formatNumber(value, NUMBER_PRESET_NAME_INTEGER);
 }
 
 /**
@@ -194,7 +211,7 @@ export function formatNumberAsIntegerOrEmpty(value: unknown): string {
  */
 export function formatNumberAsCurrencyOrEmpty(value: unknown): string {
 	if (isZeroValue(value)) return "";
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.currency);
+	return formatNumber(value, NUMBER_PRESET_NAME_CURRENCY);
 }
 
 /**
@@ -204,7 +221,7 @@ export function formatNumberAsCurrencyOrEmpty(value: unknown): string {
  */
 export function formatNumberAsDecimalOrEmpty(value: unknown): string {
 	if (isZeroValue(value)) return "";
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.decimal);
+	return formatNumber(value, NUMBER_PRESET_NAME_DECIMAL);
 }
 
 /**
@@ -214,7 +231,7 @@ export function formatNumberAsDecimalOrEmpty(value: unknown): string {
  */
 export function formatNumberAsDecimal2OrEmpty(value: unknown): string {
 	if (isZeroValue(value)) return "";
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.decimal2);
+	return formatNumber(value, NUMBER_PRESET_NAME_DECIMAL2);
 }
 
 /**
@@ -224,7 +241,7 @@ export function formatNumberAsDecimal2OrEmpty(value: unknown): string {
  */
 export function formatNumberAsDecimal3OrEmpty(value: unknown): string {
 	if (isZeroValue(value)) return "";
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.decimal3);
+	return formatNumber(value, NUMBER_PRESET_NAME_DECIMAL3);
 }
 
 /**
@@ -234,7 +251,7 @@ export function formatNumberAsDecimal3OrEmpty(value: unknown): string {
  */
 export function formatNumberAsPercentOrEmpty(value: unknown): string {
 	if (isZeroValue(value)) return "";
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.percent);
+	return formatNumber(value, NUMBER_PRESET_NAME_PERCENT);
 }
 
 /**
@@ -244,7 +261,7 @@ export function formatNumberAsPercentOrEmpty(value: unknown): string {
  */
 export function formatNumberAsPriceOrEmpty(value: unknown): string {
 	if (isZeroValue(value)) return "";
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.price);
+	return formatNumber(value, NUMBER_PRESET_NAME_PRICE);
 }
 
 /**
@@ -254,7 +271,7 @@ export function formatNumberAsPriceOrEmpty(value: unknown): string {
  */
 export function formatNumberAsTonnageOrEmpty(value: unknown): string {
 	if (isZeroValue(value)) return "";
-	return formatNumber(value, DEFAULT_NUMBER_PRESET_NAMES.tonnage);
+	return formatNumber(value, NUMBER_PRESET_NAME_TONNAGE);
 }
 
 /** Очистить кеш Intl.NumberFormat */

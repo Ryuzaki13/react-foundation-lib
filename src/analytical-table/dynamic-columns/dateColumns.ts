@@ -16,45 +16,58 @@ import { type AnalyticalDataRow, type AnalyticalValues } from "../runtime/types"
 import { analyticalIdentity } from "../runtime/valueComparison";
 
 import {
+	ANALYTICAL_DATE_GRANULARITY_DAY,
+	ANALYTICAL_DATE_GRANULARITY_WEEK,
+	ANALYTICAL_DATE_GRANULARITY_MONTH,
+	ANALYTICAL_DATE_GRANULARITY_QUARTER,
+	ANALYTICAL_DATE_GRANULARITY_YEAR
+} from "./analyticalDateColumnConstants";
+import {
 	type AnalyticalDateColumn,
 	type AnalyticalDateColumnsOptions,
 	type AnalyticalDateColumnsPlan,
 	type ProjectAnalyticalDateFactsOptions
 } from "./types";
 
+// Ограничения date-only контракта и календарных периодов не зависят от снимка данных.
+const CALENDAR_DATE_TEXT_LENGTH = 10;
+const DAYS_PER_WEEK = 7;
+const MONTHS_PER_QUARTER = 3;
+const DEFAULT_DATE_COLUMN_LIMIT = 366;
+
 /** Принимает только календарный контракт; преобразование timestamp принадлежит transport/domain адаптеру. */
 function readCalendarDate(value: unknown): Date | null {
-	if (typeof value !== "string" || value.length !== 10) return null;
+	if (typeof value !== "string" || value.length !== CALENDAR_DATE_TEXT_LENGTH) return null;
 	const parsed = parseDateByPattern(value, "yyyy-MM-dd");
 	return parsed?.kind === "date-time" ? parsed.date : null;
 }
 
 function getDateBucketStart(date: Date, granularity: AnalyticalDateColumnsOptions["granularity"]): Date {
 	switch (granularity) {
-		case "day":
+		case ANALYTICAL_DATE_GRANULARITY_DAY:
 			return getStartOfDay(date);
-		case "week":
+		case ANALYTICAL_DATE_GRANULARITY_WEEK:
 			return getStartOfWeek(date, 1);
-		case "month":
+		case ANALYTICAL_DATE_GRANULARITY_MONTH:
 			return getStartOfMonth(date);
-		case "quarter":
-			return createCalendarDate(date.getFullYear(), Math.floor(date.getMonth() / 3) * 3, 1);
-		case "year":
+		case ANALYTICAL_DATE_GRANULARITY_QUARTER:
+			return createCalendarDate(date.getFullYear(), Math.floor(date.getMonth() / MONTHS_PER_QUARTER) * MONTHS_PER_QUARTER, 1);
+		case ANALYTICAL_DATE_GRANULARITY_YEAR:
 			return getStartOfYear(date);
 	}
 }
 
 function getNextDateBucketStart(date: Date, granularity: AnalyticalDateColumnsOptions["granularity"]): Date {
 	switch (granularity) {
-		case "day":
+		case ANALYTICAL_DATE_GRANULARITY_DAY:
 			return addCalendarDays(date, 1);
-		case "week":
-			return addCalendarDays(date, 7);
-		case "month":
+		case ANALYTICAL_DATE_GRANULARITY_WEEK:
+			return addCalendarDays(date, DAYS_PER_WEEK);
+		case ANALYTICAL_DATE_GRANULARITY_MONTH:
 			return addCalendarMonths(date, 1);
-		case "quarter":
-			return addCalendarMonths(date, 3);
-		case "year":
+		case ANALYTICAL_DATE_GRANULARITY_QUARTER:
+			return addCalendarMonths(date, MONTHS_PER_QUARTER);
+		case ANALYTICAL_DATE_GRANULARITY_YEAR:
 			return addCalendarYears(date, 1);
 	}
 }
@@ -71,7 +84,7 @@ export function createAnalyticalDateColumnsPlan(options: AnalyticalDateColumnsOp
 		options.from > options.to
 	)
 		throw new Error("Некорректный календарный диапазон аналитических столбцов.");
-	const maxColumns = options.maxColumns ?? 366;
+	const maxColumns = options.maxColumns ?? DEFAULT_DATE_COLUMN_LIMIT;
 	if (!Number.isSafeInteger(maxColumns) || maxColumns < 1)
 		throw new Error("Лимит динамических столбцов должен быть положительным целым числом.");
 	if (!options.id || options.identityColumnIds.length === 0)
@@ -88,7 +101,7 @@ export function createAnalyticalDateColumnsPlan(options: AnalyticalDateColumnsOp
 		columns.push({
 			id: `${options.id}:${options.granularity}:${key}`,
 			// Подпись дня следует общей настройке date; машинные даты используют штатный odata-date.
-			label: options.granularity === "day" ? formatDateAsDate(start) : `${key} — ${end}`,
+			label: options.granularity === ANALYTICAL_DATE_GRANULARITY_DAY ? formatDateAsDate(start) : `${key} — ${end}`,
 			from: key < options.from ? options.from : key,
 			to: end > options.to ? options.to : end
 		});

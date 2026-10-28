@@ -1,3 +1,5 @@
+import { DEFAULT_DATE_LOCALE, DATE_FORMAT_STYLE_MEDIUM } from "./dateFormatConstants";
+import { PARSED_DATE_KIND_DATE_TIME } from "./dateValueConstants";
 import { parseDateValueTZ } from "./parseDate";
 
 /**
@@ -21,12 +23,12 @@ export type FormatInstantDateTimeOptions = {
 export function formatInstantDateTime(value: unknown, options: FormatInstantDateTimeOptions): string {
 	const parsed = parseDateValueTZ(value);
 	const fallback = options.fallback ?? "";
-	if (!parsed || parsed.kind !== "date-time") return fallback;
+	if (!parsed || parsed.kind !== PARSED_DATE_KIND_DATE_TIME) return fallback;
 
 	try {
-		return new Intl.DateTimeFormat(options.locale ?? "ru-RU", {
-			dateStyle: options.dateStyle ?? "medium",
-			timeStyle: options.timeStyle ?? "medium",
+		return new Intl.DateTimeFormat(options.locale ?? DEFAULT_DATE_LOCALE, {
+			dateStyle: options.dateStyle ?? DATE_FORMAT_STYLE_MEDIUM,
+			timeStyle: options.timeStyle ?? DATE_FORMAT_STYLE_MEDIUM,
 			timeZone: options.timeZone
 		}).format(parsed.date);
 	} catch {

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { DOM_RESIZE_EVENT } from "./domEventConstants";
+
 export const useIsTouchDevice = () => {
 	const [isTouchDevice, setIsTouchDevice] = useState(false);
 
@@ -12,10 +14,10 @@ export const useIsTouchDevice = () => {
 		checkTouchDevice();
 
 		// Обработчик для изменений в типе устройства
-		window.addEventListener("resize", checkTouchDevice);
+		window.addEventListener(DOM_RESIZE_EVENT, checkTouchDevice);
 
 		return () => {
-			window.removeEventListener("resize", checkTouchDevice);
+			window.removeEventListener(DOM_RESIZE_EVENT, checkTouchDevice);
 		};
 	}, []);
 

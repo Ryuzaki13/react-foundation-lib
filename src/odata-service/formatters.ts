@@ -5,6 +5,24 @@ import { formatDateAsAbapDate } from "../formatters/date/formatDate";
 import { parseDate } from "../formatters/date/parseDate";
 import { parseNumber } from "../formatters/number/parseNumber";
 import { getBaseTypeFromScalarType } from "../metadata/scalarTypeClassification";
+import {
+	BASE_META_TYPE_DATE,
+	BASE_META_TYPE_NUMBER,
+	SCALAR_TYPE_BINARY,
+	SCALAR_TYPE_BOOLEAN,
+	SCALAR_TYPE_BYTE,
+	SCALAR_TYPE_DATETIME,
+	SCALAR_TYPE_DATETIME_OFFSET,
+	SCALAR_TYPE_DECIMAL,
+	SCALAR_TYPE_DOUBLE,
+	SCALAR_TYPE_FLOAT,
+	SCALAR_TYPE_GUID,
+	SCALAR_TYPE_INT,
+	SCALAR_TYPE_LONG,
+	SCALAR_TYPE_STRING,
+	SCALAR_TYPE_TIME
+} from "../metadata/scalarTypeConstants";
+import { ABAP_BOOLEAN_FALSE, ABAP_BOOLEAN_TRUE } from "../types/abapBooleanConstants";
 
 import { ODataDateFormat } from "./dateUtils";
 import { odataTypeSchemas } from "./schema";
@@ -25,31 +43,31 @@ import type {
  */
 function formatValidValue(type: ODataMetaType, validValue: unknown) {
 	switch (type) {
-		case "string":
+		case SCALAR_TYPE_STRING:
 			return `'${String(validValue).replace(/'/g, "''")}'`;
-		case "guid":
+		case SCALAR_TYPE_GUID:
 			return `guid'${String(validValue)}'`;
-		case "boolean":
+		case SCALAR_TYPE_BOOLEAN:
 			return validValue ? "'X'" : "' '";
-		case "long":
+		case SCALAR_TYPE_LONG:
 			return `${String(validValue)}L`;
-		case "float":
+		case SCALAR_TYPE_FLOAT:
 			return `${String(validValue)}F`;
-		case "decimal":
+		case SCALAR_TYPE_DECIMAL:
 			return `${String(validValue)}M`;
-		case "double":
+		case SCALAR_TYPE_DOUBLE:
 			return `${String(validValue)}D`;
-		case "datetime":
-		case "datetimeOffset":
-		case "time":
+		case SCALAR_TYPE_DATETIME:
+		case SCALAR_TYPE_DATETIME_OFFSET:
+		case SCALAR_TYPE_TIME:
 			if (!(validValue instanceof Date)) {
 				throw new Error(`Неверная дата для типа '${type}': ${validValue}`);
 			}
 			return ODataDateFormat[type](validValue);
-		case "binary":
+		case SCALAR_TYPE_BINARY:
 			return `binary'${validValue}'`;
-		case "byte":
-		case "int":
+		case SCALAR_TYPE_BYTE:
+		case SCALAR_TYPE_INT:
 			return `${String(validValue)}`;
 
 		default:
@@ -84,8 +102,8 @@ function tryParseBooleanValue(value: unknown): boolean | undefined {
 	}
 	if (typeof value !== "string") return undefined;
 
-	if (value === "X") return true;
-	if (value === " " || value === "") return false;
+	if (value === ABAP_BOOLEAN_TRUE) return true;
+	if (value === ABAP_BOOLEAN_FALSE || value === "") return false;
 
 	const normalized = value.trim().toLowerCase();
 	if (normalized === "true" || normalized === "1") return true;
@@ -97,7 +115,7 @@ function tryParseBooleanValue(value: unknown): boolean | undefined {
 function tryParseAbapBooleanLikeValue(value: unknown): boolean | undefined {
 	if (value == null) return false;
 	if (typeof value !== "string") return undefined;
-	if (value === "X" || value === " " || value === "") {
+	if (value === ABAP_BOOLEAN_TRUE || value === ABAP_BOOLEAN_FALSE || value === "") {
 		return parseAbapBoolean(value);
 	}
 	return undefined;
@@ -110,22 +128,22 @@ export function odataParseValue(type: ODataStringType, value: unknown): string |
 export function odataParseValue(type: ODataMetaType, value: unknown): string | unknown;
 export function odataParseValue(type: ODataMetaType, value: unknown) {
 	switch (type) {
-		case "boolean": {
+		case SCALAR_TYPE_BOOLEAN: {
 			const parsed = tryParseBooleanValue(value);
 			return parsed ?? value;
 		}
 
-		case "int":
-		case "long":
-		case "float":
-		case "decimal":
-		case "double":
-		case "byte":
+		case SCALAR_TYPE_INT:
+		case SCALAR_TYPE_LONG:
+		case SCALAR_TYPE_FLOAT:
+		case SCALAR_TYPE_DECIMAL:
+		case SCALAR_TYPE_DOUBLE:
+		case SCALAR_TYPE_BYTE:
 			return parseNumber(value);
 
-		case "datetime":
-		case "datetimeOffset":
-		case "time":
+		case SCALAR_TYPE_DATETIME:
+		case SCALAR_TYPE_DATETIME_OFFSET:
+		case SCALAR_TYPE_TIME:
 			return parseDate(value);
 
 		default:
@@ -146,20 +164,20 @@ export function odataParseValueByMetadata(descriptor: ODataMetadataValueDescript
 
 export function defaultODataTypeValue(type: ODataMetaType) {
 	switch (type) {
-		case "boolean":
+		case SCALAR_TYPE_BOOLEAN:
 			return false;
 
-		case "int":
-		case "long":
-		case "float":
-		case "decimal":
-		case "double":
-		case "byte":
+		case SCALAR_TYPE_INT:
+		case SCALAR_TYPE_LONG:
+		case SCALAR_TYPE_FLOAT:
+		case SCALAR_TYPE_DECIMAL:
+		case SCALAR_TYPE_DOUBLE:
+		case SCALAR_TYPE_BYTE:
 			return 0;
 
-		case "datetime":
-		case "datetimeOffset":
-		case "time":
+		case SCALAR_TYPE_DATETIME:
+		case SCALAR_TYPE_DATETIME_OFFSET:
+		case SCALAR_TYPE_TIME:
 			return new Date();
 
 		default:
@@ -169,11 +187,11 @@ export function defaultODataTypeValue(type: ODataMetaType) {
 
 export function defaultControlTypeValue(type: BaseMetaType) {
 	switch (type) {
-		case "boolean":
+		case SCALAR_TYPE_BOOLEAN:
 			return false;
-		case "number":
+		case BASE_META_TYPE_NUMBER:
 			return 0;
-		case "date":
+		case BASE_META_TYPE_DATE:
 			return new Date();
 		default:
 			return "";
@@ -222,13 +240,13 @@ type FormatterRecord = {
 /*export*/ const formatODataDatetime = createDateFormatter(ODataDateFormat.datetime);
 /*export*/ const formatODataDatetimeOffset = createDateFormatter(ODataDateFormat.datetimeOffset);
 /*export*/ const formatODataTime = createDateFormatter(ODataDateFormat.time);
-/*export*/ const formatODataAbapDate = createDateFormatter((value) => formatValidValue("string", formatDateAsAbapDate(value)));
+/*export*/ const formatODataAbapDate = createDateFormatter((value) => formatValidValue(SCALAR_TYPE_STRING, formatDateAsAbapDate(value)));
 
-/*export*/ const formatODataBoolean = createBooleanFormatter((value) => formatValidValue("boolean", value));
-/*export*/ const formatODataBooleanAsChar = createBooleanFormatter((value) => formatValidValue("string", Number(value)));
-/*export*/ const formatODataBooleanAsByte = createBooleanFormatter((value) => formatValidValue("byte", Number(value)));
+/*export*/ const formatODataBoolean = createBooleanFormatter((value) => formatValidValue(SCALAR_TYPE_BOOLEAN, value));
+/*export*/ const formatODataBooleanAsChar = createBooleanFormatter((value) => formatValidValue(SCALAR_TYPE_STRING, Number(value)));
+/*export*/ const formatODataBooleanAsByte = createBooleanFormatter((value) => formatValidValue(SCALAR_TYPE_BYTE, Number(value)));
 
-/*export*/ const formatODataString = createStringFormatter((value) => formatValidValue("string", value));
+/*export*/ const formatODataString = createStringFormatter((value) => formatValidValue(SCALAR_TYPE_STRING, value));
 
 /**
  * Форматтеры формируются только по базовым типам, по которым работают UI контролы.

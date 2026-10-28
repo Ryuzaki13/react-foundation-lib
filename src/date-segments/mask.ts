@@ -1,13 +1,44 @@
+/** Виды и идентификаторы связывают маску, сборку даты и литеральные типы сегментов. */
+const DATE_SEGMENT_ID_YEAR = "year";
+const DATE_SEGMENT_ID_MONTH = "month";
+const DATE_SEGMENT_ID_DAY = "day";
+const DATE_SEGMENT_ID_HOURS = "hours";
+const DATE_SEGMENT_ID_MINUTES = "minutes";
+const DATE_SEGMENT_ID_SECONDS = "seconds";
+const DATE_SEGMENT_KIND_EDITABLE = "editable";
+const DATE_SEGMENT_KIND_LITERAL = "literal";
+const DATE_SEGMENT_YEAR_LABEL = "Год";
+const DATE_SEGMENT_DAY_LABEL = "День";
+const DATE_SEGMENT_HOURS_LABEL = "Часы";
+const DATE_SEGMENT_HOURS_PLACEHOLDER = "чч";
+
+const DATE_SEGMENT_MAX_YEAR = 9999;
+const DATE_SEGMENT_MAX_TWO_DIGIT_YEAR = 99;
+const DATE_SEGMENT_MAX_MONTH = 12;
+const DATE_SEGMENT_MAX_DAY = 31;
+const DATE_SEGMENT_MAX_HOURS = 23;
+const DATE_SEGMENT_MAX_MINUTES = 59;
+const DATE_SEGMENT_MAX_SECONDS = 59;
+const DATE_SEGMENT_FALLBACK_YEAR = 1970;
+const DATE_SEGMENT_TWO_DIGIT_YEAR_PIVOT = 70;
+const DATE_SEGMENT_PREVIOUS_CENTURY = 1900;
+const DATE_SEGMENT_CURRENT_CENTURY = 2000;
 /**
  * Нейтральные идентификаторы редактируемых сегментов даты и времени.
  */
-export type DateSegmentId = "year" | "month" | "day" | "hours" | "minutes" | "seconds";
+export type DateSegmentId =
+	| typeof DATE_SEGMENT_ID_YEAR
+	| typeof DATE_SEGMENT_ID_MONTH
+	| typeof DATE_SEGMENT_ID_DAY
+	| typeof DATE_SEGMENT_ID_HOURS
+	| typeof DATE_SEGMENT_ID_MINUTES
+	| typeof DATE_SEGMENT_ID_SECONDS;
 
 /**
  * Редактируемый сегмент маски даты/времени.
  */
 export interface EditableDateSegment {
-	kind: "editable";
+	kind: typeof DATE_SEGMENT_KIND_EDITABLE;
 	id: DateSegmentId;
 	token: string;
 	length: number;
@@ -21,7 +52,7 @@ export interface EditableDateSegment {
  * Литеральный сегмент маски даты/времени.
  */
 export interface LiteralDateSegment {
-	kind: "literal";
+	kind: typeof DATE_SEGMENT_KIND_LITERAL;
 	text: string;
 }
 
@@ -33,16 +64,51 @@ export type DateMaskSegment = EditableDateSegment | LiteralDateSegment;
 type EditableTokenConfig = Omit<EditableDateSegment, "kind" | "token">;
 
 const TOKEN_MAP: Record<string, EditableTokenConfig> = {
-	YYYY: { id: "year", length: 4, min: 1, max: 9999, placeholder: "ГГГГ", ariaLabel: "Год" },
-	yyyy: { id: "year", length: 4, min: 1, max: 9999, placeholder: "гггг", ariaLabel: "Год" },
-	yy: { id: "year", length: 2, min: 0, max: 99, placeholder: "гг", ariaLabel: "Год" },
-	MM: { id: "month", length: 2, min: 1, max: 12, placeholder: "мм", ariaLabel: "Месяц" },
-	DD: { id: "day", length: 2, min: 1, max: 31, placeholder: "ДД", ariaLabel: "День" },
-	dd: { id: "day", length: 2, min: 1, max: 31, placeholder: "дд", ariaLabel: "День" },
-	hh: { id: "hours", length: 2, min: 0, max: 23, placeholder: "чч", ariaLabel: "Часы" },
-	HH: { id: "hours", length: 2, min: 0, max: 23, placeholder: "чч", ariaLabel: "Часы" },
-	mm: { id: "minutes", length: 2, min: 0, max: 59, placeholder: "мм", ariaLabel: "Минуты" },
-	ss: { id: "seconds", length: 2, min: 0, max: 59, placeholder: "сс", ariaLabel: "Секунды" }
+	YYYY: {
+		id: DATE_SEGMENT_ID_YEAR,
+		length: 4,
+		min: 1,
+		max: DATE_SEGMENT_MAX_YEAR,
+		placeholder: "ГГГГ",
+		ariaLabel: DATE_SEGMENT_YEAR_LABEL
+	},
+	yyyy: {
+		id: DATE_SEGMENT_ID_YEAR,
+		length: 4,
+		min: 1,
+		max: DATE_SEGMENT_MAX_YEAR,
+		placeholder: "гггг",
+		ariaLabel: DATE_SEGMENT_YEAR_LABEL
+	},
+	yy: {
+		id: DATE_SEGMENT_ID_YEAR,
+		length: 2,
+		min: 0,
+		max: DATE_SEGMENT_MAX_TWO_DIGIT_YEAR,
+		placeholder: "гг",
+		ariaLabel: DATE_SEGMENT_YEAR_LABEL
+	},
+	MM: { id: DATE_SEGMENT_ID_MONTH, length: 2, min: 1, max: DATE_SEGMENT_MAX_MONTH, placeholder: "мм", ariaLabel: "Месяц" },
+	DD: { id: DATE_SEGMENT_ID_DAY, length: 2, min: 1, max: DATE_SEGMENT_MAX_DAY, placeholder: "ДД", ariaLabel: DATE_SEGMENT_DAY_LABEL },
+	dd: { id: DATE_SEGMENT_ID_DAY, length: 2, min: 1, max: DATE_SEGMENT_MAX_DAY, placeholder: "дд", ariaLabel: DATE_SEGMENT_DAY_LABEL },
+	hh: {
+		id: DATE_SEGMENT_ID_HOURS,
+		length: 2,
+		min: 0,
+		max: DATE_SEGMENT_MAX_HOURS,
+		placeholder: DATE_SEGMENT_HOURS_PLACEHOLDER,
+		ariaLabel: DATE_SEGMENT_HOURS_LABEL
+	},
+	HH: {
+		id: DATE_SEGMENT_ID_HOURS,
+		length: 2,
+		min: 0,
+		max: DATE_SEGMENT_MAX_HOURS,
+		placeholder: DATE_SEGMENT_HOURS_PLACEHOLDER,
+		ariaLabel: DATE_SEGMENT_HOURS_LABEL
+	},
+	mm: { id: DATE_SEGMENT_ID_MINUTES, length: 2, min: 0, max: DATE_SEGMENT_MAX_MINUTES, placeholder: "мм", ariaLabel: "Минуты" },
+	ss: { id: DATE_SEGMENT_ID_SECONDS, length: 2, min: 0, max: DATE_SEGMENT_MAX_SECONDS, placeholder: "сс", ariaLabel: "Секунды" }
 };
 
 const TOKENS_SORTED = Object.keys(TOKEN_MAP).sort((left, right) => right.length - left.length);
@@ -58,7 +124,7 @@ export function parseDateSegmentMask(mask: string): DateMaskSegment[] {
 	const flushLiteral = () => {
 		if (!literalBuffer) return;
 
-		segments.push({ kind: "literal", text: literalBuffer });
+		segments.push({ kind: DATE_SEGMENT_KIND_LITERAL, text: literalBuffer });
 		literalBuffer = "";
 	};
 
@@ -79,7 +145,7 @@ export function parseDateSegmentMask(mask: string): DateMaskSegment[] {
 		}
 
 		flushLiteral();
-		segments.push({ kind: "editable", token: matchedToken, ...TOKEN_MAP[matchedToken] });
+		segments.push({ kind: DATE_SEGMENT_KIND_EDITABLE, token: matchedToken, ...TOKEN_MAP[matchedToken] });
 		position += matchedToken.length;
 	}
 
@@ -92,7 +158,7 @@ export function parseDateSegmentMask(mask: string): DateMaskSegment[] {
  * Возвращает `true`, если сегмент редактируемый.
  */
 export function isEditableDateSegment(segment: DateMaskSegment): segment is EditableDateSegment {
-	return segment.kind === "editable";
+	return segment.kind === DATE_SEGMENT_KIND_EDITABLE;
 }
 
 /**
@@ -143,19 +209,19 @@ export function indexedSegmentsToDate(
 		if (value.length < segment.length) return null;
 	}
 
-	const fallbackDate = options?.defaultDate ?? new Date(1970, 0, 1, 0, 0, 0, 0);
-	const year = resolveSegmentNumber(editableSegments, values, "year") ?? fallbackDate.getFullYear();
-	const month = resolveSegmentNumber(editableSegments, values, "month") ?? fallbackDate.getMonth() + 1;
-	const day = resolveSegmentNumber(editableSegments, values, "day") ?? fallbackDate.getDate();
-	const hours = resolveSegmentNumber(editableSegments, values, "hours") ?? fallbackDate.getHours();
-	const minutes = resolveSegmentNumber(editableSegments, values, "minutes") ?? fallbackDate.getMinutes();
-	const seconds = resolveSegmentNumber(editableSegments, values, "seconds") ?? fallbackDate.getSeconds();
+	const fallbackDate = options?.defaultDate ?? new Date(DATE_SEGMENT_FALLBACK_YEAR, 0, 1, 0, 0, 0, 0);
+	const year = resolveSegmentNumber(editableSegments, values, DATE_SEGMENT_ID_YEAR) ?? fallbackDate.getFullYear();
+	const month = resolveSegmentNumber(editableSegments, values, DATE_SEGMENT_ID_MONTH) ?? fallbackDate.getMonth() + 1;
+	const day = resolveSegmentNumber(editableSegments, values, DATE_SEGMENT_ID_DAY) ?? fallbackDate.getDate();
+	const hours = resolveSegmentNumber(editableSegments, values, DATE_SEGMENT_ID_HOURS) ?? fallbackDate.getHours();
+	const minutes = resolveSegmentNumber(editableSegments, values, DATE_SEGMENT_ID_MINUTES) ?? fallbackDate.getMinutes();
+	const seconds = resolveSegmentNumber(editableSegments, values, DATE_SEGMENT_ID_SECONDS) ?? fallbackDate.getSeconds();
 
-	if (month < 1 || month > 12) return null;
-	if (day < 1 || day > 31) return null;
-	if (hours < 0 || hours > 23) return null;
-	if (minutes < 0 || minutes > 59) return null;
-	if (seconds < 0 || seconds > 59) return null;
+	if (month < 1 || month > DATE_SEGMENT_MAX_MONTH) return null;
+	if (day < 1 || day > DATE_SEGMENT_MAX_DAY) return null;
+	if (hours < 0 || hours > DATE_SEGMENT_MAX_HOURS) return null;
+	if (minutes < 0 || minutes > DATE_SEGMENT_MAX_MINUTES) return null;
+	if (seconds < 0 || seconds > DATE_SEGMENT_MAX_SECONDS) return null;
 
 	const result = new Date(year, month - 1, day, hours, minutes, seconds, 0);
 	const isValid =
@@ -176,17 +242,17 @@ function resolveSegmentValue(date: Date, segment: EditableDateSegment): string {
 	const fullYear = String(date.getFullYear());
 
 	switch (segment.id) {
-		case "year":
+		case DATE_SEGMENT_ID_YEAR:
 			return segment.length === 2 ? fullYear.slice(-2) : fullYear.padStart(segment.length, "0");
-		case "month":
+		case DATE_SEGMENT_ID_MONTH:
 			return String(date.getMonth() + 1).padStart(segment.length, "0");
-		case "day":
+		case DATE_SEGMENT_ID_DAY:
 			return String(date.getDate()).padStart(segment.length, "0");
-		case "hours":
+		case DATE_SEGMENT_ID_HOURS:
 			return String(date.getHours()).padStart(segment.length, "0");
-		case "minutes":
+		case DATE_SEGMENT_ID_MINUTES:
 			return String(date.getMinutes()).padStart(segment.length, "0");
-		case "seconds":
+		case DATE_SEGMENT_ID_SECONDS:
 			return String(date.getSeconds()).padStart(segment.length, "0");
 	}
 }
@@ -208,8 +274,10 @@ function resolveSegmentNumber(
 	const numericValue = Number.parseInt(rawValue, 10);
 	if (!Number.isFinite(numericValue)) return null;
 
-	if (targetId === "year" && match.segment.length === 2) {
-		return numericValue < 70 ? 2000 + numericValue : 1900 + numericValue;
+	if (targetId === DATE_SEGMENT_ID_YEAR && match.segment.length === 2) {
+		return numericValue < DATE_SEGMENT_TWO_DIGIT_YEAR_PIVOT
+			? DATE_SEGMENT_CURRENT_CENTURY + numericValue
+			: DATE_SEGMENT_PREVIOUS_CENTURY + numericValue;
 	}
 
 	return numericValue;

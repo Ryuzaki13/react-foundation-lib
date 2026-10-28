@@ -1,5 +1,6 @@
 const DEFAULT_FONT_SIZE = 16;
 const DEFAULT_LINE_HEIGHT = 1.2;
+const CONTROL_HEIGHT_LINE_HEIGHT_MULTIPLIER = 10;
 
 export function getCurrentFontSize(element?: HTMLElement | null): number {
 	if (typeof window === "undefined" || typeof document === "undefined") {
@@ -39,5 +40,5 @@ export function getControlHeight() {
 	const lineHeight = getCurrentLineHeight();
 
 	// Правильно расчета --control-height
-	return fontSize + lineHeight * 10;
+	return fontSize + lineHeight * CONTROL_HEIGHT_LINE_HEIGHT_MULTIPLIER;
 }

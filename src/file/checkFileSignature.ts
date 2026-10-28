@@ -1,4 +1,18 @@
-import { FILE_SIGNATURE_EXTENSION, FILE_SIGNATURE_RESULT } from "./fileSignatureConstants";
+import {
+	FILE_SIGNATURE_EXTENSION_BMP,
+	FILE_SIGNATURE_EXTENSION_JPEG,
+	FILE_SIGNATURE_EXTENSION_JPG,
+	FILE_SIGNATURE_EXTENSION_PDF,
+	FILE_SIGNATURE_EXTENSION_PNG,
+	FILE_SIGNATURE_EXTENSION_PSD,
+	FILE_SIGNATURE_EXTENSION_RAR,
+	FILE_SIGNATURE_EXTENSION_RTF,
+	FILE_SIGNATURE_EXTENSION_SEVEN_ZIP,
+	FILE_SIGNATURE_EXTENSION_ZIP,
+	FILE_SIGNATURE_RESULT_MATCH,
+	FILE_SIGNATURE_RESULT_MISMATCH,
+	FILE_SIGNATURE_RESULT_UNSUPPORTED
+} from "./fileSignatureConstants";
 import { type FileSignatureCheckOptions, type FileSignatureCheckResult } from "./fileSignatureTypes";
 import { checkArchiveSignature } from "./signature/checkArchiveSignature";
 import { checkPdfSignature } from "./signature/checkPdfSignature";
@@ -19,51 +33,52 @@ const PSD_RESERVED_BYTES = [0, 0, 0, 0, 0, 0];
 const RTF_FAMILY = [0x7b, 0x5c, 0x72, 0x74, 0x66];
 const RTF_SIGNATURE = [0x7b, 0x5c, 0x72, 0x74, 0x66, 0x31];
 // Цифра или буква продолжает control word вместо завершения версии rtf1.
-const RTF_CONTROL_WORD_RANGES = {
-	digit: [0x30, 0x39],
-	uppercase: [0x41, 0x5a],
-	lowercase: [0x61, 0x7a]
-} as const;
+const RTF_CONTROL_WORD_DIGIT_FIRST = 0x30;
+const RTF_CONTROL_WORD_DIGIT_LAST = 0x39;
+const RTF_CONTROL_WORD_UPPERCASE_FIRST = 0x41;
+const RTF_CONTROL_WORD_UPPERCASE_LAST = 0x5a;
+const RTF_CONTROL_WORD_LOWERCASE_FIRST = 0x61;
+const RTF_CONTROL_WORD_LOWERCASE_LAST = 0x7a;
 
 function checkJpegSignature(bytes: Uint8Array): FileSignatureCheckResult {
-	if (bytes[0] !== JPEG_MARKER_PREFIX) return FILE_SIGNATURE_RESULT.MISMATCH;
+	if (bytes[0] !== JPEG_MARKER_PREFIX) return FILE_SIGNATURE_RESULT_MISMATCH;
 	let offset = 1;
 	// T.81 допускает FF fill перед marker. Длинный prefix не превращаем в scan файла.
 	while (offset < Math.min(bytes.length, JPEG_MARKER_SCAN_BYTES) && bytes[offset] === JPEG_MARKER_PREFIX) offset += 1;
-	if (offset === JPEG_MARKER_SCAN_BYTES && bytes.length > offset) return FILE_SIGNATURE_RESULT.UNSUPPORTED;
-	return bytes[offset] === JPEG_START_OF_IMAGE_MARKER ? FILE_SIGNATURE_RESULT.MATCH : FILE_SIGNATURE_RESULT.MISMATCH;
+	if (offset === JPEG_MARKER_SCAN_BYTES && bytes.length > offset) return FILE_SIGNATURE_RESULT_UNSUPPORTED;
+	return bytes[offset] === JPEG_START_OF_IMAGE_MARKER ? FILE_SIGNATURE_RESULT_MATCH : FILE_SIGNATURE_RESULT_MISMATCH;
 }
 
 function checkBitmapSignature(bytes: Uint8Array): FileSignatureCheckResult {
-	if (isTruncatedSignature(bytes, BITMAP_SIGNATURE)) return FILE_SIGNATURE_RESULT.MISMATCH;
+	if (isTruncatedSignature(bytes, BITMAP_SIGNATURE)) return FILE_SIGNATURE_RESULT_MISMATCH;
 	// OS/2/DIB и неизвестные альтернативы не запрещаем по Windows BM header.
-	if (!hasSignatureBytes(bytes, BITMAP_SIGNATURE)) return FILE_SIGNATURE_RESULT.UNSUPPORTED;
-	if (bytes.length < BITMAP_FILE_HEADER_BYTES) return FILE_SIGNATURE_RESULT.MISMATCH;
+	if (!hasSignatureBytes(bytes, BITMAP_SIGNATURE)) return FILE_SIGNATURE_RESULT_UNSUPPORTED;
+	if (bytes.length < BITMAP_FILE_HEADER_BYTES) return FILE_SIGNATURE_RESULT_MISMATCH;
 	return hasSignatureBytes(bytes, BITMAP_RESERVED_BYTES, BITMAP_RESERVED_OFFSET)
-		? FILE_SIGNATURE_RESULT.MATCH
-		: FILE_SIGNATURE_RESULT.MISMATCH;
+		? FILE_SIGNATURE_RESULT_MATCH
+		: FILE_SIGNATURE_RESULT_MISMATCH;
 }
 
 function checkPhotoshopSignature(bytes: Uint8Array): FileSignatureCheckResult {
-	if (!hasSignatureBytes(bytes, PSD_SIGNATURE)) return FILE_SIGNATURE_RESULT.MISMATCH;
+	if (!hasSignatureBytes(bytes, PSD_SIGNATURE)) return FILE_SIGNATURE_RESULT_MISMATCH;
 	const reservedOffset = PSD_SIGNATURE.length + PSD_SUPPORTED_VERSION.length;
-	if (bytes.length < reservedOffset) return FILE_SIGNATURE_RESULT.MISMATCH;
+	if (bytes.length < reservedOffset) return FILE_SIGNATURE_RESULT_MISMATCH;
 	// PSB=2 и неизвестные версии имеют общее семейство, но не подтверждают PSD=1.
-	if (!hasSignatureBytes(bytes, PSD_SUPPORTED_VERSION, PSD_SIGNATURE.length)) return FILE_SIGNATURE_RESULT.UNSUPPORTED;
-	return hasSignatureBytes(bytes, PSD_RESERVED_BYTES, reservedOffset) ? FILE_SIGNATURE_RESULT.MATCH : FILE_SIGNATURE_RESULT.MISMATCH;
+	if (!hasSignatureBytes(bytes, PSD_SUPPORTED_VERSION, PSD_SIGNATURE.length)) return FILE_SIGNATURE_RESULT_UNSUPPORTED;
+	return hasSignatureBytes(bytes, PSD_RESERVED_BYTES, reservedOffset) ? FILE_SIGNATURE_RESULT_MATCH : FILE_SIGNATURE_RESULT_MISMATCH;
 }
 
 function checkRtfSignature(bytes: Uint8Array): FileSignatureCheckResult {
-	if (isTruncatedSignature(bytes, RTF_SIGNATURE)) return FILE_SIGNATURE_RESULT.MISMATCH;
-	if (!hasSignatureBytes(bytes, RTF_FAMILY)) return FILE_SIGNATURE_RESULT.UNSUPPORTED;
-	if (!hasSignatureBytes(bytes, RTF_SIGNATURE) || bytes.length <= RTF_SIGNATURE.length) return FILE_SIGNATURE_RESULT.MISMATCH;
+	if (isTruncatedSignature(bytes, RTF_SIGNATURE)) return FILE_SIGNATURE_RESULT_MISMATCH;
+	if (!hasSignatureBytes(bytes, RTF_FAMILY)) return FILE_SIGNATURE_RESULT_UNSUPPORTED;
+	if (!hasSignatureBytes(bytes, RTF_SIGNATURE) || bytes.length <= RTF_SIGNATURE.length) return FILE_SIGNATURE_RESULT_MISMATCH;
 	const delimiter = bytes[RTF_SIGNATURE.length];
 	// Полный control word не совпадает с \rtf10 или \rtf1abc.
-	return (delimiter >= RTF_CONTROL_WORD_RANGES.digit[0] && delimiter <= RTF_CONTROL_WORD_RANGES.digit[1]) ||
-		(delimiter >= RTF_CONTROL_WORD_RANGES.uppercase[0] && delimiter <= RTF_CONTROL_WORD_RANGES.uppercase[1]) ||
-		(delimiter >= RTF_CONTROL_WORD_RANGES.lowercase[0] && delimiter <= RTF_CONTROL_WORD_RANGES.lowercase[1])
-		? FILE_SIGNATURE_RESULT.MISMATCH
-		: FILE_SIGNATURE_RESULT.MATCH;
+	return (delimiter >= RTF_CONTROL_WORD_DIGIT_FIRST && delimiter <= RTF_CONTROL_WORD_DIGIT_LAST) ||
+		(delimiter >= RTF_CONTROL_WORD_UPPERCASE_FIRST && delimiter <= RTF_CONTROL_WORD_UPPERCASE_LAST) ||
+		(delimiter >= RTF_CONTROL_WORD_LOWERCASE_FIRST && delimiter <= RTF_CONTROL_WORD_LOWERCASE_LAST)
+		? FILE_SIGNATURE_RESULT_MISMATCH
+		: FILE_SIGNATURE_RESULT_MATCH;
 }
 
 /**
@@ -74,24 +89,24 @@ function checkRtfSignature(bytes: Uint8Array): FileSignatureCheckResult {
 export function checkFileSignature({ extension, bytes }: FileSignatureCheckOptions): FileSignatureCheckResult {
 	const normalizedExtension = extension.trim().toLowerCase();
 	switch (normalizedExtension) {
-		case FILE_SIGNATURE_EXTENSION.PNG:
-			return hasSignatureBytes(bytes, PNG_SIGNATURE) ? FILE_SIGNATURE_RESULT.MATCH : FILE_SIGNATURE_RESULT.MISMATCH;
-		case FILE_SIGNATURE_EXTENSION.JPG:
-		case FILE_SIGNATURE_EXTENSION.JPEG:
+		case FILE_SIGNATURE_EXTENSION_PNG:
+			return hasSignatureBytes(bytes, PNG_SIGNATURE) ? FILE_SIGNATURE_RESULT_MATCH : FILE_SIGNATURE_RESULT_MISMATCH;
+		case FILE_SIGNATURE_EXTENSION_JPG:
+		case FILE_SIGNATURE_EXTENSION_JPEG:
 			return checkJpegSignature(bytes);
-		case FILE_SIGNATURE_EXTENSION.BMP:
+		case FILE_SIGNATURE_EXTENSION_BMP:
 			return checkBitmapSignature(bytes);
-		case FILE_SIGNATURE_EXTENSION.PSD:
+		case FILE_SIGNATURE_EXTENSION_PSD:
 			return checkPhotoshopSignature(bytes);
-		case FILE_SIGNATURE_EXTENSION.RTF:
+		case FILE_SIGNATURE_EXTENSION_RTF:
 			return checkRtfSignature(bytes);
-		case FILE_SIGNATURE_EXTENSION.RAR:
-		case FILE_SIGNATURE_EXTENSION.ZIP:
-		case FILE_SIGNATURE_EXTENSION.SEVEN_ZIP:
+		case FILE_SIGNATURE_EXTENSION_RAR:
+		case FILE_SIGNATURE_EXTENSION_ZIP:
+		case FILE_SIGNATURE_EXTENSION_SEVEN_ZIP:
 			return checkArchiveSignature(normalizedExtension, bytes);
-		case FILE_SIGNATURE_EXTENSION.PDF:
+		case FILE_SIGNATURE_EXTENSION_PDF:
 			return checkPdfSignature(bytes);
 		default:
-			return FILE_SIGNATURE_RESULT.UNSUPPORTED;
+			return FILE_SIGNATURE_RESULT_UNSUPPORTED;
 	}
 }

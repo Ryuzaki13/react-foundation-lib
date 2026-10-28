@@ -3,6 +3,8 @@ import { isCancelledError } from "@tanstack/react-query";
 
 import { type QueryRestoreStorageOptions } from "./queryRestoreStorageTypes";
 
+const SYNCHRONOUS_PARSER_REQUIRED_MESSAGE = "Parser восстановленных Query data должен синхронно вернуть значение.";
+
 /**
  * Проверяет только адресное чтение пригодной persisted записи. Сбой возникает
  * до upstream timestamp/refetch scheduler; remove и network fallback остаются
@@ -53,10 +55,10 @@ export function createQueryRestoreStorage({
 				// Недопустимая async работа могла уже начаться. Её rejection поглощён,
 				// а нарушение sync-контракта передаётся persister как обычная ошибка.
 				void Promise.resolve(parsed).catch(() => undefined);
-				throw new TypeError("Parser восстановленных Query data должен синхронно вернуть значение.");
+				throw new TypeError(SYNCHRONOUS_PARSER_REQUIRED_MESSAGE);
 			}
 			if (parsed === undefined) {
-				throw new TypeError("Parser восстановленных Query data должен синхронно вернуть значение.");
+				throw new TypeError(SYNCHRONOUS_PARSER_REQUIRED_MESSAGE);
 			}
 			assertCurrentRestore();
 			// Копируются только оболочки, записи остаются результатом одного parser.

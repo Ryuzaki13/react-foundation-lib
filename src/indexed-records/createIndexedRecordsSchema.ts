@@ -5,10 +5,14 @@ import { isPlainObject, isRecord } from "../validators/isRecord";
 import { type IndexedRecordsSchemaOptions } from "./indexedRecordsSchemaTypes";
 import { type IndexedRecords } from "./indexedRecordsTypes";
 
+// Имена wire-полей и коды Zod сохраняются при разных причинах отказа одной схемы.
+const INDEXED_RECORDS_INDEX_PROPERTY = "indexById";
+const INDEXED_RECORDS_ISSUE_CUSTOM = "custom";
+
 /** Не позволяет Zod прочитать accessor или проигнорировать symbol на wire-оболочке. */
 function hasIndexedRecordsWireDataProperties(value: unknown): value is Record<string, unknown> {
 	if (!isRecord(value) || !isPlainObject(value)) return false;
-	if (!Object.hasOwn(value, "items") || !Object.hasOwn(value, "indexById")) return false;
+	if (!Object.hasOwn(value, "items") || !Object.hasOwn(value, INDEXED_RECORDS_INDEX_PROPERTY)) return false;
 	for (const key of Reflect.ownKeys(value)) {
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (typeof key !== "string" || !descriptor?.enumerable || !("value" in descriptor)) return false;
@@ -31,7 +35,11 @@ export function createIndexedRecordsSchema<T>({ itemsSchema, getId }: IndexedRec
 		.pipe(z.strictObject({ items: itemsSchema, indexById: z.unknown() }))
 		.transform((wire, context): IndexedRecords<T> => {
 			if (!isRecord(wire.indexById) || !isPlainObject(wire.indexById)) {
-				context.addIssue({ code: "custom", path: ["indexById"], message: "Ожидался позиционный словарь записей." });
+				context.addIssue({
+					code: INDEXED_RECORDS_ISSUE_CUSTOM,
+					path: [INDEXED_RECORDS_INDEX_PROPERTY],
+					message: "Ожидался позиционный словарь записей."
+				});
 				return z.NEVER;
 			}
 
@@ -53,14 +61,22 @@ export function createIndexedRecordsSchema<T>({ itemsSchema, getId }: IndexedRec
 					!Object.hasOwn(wire.items, position) ||
 					getId(wire.items[position]) !== id
 				) {
-					context.addIssue({ code: "custom", path: ["indexById"], message: "Индекс не соответствует записям." });
+					context.addIssue({
+						code: INDEXED_RECORDS_ISSUE_CUSTOM,
+						path: [INDEXED_RECORDS_INDEX_PROPERTY],
+						message: "Индекс не соответствует записям."
+					});
 					return z.NEVER;
 				}
 				indexById[id] = position;
 				entries += 1;
 			}
 			if (entries !== wire.items.length) {
-				context.addIssue({ code: "custom", path: ["indexById"], message: "Позиционный индекс неполон." });
+				context.addIssue({
+					code: INDEXED_RECORDS_ISSUE_CUSTOM,
+					path: [INDEXED_RECORDS_INDEX_PROPERTY],
+					message: "Позиционный индекс неполон."
+				});
 				return z.NEVER;
 			}
 

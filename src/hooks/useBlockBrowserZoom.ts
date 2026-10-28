@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 
+const WHEEL_EVENT = "wheel";
+
 /**
  * Глобально отключает браузерный zoom (ctrl+wheel).
  *
@@ -15,7 +17,7 @@ export function useBlockBrowserZoom(enabled: boolean) {
 			}
 		};
 
-		window.addEventListener("wheel", handler, { passive: false });
-		return () => window.removeEventListener("wheel", handler);
+		window.addEventListener(WHEEL_EVENT, handler, { passive: false });
+		return () => window.removeEventListener(WHEEL_EVENT, handler);
 	}, [enabled]);
 }

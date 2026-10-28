@@ -1,5 +1,7 @@
+import { type BROWSER_NOTIFICATION_UNSUPPORTED } from "./browserNotificationConstants";
+
 /** Состояние системного разрешения; unsupported не подменяется отказом пользователя. */
-export type BrowserNotificationPermission = NotificationPermission | "unsupported";
+export type BrowserNotificationPermission = NotificationPermission | typeof BROWSER_NOTIFICATION_UNSUPPORTED;
 
 export type BrowserNotificationRequest = Readonly<{
 	title: string;

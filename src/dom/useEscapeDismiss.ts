@@ -1,4 +1,8 @@
-import { RefObject, useEffect, useEffectEvent } from "react";
+import { type RefObject, useEffect, useEffectEvent } from "react";
+
+import { KEYBOARD_KEY_ESCAPE } from "../utils/keyboardConstants";
+
+import { DOM_KEYDOWN_EVENT } from "./domEventConstants";
 
 interface UseEscapeDismissOptions {
 	active: boolean;
@@ -25,7 +29,7 @@ export function useEscapeDismiss({ active, onDismiss, enabled = true, documentTa
 		}
 
 		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key !== "Escape" /*|| event.defaultPrevented*/) {
+			if (event.key !== KEYBOARD_KEY_ESCAPE /*|| event.defaultPrevented*/) {
 				return;
 			}
 
@@ -39,7 +43,7 @@ export function useEscapeDismiss({ active, onDismiss, enabled = true, documentTa
 			dismiss();
 		};
 
-		targetDocument.addEventListener("keydown", handleKeyDown, true);
-		return () => targetDocument.removeEventListener("keydown", handleKeyDown, true);
+		targetDocument.addEventListener(DOM_KEYDOWN_EVENT, handleKeyDown, true);
+		return () => targetDocument.removeEventListener(DOM_KEYDOWN_EVENT, handleKeyDown, true);
 	}, [active, enabled, documentTarget, containerRef]);
 }

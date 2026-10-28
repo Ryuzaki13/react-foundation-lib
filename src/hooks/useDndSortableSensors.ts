@@ -10,6 +10,8 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
+const DEFAULT_SORTABLE_ACTIVATION_DISTANCE = 6;
+
 export interface UseDndSortableSensorsOptions {
 	activationDistance?: number;
 	/**
@@ -34,9 +36,9 @@ export interface UseDndSortableSensorsOptions {
  *
  * @param distanceOrOptions — минимальное смещение указателя или расширенные настройки mouse/touch/keyboard.
  */
-export function useDndSortableSensors(distanceOrOptions: number | UseDndSortableSensorsOptions = 6) {
+export function useDndSortableSensors(distanceOrOptions: number | UseDndSortableSensorsOptions = DEFAULT_SORTABLE_ACTIVATION_DISTANCE) {
 	const options = typeof distanceOrOptions === "number" ? { activationDistance: distanceOrOptions } : distanceOrOptions;
-	const distance = options.activationDistance ?? 6;
+	const distance = options.activationDistance ?? DEFAULT_SORTABLE_ACTIVATION_DISTANCE;
 	const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance } });
 	const mouseSensor = useSensor(MouseSensor, { activationConstraint: { distance } });
 	const touchSensor = useSensor(TouchSensor, {

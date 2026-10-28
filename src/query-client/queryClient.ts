@@ -10,6 +10,15 @@ import {
 } from "@tanstack/react-query";
 
 import { createReactQueryPersister } from "./persistence";
+import {
+	QUERY_REFETCH_NONE,
+	type QUERY_REFETCH_ACTIVE,
+	type QUERY_REFETCH_INACTIVE,
+	type QUERY_REFETCH_ALL
+} from "./queryCacheEventConstants";
+
+const DEFAULT_QUERY_STALE_TIME_MS = 10 * 60 * 1_000;
+const DEFAULT_QUERY_GC_TIME_MS = 30 * 60 * 1_000;
 
 export type QueryBroadcastOptions = {
 	onQueryError?: (error: DefaultError, query: Query<unknown, unknown, unknown>) => void;
@@ -34,8 +43,8 @@ export function createQueryClient({ onQueryError, onMutationError }: QueryBroadc
 		defaultOptions: {
 			// TODO: Vite env
 			queries: {
-				staleTime: 10 * 60 * 1000,
-				gcTime: 30 * 60 * 1000,
+				staleTime: DEFAULT_QUERY_STALE_TIME_MS,
+				gcTime: DEFAULT_QUERY_GC_TIME_MS,
 				throwOnError: false,
 				retry: false,
 				...(queryPersister ? { persister: queryPersister.persisterFn } : {})
@@ -174,7 +183,7 @@ export type OnSettledOptimisticOptions = {
 	 * - `"inactive"` — перезапрашивает неактивные (фоновые) запросы.
 	 * - `"all"` — перезапрашивает все подходящие запросы.
 	 */
-	refetchType?: "none" | "active" | "inactive" | "all";
+	refetchType?: typeof QUERY_REFETCH_NONE | typeof QUERY_REFETCH_ACTIVE | typeof QUERY_REFETCH_INACTIVE | typeof QUERY_REFETCH_ALL;
 };
 
 /**
@@ -204,7 +213,7 @@ export async function onSettledOptimistic(
 	queryKeys: QueryKey | QueryKey[],
 	options?: OnSettledOptimisticOptions
 ): Promise<void> {
-	const refetchType = options?.refetchType ?? "none";
+	const refetchType = options?.refetchType ?? QUERY_REFETCH_NONE;
 	// Нормализуем одиночный ключ к массиву для единообразной обработки
 	const keys: QueryKey[] = isNestedQueryKey(queryKeys) ? queryKeys : [queryKeys];
 

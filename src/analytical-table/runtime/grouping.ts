@@ -1,6 +1,8 @@
 import { stableStringify } from "../../utils";
+import { ANALYTICAL_AGGREGATE_SCOPE_GROUP } from "../definition/analyticalDefinitionConstants";
 import { type AnalyticalGroupingLevel, type CompiledAnalyticalTableDefinition } from "../definition/types";
 
+import { ANALYTICAL_ROW_KIND_GROUP } from "./analyticalRowConstants";
 import { type AnalyticalHierarchyNode, type AnalyticalSourceHierarchy } from "./hierarchy";
 import { calculateAnalyticalTotals } from "./totals";
 import { type AnalyticalValues } from "./types";
@@ -45,13 +47,13 @@ export function groupAnalyticalHierarchy<T>(args: {
 
 			return {
 				id,
-				kind: "group",
+				kind: ANALYTICAL_ROW_KIND_GROUP,
 				groupingLevelId: level.id,
 				values: calculateAnalyticalTotals({
 					definition,
 					nodes: members,
 					aggregateRowIds: source.aggregateRowIds,
-					scope: "group",
+					scope: ANALYTICAL_AGGREGATE_SCOPE_GROUP,
 					groupingPath
 				}),
 				children: groupLevel(members, levelIndex + 1, groupingPath, identity)

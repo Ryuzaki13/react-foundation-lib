@@ -2,6 +2,7 @@
  * Построитель URL для OData сущностей на основе метаданных
  */
 
+import { ODATA_OPERATION_CREATE, ODATA_OPERATION_QUERY } from "./entityOperationConstants";
 import { odataFormatValue } from "./formatters";
 import {
 	type EntityMetadata,
@@ -110,11 +111,11 @@ export function buildEntityOperationPath(
 ): string {
 	const basePath = `/${config.service}/${config.target}`;
 
-	if (method === "create") {
+	if (method === ODATA_OPERATION_CREATE) {
 		return basePath;
 	}
 
-	if (method === "query") {
+	if (method === ODATA_OPERATION_QUERY) {
 		if (!metadata.result) {
 			if (__DEV__) {
 				if (Object.keys(params).length > 0) {

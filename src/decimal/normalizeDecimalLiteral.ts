@@ -1,3 +1,4 @@
+import { CANONICAL_DECIMAL_ZERO } from "./decimalConstants";
 import { normalizeDecimal } from "./normalizeDecimal";
 import { resolveDecimalMaxLength } from "./resolveDecimalMaxLength";
 
@@ -20,7 +21,7 @@ export function normalizeDecimalLiteral(value: string, options?: DecimalOptions)
 
 	const digits = integer + fraction;
 	const significant = digits.replace(/^0+/u, "");
-	if (!significant) return "0";
+	if (!significant) return CANONICAL_DECIMAL_ZERO;
 	const coefficient = significant.replace(/0+$/u, "");
 	// Number описывает только ограниченный сдвиг точки, никогда значение числа.
 	const shift = Number(exponent);

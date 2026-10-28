@@ -1,7 +1,35 @@
+import {
+	STANDARD_NUMBER_GROUP_SIZE,
+	NUMBER_FORMAT_LOCALE,
+	INTL_NUMBER_PART_GROUP,
+	COMPACT_ROUNDING_MODE_ROUND
+} from "./numberFormatConstants";
+import {
+	NUMBER_PRESET_NAME_INTEGER,
+	NUMBER_PRESET_NAME_DECIMAL,
+	NUMBER_PRESET_NAME_DECIMAL2,
+	NUMBER_PRESET_NAME_DECIMAL3,
+	NUMBER_PRESET_NAME_CURRENCY,
+	NUMBER_PRESET_NAME_PRICE,
+	NUMBER_PRESET_NAME_PERCENT,
+	NUMBER_PRESET_NAME_TONNAGE,
+	NUMBER_PRESET_NAME_COMPACT_CURRENCY,
+	NUMBER_PRESET_NAME_COMPACT_CURRENCY_ROUND,
+	NUMBER_PRESET_NAME_COMPACT_PERCENT,
+	NUMBER_PRESET_NAME_COMPACT_PERCENT_ROUND,
+	NUMBER_PRESET_NAME_COMPACT_TONNAGE,
+	NUMBER_PRESET_NAME_COMPACT_TONNAGE_ROUND
+} from "./numberPresetNameConstants";
+
 import type { NumberFormatPreset, NumberFormatPresetConfig } from "./types";
 
+/** Четырёхзначная проба извлекает групповой разделитель выбранной локали. */
+const GROUP_SEPARATOR_PROBE_VALUE = 1_000;
+
 /** Символ группировки из ru-RU (U+00A0 или U+202F в зависимости от среды) */
-const ruGroupChar = new Intl.NumberFormat("ru-RU").formatToParts(1000).find((p) => p.type === "group")?.value ?? "\u00A0";
+const ruGroupChar =
+	new Intl.NumberFormat(NUMBER_FORMAT_LOCALE).formatToParts(GROUP_SEPARATOR_PROBE_VALUE).find((p) => p.type === INTL_NUMBER_PART_GROUP)
+		?.value ?? "\u00A0";
 
 /** Значения по умолчанию — совпадают с ru-RU форматированием */
 export const NUMBER_FORMAT_DEFAULTS: Omit<NumberFormatPreset, "name"> = {
@@ -9,24 +37,24 @@ export const NUMBER_FORMAT_DEFAULTS: Omit<NumberFormatPreset, "name"> = {
 	decimalSeparator: ",",
 	grouping: true,
 	groupingSeparator: ruGroupChar,
-	groupingSize: 3
+	groupingSize: STANDARD_NUMBER_GROUP_SIZE
 };
 
 export const DEFAULT_NUMBER_PRESET_NAMES = Object.freeze({
-	integer: "integer",
-	decimal: "decimal",
-	decimal2: "decimal-2",
-	decimal3: "decimal-3",
-	currency: "currency",
-	price: "price",
-	percent: "percent",
-	tonnage: "tonnage",
-	compactCurrency: "compact-currency",
-	compactCurrencyRound: "compact-currency-round",
-	compactPercent: "compact-percent",
-	compactPercentRound: "compact-percent-round",
-	compactTonnage: "compact-tonnage",
-	compactTonnageRound: "compact-tonnage-round"
+	integer: NUMBER_PRESET_NAME_INTEGER,
+	decimal: NUMBER_PRESET_NAME_DECIMAL,
+	decimal2: NUMBER_PRESET_NAME_DECIMAL2,
+	decimal3: NUMBER_PRESET_NAME_DECIMAL3,
+	currency: NUMBER_PRESET_NAME_CURRENCY,
+	price: NUMBER_PRESET_NAME_PRICE,
+	percent: NUMBER_PRESET_NAME_PERCENT,
+	tonnage: NUMBER_PRESET_NAME_TONNAGE,
+	compactCurrency: NUMBER_PRESET_NAME_COMPACT_CURRENCY,
+	compactCurrencyRound: NUMBER_PRESET_NAME_COMPACT_CURRENCY_ROUND,
+	compactPercent: NUMBER_PRESET_NAME_COMPACT_PERCENT,
+	compactPercentRound: NUMBER_PRESET_NAME_COMPACT_PERCENT_ROUND,
+	compactTonnage: NUMBER_PRESET_NAME_COMPACT_TONNAGE,
+	compactTonnageRound: NUMBER_PRESET_NAME_COMPACT_TONNAGE_ROUND
 });
 
 /**
@@ -37,20 +65,29 @@ export const DEFAULT_NUMBER_PRESET_NAMES = Object.freeze({
  * Недостающие поля каждой предустановки заполняются из `NUMBER_FORMAT_DEFAULTS`.
  */
 const BUILTIN: NumberFormatPresetConfig[] = [
-	{ name: "integer", decimals: 0, decimalSeparator: "" },
-	{ name: "decimal" },
-	{ name: "decimal-2", decimals: 2 },
-	{ name: "decimal-3", decimals: 3 },
-	{ name: "currency", decimals: 0, decimalSeparator: "" },
-	{ name: "price", decimals: 0, decimalSeparator: "" },
-	{ name: "percent", decimals: 2 },
-	{ name: "tonnage" },
-	{ name: "compact-currency", decimals: 0, decimalSeparator: "", compact: {} },
-	{ name: "compact-currency-round", decimals: 0, decimalSeparator: "", compact: { roundingMode: "round" } },
-	{ name: "compact-percent", decimals: 2, compact: { maxDecimals: 2 } },
-	{ name: "compact-percent-round", decimals: 2, compact: { maxDecimals: 2, roundingMode: "round" } },
-	{ name: "compact-tonnage", compact: { maxDecimals: 1 } },
-	{ name: "compact-tonnage-round", compact: { maxDecimals: 1, roundingMode: "round" } }
+	{ name: NUMBER_PRESET_NAME_INTEGER, decimals: 0, decimalSeparator: "" },
+	{ name: NUMBER_PRESET_NAME_DECIMAL },
+	{ name: NUMBER_PRESET_NAME_DECIMAL2, decimals: 2 },
+	{ name: NUMBER_PRESET_NAME_DECIMAL3, decimals: 3 },
+	{ name: NUMBER_PRESET_NAME_CURRENCY, decimals: 0, decimalSeparator: "" },
+	{ name: NUMBER_PRESET_NAME_PRICE, decimals: 0, decimalSeparator: "" },
+	{ name: NUMBER_PRESET_NAME_PERCENT, decimals: 2 },
+	{ name: NUMBER_PRESET_NAME_TONNAGE },
+	{ name: NUMBER_PRESET_NAME_COMPACT_CURRENCY, decimals: 0, decimalSeparator: "", compact: {} },
+	{
+		name: NUMBER_PRESET_NAME_COMPACT_CURRENCY_ROUND,
+		decimals: 0,
+		decimalSeparator: "",
+		compact: { roundingMode: COMPACT_ROUNDING_MODE_ROUND }
+	},
+	{ name: NUMBER_PRESET_NAME_COMPACT_PERCENT, decimals: 2, compact: { maxDecimals: 2 } },
+	{
+		name: NUMBER_PRESET_NAME_COMPACT_PERCENT_ROUND,
+		decimals: 2,
+		compact: { maxDecimals: 2, roundingMode: COMPACT_ROUNDING_MODE_ROUND }
+	},
+	{ name: NUMBER_PRESET_NAME_COMPACT_TONNAGE, compact: { maxDecimals: 1 } },
+	{ name: NUMBER_PRESET_NAME_COMPACT_TONNAGE_ROUND, compact: { maxDecimals: 1, roundingMode: COMPACT_ROUNDING_MODE_ROUND } }
 ];
 
 const registry = new Map<string, NumberFormatPreset>();

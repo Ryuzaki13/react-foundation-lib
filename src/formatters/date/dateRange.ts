@@ -1,13 +1,14 @@
 import { getEndOfDay, getStartOfDay } from "./calendarDate";
+import { MS_IN_DAY } from "./calendarDateConstants";
 
-const MS_IN_DAY = 24 * 60 * 60 * 1000;
+const DATE_RANGE_TIME_MODE_PRESERVE = "preserve";
 
 export type NullableDateRange = readonly [Date | null, Date | null];
 export type DateRange = readonly [Date, Date];
 
 export type DateRangeInput = Date | null | NullableDateRange;
 
-export type DateRangeTimeMode = "dayBounds" | "preserve";
+export type DateRangeTimeMode = "dayBounds" | typeof DATE_RANGE_TIME_MODE_PRESERVE;
 
 export interface NormalizeDateRangeOptions {
 	/**
@@ -58,7 +59,7 @@ export function normalizeDateRange(value: DateRangeInput, options: NormalizeDate
 	if (!range) return null;
 
 	const [start, end] = range;
-	if (options.timeMode === "preserve") {
+	if (options.timeMode === DATE_RANGE_TIME_MODE_PRESERVE) {
 		return [cloneDate(start), cloneDate(end)];
 	}
 

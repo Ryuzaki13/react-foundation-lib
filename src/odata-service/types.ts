@@ -9,6 +9,15 @@ import {
 } from "../metadata/metadataTypes";
 import { type BaseType, type InputType } from "../types";
 
+import { type ODATA_OPERATION_CREATE, type ODATA_OPERATION_QUERY } from "./entityOperationConstants";
+import {
+	type ODATA_COLUMN_SEMANTIC_CODE,
+	type ODATA_COLUMN_SEMANTIC_NONE,
+	type ODATA_COLUMN_SEMANTIC_TEXT,
+	type ODATA_RESULT_NAVIGATION_RESULTS,
+	type ODATA_RESULT_NAVIGATION_SET
+} from "./odataMetadataConstants";
+
 export { type BaseMetaType, type ColumnRole } from "../metadata/metadataTypes";
 
 export type ODataBooleanType = BooleanMetaType;
@@ -18,7 +27,7 @@ export type ODataDateType = DateMetaType;
 export type ODataStringType = StringMetaType;
 
 export type BaseMethod = "GET" | "POST" | "PUT" | "DELETE";
-export type ODataOperationMethod = "create" | "update" | "delete" | "read" | "query" | "fi";
+export type ODataOperationMethod = typeof ODATA_OPERATION_CREATE | "update" | "delete" | "read" | typeof ODATA_OPERATION_QUERY | "fi";
 
 /**
  * Типы данных сервисов OData (параметры, поля)
@@ -158,7 +167,7 @@ export type EntityColumnProperty = Omit<EntityParameterProperty, "nullable" | "m
 	/** Связанная колонка в паре code <-> text */
 	linkedColumnId?: string;
 	/** Семантика колонки относительно пары code/text */
-	semanticType: "none" | "code" | "text";
+	semanticType: typeof ODATA_COLUMN_SEMANTIC_NONE | typeof ODATA_COLUMN_SEMANTIC_CODE | typeof ODATA_COLUMN_SEMANTIC_TEXT;
 	/** Можно ли сортировать */
 	sortable: boolean;
 	/** Можно ли фильтровать */
@@ -178,7 +187,7 @@ export type EntityMetadata = {
 	/** Параметры сущности (если есть) */
 	parameters?: EntityParameterProperty[];
 
-	result?: "Set" | "Results";
+	result?: typeof ODATA_RESULT_NAVIGATION_SET | typeof ODATA_RESULT_NAVIGATION_RESULTS;
 };
 
 export type ServiceEntities = Record<string, EntityMetadata>;

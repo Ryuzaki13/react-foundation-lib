@@ -1,6 +1,8 @@
 import { hashString128 } from "../crypto";
 import { stableStringify } from "../utils";
 
+import { type ERROR_REPORT_CATEGORY_RUNTIME, type ERROR_REPORT_CATEGORY_REACT } from "./errorReportContractConstants";
+
 import type { ErrorReportDraft, ErrorReportErrorInfo, ErrorReportSafeValue } from "./types";
 
 export const RUNTIME_ERROR_REPORT_DEDUPLICATION_WINDOW_MS = 60_000;
@@ -16,7 +18,7 @@ const recentRuntimeErrorReports = new Map<
 >();
 
 type RuntimeErrorReportDeduplicationInput = {
-	category: "runtime" | "react";
+	category: typeof ERROR_REPORT_CATEGORY_RUNTIME | typeof ERROR_REPORT_CATEGORY_REACT;
 	source: string;
 	error: ErrorReportErrorInfo;
 	pathname?: string;

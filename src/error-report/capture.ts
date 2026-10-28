@@ -9,6 +9,17 @@ import {
 } from "./diagnostics";
 import { captureErrorReportDraft } from "./drafts";
 import { createErrorInfo } from "./errorInfo";
+import {
+	ERROR_REPORT_BREADCRUMB_QUERY_ERROR,
+	ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL,
+	ERROR_REPORT_CATEGORY_QUERY,
+	ERROR_REPORT_SCOPE_CONTEXT,
+	ERROR_REPORT_BREADCRUMB_MUTATION_ERROR,
+	ERROR_REPORT_CATEGORY_MUTATION,
+	ERROR_REPORT_CATEGORY_RUNTIME,
+	ERROR_REPORT_BREADCRUMB_RUNTIME_ERROR,
+	ERROR_REPORT_SOURCE_MUTATION
+} from "./errorReportContractConstants";
 import { coalesceRuntimeErrorReportCapture } from "./runtimeDeduplication";
 import { sanitizeDetail } from "./safeValue";
 import { suppressTransportErrorReport } from "./transport";
@@ -25,13 +36,13 @@ export async function captureQueryErrorReport(
 	const source = context?.source ?? "query";
 
 	addErrorReportBreadcrumb({
-		type: "query-error",
+		type: ERROR_REPORT_BREADCRUMB_QUERY_ERROR,
 		detail: sanitizeDetail(
 			{
 				queryKey: context?.queryKey ?? query.queryKey,
 				...context?.detail
 			},
-			{ scope: "breadcrumb-detail", source }
+			{ scope: ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL, source }
 		)
 	});
 
@@ -41,13 +52,13 @@ export async function captureQueryErrorReport(
 	]);
 
 	return captureErrorReportDraft({
-		category: "query",
+		category: ERROR_REPORT_CATEGORY_QUERY,
 		source,
 		error: context?.errorInfo ?? createErrorInfo(error),
 		query: collectQueryDiagnostics(query),
 		queryClient: queryClientDiagnostics,
 		persistedQueries,
-		context: sanitizeDetail(context?.detail, { scope: "context", source })
+		context: sanitizeDetail(context?.detail, { scope: ERROR_REPORT_SCOPE_CONTEXT, source })
 	});
 }
 
@@ -58,11 +69,14 @@ export async function captureMutationErrorReport(
 	context: ErrorReportMutationContext = {}
 ) {
 	suppressTransportErrorReport(error);
-	const source = context.source ?? "mutation";
+	const source = context.source ?? ERROR_REPORT_SOURCE_MUTATION;
 
 	addErrorReportBreadcrumb({
-		type: "mutation-error",
-		detail: sanitizeDetail({ mutationKey: mutation.options.mutationKey, ...context.detail }, { scope: "breadcrumb-detail", source })
+		type: ERROR_REPORT_BREADCRUMB_MUTATION_ERROR,
+		detail: sanitizeDetail(
+			{ mutationKey: mutation.options.mutationKey, ...context.detail },
+			{ scope: ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL, source }
+		)
 	});
 
 	const [persistedQueries, queryClientDiagnostics] = await Promise.all([
@@ -71,26 +85,26 @@ export async function captureMutationErrorReport(
 	]);
 
 	return captureErrorReportDraft({
-		category: "mutation",
+		category: ERROR_REPORT_CATEGORY_MUTATION,
 		source,
 		error: context.errorInfo ?? createErrorInfo(error),
 		mutation: collectMutationDiagnostics(mutation),
 		queryClient: queryClientDiagnostics,
 		persistedQueries,
-		context: sanitizeDetail(context.detail, { scope: "context", source })
+		context: sanitizeDetail(context.detail, { scope: ERROR_REPORT_SCOPE_CONTEXT, source })
 	});
 }
 
 export function captureRuntimeErrorReport(error: unknown, context: ErrorReportRuntimeContext = {}, queryClient?: QueryClient) {
-	const category = context.category ?? "runtime";
-	const source = context.source ?? context.category ?? "runtime";
+	const category = context.category ?? ERROR_REPORT_CATEGORY_RUNTIME;
+	const source = context.source ?? context.category ?? ERROR_REPORT_CATEGORY_RUNTIME;
 	const errorInfo = context.errorInfo ?? createErrorInfo(error);
-	const detail = sanitizeDetail(context.detail, { scope: "context", source });
+	const detail = sanitizeDetail(context.detail, { scope: ERROR_REPORT_SCOPE_CONTEXT, source });
 
 	const captureDraft = async () => {
 		addErrorReportBreadcrumb({
-			type: "runtime-error",
-			detail: sanitizeDetail({ category, source, ...context.detail }, { scope: "breadcrumb-detail", source })
+			type: ERROR_REPORT_BREADCRUMB_RUNTIME_ERROR,
+			detail: sanitizeDetail({ category, source, ...context.detail }, { scope: ERROR_REPORT_SCOPE_BREADCRUMB_DETAIL, source })
 		});
 
 		const [persistedQueries, queryClientDiagnostics] = queryClient

@@ -12,12 +12,20 @@ import {
 
 import { type FormattersPipelineRuntimeField } from "../formatters/pipeline";
 
+import { type TABLE_COLUMN_ALIGN_CENTER, type TABLE_COLUMN_ALIGN_LEFT, type TABLE_COLUMN_ALIGN_RIGHT } from "./tableColumnConstants";
+import {
+	type TABLE_CELL_SELECTION_ACTIVATION_DIRECT,
+	type TABLE_CELL_SELECTION_ACTIVATION_PRIMARY_MODIFIER,
+	type TABLE_SELECTION_MODE_MULTI,
+	type TABLE_SELECTION_MODE_NONE,
+	type TABLE_SELECTION_MODE_SINGLE
+} from "./tableSelectionConstants";
 import { type FoundationTableFeatures } from "./tanStackFeatures";
 
 /**
  * Режим выбора строк таблицы.
  */
-export type TableSelectionMode = "none" | "single" | "multi";
+export type TableSelectionMode = typeof TABLE_SELECTION_MODE_NONE | typeof TABLE_SELECTION_MODE_SINGLE | typeof TABLE_SELECTION_MODE_MULTI;
 
 /**
  * Режим выбора ячеек таблицы.
@@ -33,7 +41,8 @@ export type TableCellSelectionMode = TableSelectionMode;
  * `primary-modifier` означает Ctrl в Windows/Linux и Command в macOS. Такой
  * контракт не привязывает consumer к конкретной платформе или клавиатуре.
  */
-export type TableCellSelectionActivationMode = "direct" | "primary-modifier";
+export type TableCellSelectionActivationMode =
+	typeof TABLE_CELL_SELECTION_ACTIVATION_DIRECT | typeof TABLE_CELL_SELECTION_ACTIVATION_PRIMARY_MODIFIER;
 
 /** Устойчивые координаты выбранной ячейки без привязки к DOM или TanStack Row. */
 export type TableCellCoordinates = Readonly<{
@@ -60,7 +69,7 @@ export type TableSelectionModifierEvent = Readonly<{
 /**
  * Выравнивание содержимого ячейки таблицы.
  */
-export type TableColumnAlign = "left" | "center" | "right";
+export type TableColumnAlign = typeof TABLE_COLUMN_ALIGN_LEFT | typeof TABLE_COLUMN_ALIGN_CENTER | typeof TABLE_COLUMN_ALIGN_RIGHT;
 
 type TableColumnFormattingOptions = Omit<
 	FormattersPipelineRuntimeField,

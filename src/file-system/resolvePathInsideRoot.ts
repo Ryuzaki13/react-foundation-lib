@@ -1,7 +1,11 @@
+import { PATH_REALPATH_TARGET, PATH_REALPATH_PARENT, PATH_REALPATH_NONE } from "./fileSystemConstants";
 import { type PathRealpathMode, type ResolvePathInsideRootOptions } from "./fileSystemTypes";
 
 import { realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+
+// Лексическая и realpath-проверка сообщают об одном нарушении границ хранилища.
+const PATH_OUTSIDE_ROOT_MESSAGE = "Путь выходит за пределы корневой папки хранилища.";
 
 function resolveStorageRoot(rootPath: string): string {
 	const normalizedRootPath = rootPath.trim();
@@ -20,7 +24,7 @@ function isResolvedPathInsideRoot(rootPath: string, candidatePath: string): bool
 async function assertRealPathInsideRoot(
 	rootPath: string,
 	candidatePath: string,
-	realpathMode: Exclude<PathRealpathMode, "none">
+	realpathMode: Exclude<PathRealpathMode, typeof PATH_REALPATH_NONE>
 ): Promise<void> {
 	let realRootPath: string;
 	try {
@@ -28,10 +32,10 @@ async function assertRealPathInsideRoot(
 	} catch (error) {
 		throw new Error("Корневая папка хранилища недоступна.", { cause: error });
 	}
-	const pathForRealCheck = realpathMode === "parent" ? dirname(candidatePath) : candidatePath;
+	const pathForRealCheck = realpathMode === PATH_REALPATH_PARENT ? dirname(candidatePath) : candidatePath;
 	const realCandidatePath = await realpath(pathForRealCheck);
 	if (!isResolvedPathInsideRoot(realRootPath, realCandidatePath)) {
-		throw new Error("Путь выходит за пределы корневой папки хранилища.");
+		throw new Error(PATH_OUTSIDE_ROOT_MESSAGE);
 	}
 }
 
@@ -44,14 +48,14 @@ async function assertRealPathInsideRoot(
 export async function resolvePathInsideRoot({
 	rootPath,
 	pathSegments,
-	realpathMode = "target"
+	realpathMode = PATH_REALPATH_TARGET
 }: ResolvePathInsideRootOptions): Promise<string> {
 	const resolvedRootPath = resolveStorageRoot(rootPath);
 	const resolvedCandidatePath = resolve(resolvedRootPath, ...pathSegments);
 	if (!isResolvedPathInsideRoot(resolvedRootPath, resolvedCandidatePath)) {
-		throw new Error("Путь выходит за пределы корневой папки хранилища.");
+		throw new Error(PATH_OUTSIDE_ROOT_MESSAGE);
 	}
-	if (realpathMode !== "none") {
+	if (realpathMode !== PATH_REALPATH_NONE) {
 		await assertRealPathInsideRoot(resolvedRootPath, resolvedCandidatePath, realpathMode);
 	}
 	return resolvedCandidatePath;

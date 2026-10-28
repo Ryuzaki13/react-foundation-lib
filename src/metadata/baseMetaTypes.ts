@@ -1,7 +1,13 @@
 import { type BaseMetaType } from "./metadataTypes";
+import { BASE_META_TYPE_DATE, BASE_META_TYPE_NUMBER, SCALAR_TYPE_BOOLEAN, SCALAR_TYPE_STRING } from "./scalarTypeConstants";
 
 /** Общая классификация контролов; не инициализирует схемы или состояние источника данных. */
-export const BASE_META_TYPES = Object.freeze(["string", "number", "boolean", "date"] as const) satisfies readonly BaseMetaType[];
+export const BASE_META_TYPES = Object.freeze([
+	SCALAR_TYPE_STRING,
+	BASE_META_TYPE_NUMBER,
+	SCALAR_TYPE_BOOLEAN,
+	BASE_META_TYPE_DATE
+] as const) satisfies readonly BaseMetaType[];
 
 const BASE_META_TYPE_SET: ReadonlySet<string> = new Set(BASE_META_TYPES);
 

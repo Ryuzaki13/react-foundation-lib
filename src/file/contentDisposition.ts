@@ -1,3 +1,6 @@
+// ASCII fallback одинаков для отдельной подготовки имени и формирования заголовка.
+const DEFAULT_ASCII_FILENAME = "file.bin";
+
 export type ContentDispositionKind = "inline" | "attachment";
 
 export type ContentDispositionOptions = {
@@ -21,7 +24,7 @@ export function encodeFilenameRFC5987(value: string): string {
 		.replace(/\*/g, "%2A");
 }
 
-export function createAsciiFilenameFallback(value: string, fallback = "file.bin"): string {
+export function createAsciiFilenameFallback(value: string, fallback = DEFAULT_ASCII_FILENAME): string {
 	const asciiValue = value
 		.replace(/[\r\n]/g, " ")
 		.replace(/["\\]/g, "_")
@@ -32,7 +35,11 @@ export function createAsciiFilenameFallback(value: string, fallback = "file.bin"
 	return asciiValue.length > 0 ? asciiValue : fallback;
 }
 
-export function createContentDispositionHeader({ disposition, filename, asciiFallback = "file.bin" }: ContentDispositionOptions): string {
+export function createContentDispositionHeader({
+	disposition,
+	filename,
+	asciiFallback = DEFAULT_ASCII_FILENAME
+}: ContentDispositionOptions): string {
 	const sanitizedFilename = sanitizeFileName(filename, asciiFallback);
 	const asciiFilename = createAsciiFilenameFallback(sanitizedFilename, asciiFallback);
 	const encodedFilename = encodeFilenameRFC5987(sanitizedFilename);

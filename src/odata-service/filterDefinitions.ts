@@ -1,6 +1,30 @@
 import { compareStrings } from "../string-comparison";
 import { BaseType, InputType } from "../types";
 
+import {
+	FILTER_BINDING_BOOLEAN,
+	FILTER_BINDING_LIST,
+	FILTER_BINDING_VALUE,
+	type FILTER_COMPONENT_ADVANCED_SEARCH_SELECT,
+	FILTER_COMPONENT_CHECKBOX,
+	FILTER_COMPONENT_MULTI_SELECT,
+	FILTER_COMPONENT_NUMBER_INPUT,
+	FILTER_COMPONENT_SELECT,
+	FILTER_COMPONENT_TEXT_INPUT,
+	FILTER_COMPONENT_TREE_MULTI_SELECT,
+	FILTER_COMPONENT_TREE_SELECT,
+	FILTER_KIND_ADVANCED,
+	FILTER_KIND_COLUMN,
+	FILTER_KIND_LOCAL,
+	FILTER_KIND_REGISTERED,
+	FILTER_KIND_SEGMENT,
+	FILTER_KIND_TREE,
+	FILTER_VALUE_MODE_MULTIPLE,
+	FILTER_VALUE_MODE_SINGLE,
+	FILTER_VALUE_SOURCE_INPUT,
+	FILTER_VALUE_SOURCE_STATIC
+} from "./filterDefinitionConstants";
+import { type FILTER_LOGICAL_AND, FILTER_LOGICAL_OR } from "./filterOperationConstants";
 import { createFilterEqual, type FilterCondition, type FilterExpression, type FilterOperation } from "./filters";
 
 import type { BaseMetaType, ODataChainsMap } from "./types";
@@ -25,7 +49,7 @@ export type ODataFilterCondition = {
 	 */
 	columnId?: string;
 	operation: FilterOperation;
-	valueSource: "static" | "input";
+	valueSource: typeof FILTER_VALUE_SOURCE_STATIC | typeof FILTER_VALUE_SOURCE_INPUT;
 	value?: BaseType;
 };
 
@@ -42,29 +66,40 @@ export type ODataFilterOption = {
 
 export type ODataFilterBinding =
 	| {
-			kind: "list";
+			kind: typeof FILTER_BINDING_LIST;
 			/** Связка выражений нескольких выбранных опций: `false`/отсутствие означает OR. */
 			and?: boolean;
 			options: ODataFilterOption[];
 	  }
 	| {
-			kind: "boolean";
+			kind: typeof FILTER_BINDING_BOOLEAN;
 			trueFilter?: ODataFilterConditionGroup;
 	  }
 	| {
-			kind: "value";
+			kind: typeof FILTER_BINDING_VALUE;
 			valueFilter?: ODataFilterConditionGroup;
 	  };
 
-export type FilterDefinitionKind = "segment" | "tree" | "advanced" | "local" | "registered" | "column";
+export type FilterDefinitionKind =
+	| typeof FILTER_KIND_SEGMENT
+	| typeof FILTER_KIND_TREE
+	| typeof FILTER_KIND_ADVANCED
+	| typeof FILTER_KIND_LOCAL
+	| typeof FILTER_KIND_REGISTERED
+	| typeof FILTER_KIND_COLUMN;
 
 /** Форма controlled-значения зарегистрированного фильтра. */
-export type FilterRegisteredValueMode = "single" | "multiple";
+export type FilterRegisteredValueMode = typeof FILTER_VALUE_MODE_SINGLE | typeof FILTER_VALUE_MODE_MULTIPLE;
 
-export type FilterSegmentComponentId = "multi-select" | "select";
-export type FilterTreeComponentId = "tree-select" | "tree-multi-select";
-export type FilterLocalComponentId = "select" | "multi-select" | "checkbox" | "text-input" | "number-input";
-export type FilterAdvancedComponentId = "advanced-search-select";
+export type FilterSegmentComponentId = typeof FILTER_COMPONENT_MULTI_SELECT | typeof FILTER_COMPONENT_SELECT;
+export type FilterTreeComponentId = typeof FILTER_COMPONENT_TREE_SELECT | typeof FILTER_COMPONENT_TREE_MULTI_SELECT;
+export type FilterLocalComponentId =
+	| typeof FILTER_COMPONENT_SELECT
+	| typeof FILTER_COMPONENT_MULTI_SELECT
+	| typeof FILTER_COMPONENT_CHECKBOX
+	| typeof FILTER_COMPONENT_TEXT_INPUT
+	| typeof FILTER_COMPONENT_NUMBER_INPUT;
+export type FilterAdvancedComponentId = typeof FILTER_COMPONENT_ADVANCED_SEARCH_SELECT;
 export type FilterComponentId = FilterSegmentComponentId | FilterTreeComponentId | FilterLocalComponentId | FilterAdvancedComponentId;
 
 // TODO: переименовать, теперь это не только odata
@@ -73,7 +108,7 @@ export type ODataCompiledFilterDefinition =
 			id: string;
 			ownerColumnId: string;
 			columnIds: string[];
-			kind: Extract<FilterDefinitionKind, "segment">;
+			kind: Extract<FilterDefinitionKind, typeof FILTER_KIND_SEGMENT>;
 			componentId: FilterSegmentComponentId;
 			controlType: BaseMetaType;
 			dictionaryCodeKey?: string;
@@ -82,24 +117,24 @@ export type ODataCompiledFilterDefinition =
 			id: string;
 			ownerColumnId: string;
 			columnIds: string[];
-			kind: Extract<FilterDefinitionKind, "tree">;
+			kind: Extract<FilterDefinitionKind, typeof FILTER_KIND_TREE>;
 			componentId: FilterTreeComponentId;
 			controlType: BaseMetaType;
 			/** Оператор между выбранными значениями разных уровней дерева. */
-			levelOperator?: "and" | "or";
+			levelOperator?: typeof FILTER_LOGICAL_AND | typeof FILTER_LOGICAL_OR;
 	  }
 	| {
 			id: string;
 			ownerColumnId: string;
 			columnIds: string[];
-			kind: Extract<FilterDefinitionKind, "local">;
+			kind: Extract<FilterDefinitionKind, typeof FILTER_KIND_LOCAL>;
 			componentId: FilterLocalComponentId;
 			controlType: BaseMetaType;
 			binding: ODataFilterBinding;
 	  }
 	| {
 			id: string;
-			kind: Extract<FilterDefinitionKind, "registered">;
+			kind: Extract<FilterDefinitionKind, typeof FILTER_KIND_REGISTERED>;
 			/** Id непрозрачного runtime-компонента из внешнего registry. */
 			componentId: string;
 			controlType: BaseMetaType;
@@ -112,18 +147,24 @@ export type ODataCompiledFilterDefinition =
 	| {
 			id: string;
 			ownerColumnId: string;
-			kind: Extract<FilterDefinitionKind, "advanced">;
+			kind: Extract<FilterDefinitionKind, typeof FILTER_KIND_ADVANCED>;
 			componentId: FilterAdvancedComponentId;
 			configId: string;
 	  }
 	| {
 			id: string;
 			ownerColumnId: string;
-			kind: Extract<FilterDefinitionKind, "column">;
+			kind: Extract<FilterDefinitionKind, typeof FILTER_KIND_COLUMN>;
 	  };
 
 export function isFilterLocalComponentId(value: unknown): value is FilterLocalComponentId {
-	return value === "select" || value === "multi-select" || value === "checkbox" || value === "text-input" || value === "number-input";
+	return (
+		value === FILTER_COMPONENT_SELECT ||
+		value === FILTER_COMPONENT_MULTI_SELECT ||
+		value === FILTER_COMPONENT_CHECKBOX ||
+		value === FILTER_COMPONENT_TEXT_INPUT ||
+		value === FILTER_COMPONENT_NUMBER_INPUT
+	);
 }
 
 /**
@@ -145,9 +186,9 @@ function collectConditionGroupColumnIds(group: ODataFilterConditionGroup | undef
  */
 function collectBindingColumnIds(binding: ODataFilterBinding, fallbackColumnId: string) {
 	const columnIds =
-		binding.kind === "list"
+		binding.kind === FILTER_BINDING_LIST
 			? binding.options.flatMap((option) => collectConditionGroupColumnIds(option.filter, fallbackColumnId))
-			: binding.kind === "boolean"
+			: binding.kind === FILTER_BINDING_BOOLEAN
 				? collectConditionGroupColumnIds(binding.trueFilter, fallbackColumnId)
 				: collectConditionGroupColumnIds(binding.valueFilter, fallbackColumnId);
 
@@ -159,10 +200,12 @@ function resolveConditionGroupColumnIds(group: ODataFilterConditionGroup | undef
 	return columnIds.length ? columnIds : fallbackColumnId ? [fallbackColumnId] : [];
 }
 
-type ListFilterDefinition = Extract<ODataCompiledFilterDefinition, { kind: "local" | "registered" }>;
+type ListFilterDefinition = Extract<ODataCompiledFilterDefinition, { kind: typeof FILTER_KIND_LOCAL | typeof FILTER_KIND_REGISTERED }>;
 
 function isMultipleListFilterDefinition(definition: ListFilterDefinition) {
-	return definition.kind === "registered" ? definition.valueMode === "multiple" : definition.componentId === "multi-select";
+	return definition.kind === FILTER_KIND_REGISTERED
+		? definition.valueMode === FILTER_VALUE_MODE_MULTIPLE
+		: definition.componentId === FILTER_COMPONENT_MULTI_SELECT;
 }
 
 /** Нормализует option keys и сохраняет пустую строку как допустимый выбор. */
@@ -191,11 +234,15 @@ export function resolveODataFilterDefinitionColumnIds(definition: ODataCompiledF
 	const normalizedDefinition = sanitizeFilterDefinitions([definition])[0];
 	if (!normalizedDefinition) return [];
 
-	if (normalizedDefinition.kind === "registered") {
+	if (normalizedDefinition.kind === FILTER_KIND_REGISTERED) {
 		return [...normalizedDefinition.columnIds];
 	}
 
-	if (normalizedDefinition.kind === "segment" || normalizedDefinition.kind === "column" || normalizedDefinition.kind === "advanced") {
+	if (
+		normalizedDefinition.kind === FILTER_KIND_SEGMENT ||
+		normalizedDefinition.kind === FILTER_KIND_COLUMN ||
+		normalizedDefinition.kind === FILTER_KIND_ADVANCED
+	) {
 		return [normalizedDefinition.ownerColumnId];
 	}
 
@@ -218,26 +265,26 @@ export function resolveODataFilterDefinitionActiveColumnIds(
 	if (!normalizedDefinition || normalizedValue === undefined) return [];
 
 	switch (normalizedDefinition.kind) {
-		case "segment":
-		case "column":
-		case "advanced": {
+		case FILTER_KIND_SEGMENT:
+		case FILTER_KIND_COLUMN:
+		case FILTER_KIND_ADVANCED: {
 			return [normalizedDefinition.ownerColumnId];
 		}
 
-		case "tree": {
+		case FILTER_KIND_TREE: {
 			const treeValue = sanitizeTreeFilterValue(normalizedValue);
 			if (!treeValue) return [];
 			return Object.keys(treeValue).filter((columnId) => normalizedDefinition.columnIds.includes(columnId));
 		}
 
-		case "local": {
-			if (normalizedDefinition.binding.kind === "list") {
+		case FILTER_KIND_LOCAL: {
+			if (normalizedDefinition.binding.kind === FILTER_BINDING_LIST) {
 				const selectedKeys = resolveListFilterSelectedKeys(normalizedDefinition, normalizedValue);
 				return [
 					...new Set(
 						selectedKeys.flatMap((selectedKey) => {
 							const option =
-								normalizedDefinition.binding.kind === "list"
+								normalizedDefinition.binding.kind === FILTER_BINDING_LIST
 									? normalizedDefinition.binding.options.find((item) => item.key === selectedKey)
 									: undefined;
 							if (!option) return [];
@@ -247,7 +294,7 @@ export function resolveODataFilterDefinitionActiveColumnIds(
 				];
 			}
 
-			if (normalizedDefinition.binding.kind === "boolean") {
+			if (normalizedDefinition.binding.kind === FILTER_BINDING_BOOLEAN) {
 				return normalizedValue === true
 					? resolveConditionGroupColumnIds(normalizedDefinition.binding.trueFilter, normalizedDefinition.ownerColumnId)
 					: [];
@@ -256,11 +303,11 @@ export function resolveODataFilterDefinitionActiveColumnIds(
 			return resolveConditionGroupColumnIds(normalizedDefinition.binding.valueFilter, normalizedDefinition.ownerColumnId);
 		}
 
-		case "registered": {
+		case FILTER_KIND_REGISTERED: {
 			const binding = normalizedDefinition.binding;
 			if (!binding) return [];
 
-			if (binding.kind === "list") {
+			if (binding.kind === FILTER_BINDING_LIST) {
 				const selectedKeys = resolveListFilterSelectedKeys(normalizedDefinition, normalizedValue);
 				return [
 					...new Set(
@@ -272,7 +319,7 @@ export function resolveODataFilterDefinitionActiveColumnIds(
 				];
 			}
 
-			if (binding.kind === "boolean") {
+			if (binding.kind === FILTER_BINDING_BOOLEAN) {
 				return normalizedValue === true ? resolveConditionGroupColumnIds(binding.trueFilter, "") : [];
 			}
 
@@ -377,7 +424,7 @@ export function sanitizeFilterConditionGroup(group: ODataFilterConditionGroup | 
 
 	for (const condition of group.conditions) {
 		const value = sanitizeScalarValue(condition.value);
-		if (condition.valueSource === "static" && value === undefined) continue;
+		if (condition.valueSource === FILTER_VALUE_SOURCE_STATIC && value === undefined) continue;
 
 		conditions.push({
 			columnId: condition.columnId?.trim() || undefined,
@@ -398,7 +445,7 @@ export function sanitizeFilterConditionGroup(group: ODataFilterConditionGroup | 
 export function sanitizeFilterBinding(binding: ODataFilterBinding | undefined): ODataFilterBinding | undefined {
 	if (!binding) return undefined;
 
-	if (binding.kind === "list") {
+	if (binding.kind === FILTER_BINDING_LIST) {
 		const options: ODataFilterOption[] = [];
 		// const keysSet = new Set<string>();
 
@@ -420,21 +467,21 @@ export function sanitizeFilterBinding(binding: ODataFilterBinding | undefined): 
 
 		const and = binding.and === true ? true : binding.and === false ? false : undefined;
 		return {
-			kind: "list",
+			kind: FILTER_BINDING_LIST,
 			...(and === undefined ? {} : { and }),
 			options
 		};
 	}
 
-	if (binding.kind === "boolean") {
+	if (binding.kind === FILTER_BINDING_BOOLEAN) {
 		return {
-			kind: "boolean",
+			kind: FILTER_BINDING_BOOLEAN,
 			trueFilter: sanitizeFilterConditionGroup(binding.trueFilter)
 		};
 	}
 
 	return {
-		kind: "value",
+		kind: FILTER_BINDING_VALUE,
 		valueFilter: sanitizeFilterConditionGroup(binding.valueFilter)
 	};
 }
@@ -456,16 +503,16 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 
 		// HACK: на период пересохранения всех конфигов
 		if ((normalizedDefinition.kind as string) === "odata-segment") {
-			normalizedDefinition.kind = "segment";
+			normalizedDefinition.kind = FILTER_KIND_SEGMENT;
 		}
 		if ((normalizedDefinition.kind as string) === "odata-tree") {
-			normalizedDefinition.kind = "tree";
+			normalizedDefinition.kind = FILTER_KIND_TREE;
 		}
 
-		if (normalizedDefinition.kind === "registered") {
+		if (normalizedDefinition.kind === FILTER_KIND_REGISTERED) {
 			const componentId = normalizedDefinition.componentId.trim();
 			const valueMode = normalizedDefinition.valueMode;
-			if (!componentId || (valueMode !== "single" && valueMode !== "multiple")) continue;
+			if (!componentId || (valueMode !== FILTER_VALUE_MODE_SINGLE && valueMode !== FILTER_VALUE_MODE_MULTIPLE)) continue;
 
 			const binding = sanitizeFilterBinding(normalizedDefinition.binding);
 			normalized.push({
@@ -483,19 +530,22 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 		if (!ownerColumnId) continue;
 
 		switch (normalizedDefinition.kind) {
-			case "segment": {
+			case FILTER_KIND_SEGMENT: {
 				normalized.push({
 					...normalizedDefinition,
 					id,
 					ownerColumnId,
 					columnIds: [ownerColumnId],
-					componentId: normalizedDefinition.componentId === "select" ? "select" : "multi-select",
+					componentId:
+						normalizedDefinition.componentId === FILTER_COMPONENT_SELECT
+							? FILTER_COMPONENT_SELECT
+							: FILTER_COMPONENT_MULTI_SELECT,
 					dictionaryCodeKey: normalizeDictionaryCodeKey(normalizedDefinition.dictionaryCodeKey, ownerColumnId)
 				});
 				break;
 			}
 
-			case "tree": {
+			case FILTER_KIND_TREE: {
 				const columnIds = [...new Set(normalizedDefinition.columnIds.map((columnId) => columnId.trim()).filter(Boolean))];
 				/*
 				 * Визуальное дерево может иметь consumer-синтетический root, который не
@@ -507,7 +557,9 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 				// HACK: на период пересохранения всех конфигов
 				const rawComponentId = normalizedDefinition.componentId as string;
 				const componentId =
-					rawComponentId === "treeSelect" || rawComponentId === "tree-select" ? "tree-select" : "tree-multi-select";
+					rawComponentId === "treeSelect" || rawComponentId === FILTER_COMPONENT_TREE_SELECT
+						? FILTER_COMPONENT_TREE_SELECT
+						: FILTER_COMPONENT_TREE_MULTI_SELECT;
 
 				normalized.push({
 					...normalizedDefinition,
@@ -515,12 +567,12 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 					ownerColumnId: columnIds.includes(ownerColumnId) ? ownerColumnId : columnIds[0],
 					columnIds,
 					componentId,
-					levelOperator: normalizedDefinition.levelOperator === "or" ? "or" : undefined
+					levelOperator: normalizedDefinition.levelOperator === FILTER_LOGICAL_OR ? FILTER_LOGICAL_OR : undefined
 				});
 				break;
 			}
 
-			case "local": {
+			case FILTER_KIND_LOCAL: {
 				const binding = sanitizeFilterBinding(normalizedDefinition.binding);
 				if (!binding) break;
 
@@ -537,7 +589,7 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 				break;
 			}
 
-			case "advanced": {
+			case FILTER_KIND_ADVANCED: {
 				normalized.push({
 					...normalizedDefinition,
 					id,
@@ -546,7 +598,7 @@ export function sanitizeFilterDefinitions<T extends ODataCompiledFilterDefinitio
 				break;
 			}
 
-			case "column": {
+			case FILTER_KIND_COLUMN: {
 				normalized.push({
 					...normalizedDefinition,
 					id,
@@ -661,8 +713,11 @@ export function collapseChainedODataSegmentFilterValues(
 	return result;
 }
 
-function resolveExpressionValue(valueSource: "static" | "input", value: ODataFilterValue | BaseType | undefined) {
-	if (valueSource === "static") {
+function resolveExpressionValue(
+	valueSource: typeof FILTER_VALUE_SOURCE_STATIC | typeof FILTER_VALUE_SOURCE_INPUT,
+	value: ODataFilterValue | BaseType | undefined
+) {
+	if (valueSource === FILTER_VALUE_SOURCE_STATIC) {
 		return sanitizeScalarValue(value);
 	}
 
@@ -674,7 +729,10 @@ function compileCondition(
 	condition: ODataFilterCondition,
 	inputValue?: ODataFilterValue
 ): FilterCondition<RowRecord> | undefined {
-	const value = resolveExpressionValue(condition.valueSource, condition.valueSource === "input" ? inputValue : condition.value);
+	const value = resolveExpressionValue(
+		condition.valueSource,
+		condition.valueSource === FILTER_VALUE_SOURCE_INPUT ? inputValue : condition.value
+	);
 	if (value === undefined) return undefined;
 	const targetColumnId = condition.columnId?.trim() || ownerColumnId;
 	if (!targetColumnId) return undefined;
@@ -716,7 +774,10 @@ function compileDefaultValueFilter(ownerColumnId: string, value: BaseType | Base
 	return createFilterEqual<RowRecord, BaseType>(ownerColumnId, value);
 }
 
-function compileTreeFilter(definition: Extract<ODataCompiledFilterDefinition, { kind: "tree" }>, value: ODataFilterValue | undefined) {
+function compileTreeFilter(
+	definition: Extract<ODataCompiledFilterDefinition, { kind: typeof FILTER_KIND_TREE }>,
+	value: ODataFilterValue | undefined
+) {
 	const treeValue = sanitizeTreeFilterValue(value);
 	if (!treeValue) return undefined;
 
@@ -733,25 +794,25 @@ function compileTreeFilter(definition: Extract<ODataCompiledFilterDefinition, { 
 	if (filters.length === 1) return filters[0];
 
 	return {
-		and: definition.levelOperator === "or" ? undefined : true,
+		and: definition.levelOperator === FILTER_LOGICAL_OR ? undefined : true,
 		filters
 	};
 }
 
 function compileListFilter(definition: ListFilterDefinition, value: ODataFilterValue | undefined): FilterExpression<RowRecord> | undefined {
-	if (!definition.binding || definition.binding.kind !== "list") return undefined;
+	if (!definition.binding || definition.binding.kind !== FILTER_BINDING_LIST) return undefined;
 	const binding = definition.binding;
 	const selectedKeys = resolveListFilterSelectedKeys(definition, value);
 	if (!selectedKeys.length) return undefined;
 
-	const fallbackColumnId = definition.kind === "local" ? definition.ownerColumnId : "";
+	const fallbackColumnId = definition.kind === FILTER_KIND_LOCAL ? definition.ownerColumnId : "";
 	const filters = selectedKeys
 		.map((selectedKey) => {
 			const option = binding.options.find((item) => item.key === selectedKey);
 			if (!option) return undefined;
 
 			const explicitFilter = compileConditionGroup(fallbackColumnId, option.filter);
-			if (explicitFilter || definition.kind === "registered") return explicitFilter;
+			if (explicitFilter || definition.kind === FILTER_KIND_REGISTERED) return explicitFilter;
 
 			return compileDefaultValueFilter(definition.ownerColumnId, option.key);
 		})
@@ -773,8 +834,8 @@ function compileDefinitionFilter(
 	if (value === undefined) return undefined;
 
 	switch (definition.kind) {
-		case "segment": {
-			if (definition.componentId === "select") {
+		case FILTER_KIND_SEGMENT: {
+			if (definition.componentId === FILTER_COMPONENT_SELECT) {
 				const scalarValue = sanitizeScalarValue(value);
 				return scalarValue !== undefined ? compileDefaultValueFilter(definition.ownerColumnId, scalarValue) : undefined;
 			}
@@ -783,16 +844,16 @@ function compileDefinitionFilter(
 			return arrayValue?.length ? compileDefaultValueFilter(definition.ownerColumnId, arrayValue) : undefined;
 		}
 
-		case "tree": {
+		case FILTER_KIND_TREE: {
 			return compileTreeFilter(definition, value);
 		}
 
-		case "local": {
-			if (definition.binding.kind === "list") {
+		case FILTER_KIND_LOCAL: {
+			if (definition.binding.kind === FILTER_BINDING_LIST) {
 				return compileListFilter(definition, value);
 			}
 
-			if (definition.binding.kind === "boolean") {
+			if (definition.binding.kind === FILTER_BINDING_BOOLEAN) {
 				if (value !== true) return undefined;
 				return (
 					compileConditionGroup(definition.ownerColumnId, definition.binding.trueFilter) ??
@@ -811,28 +872,28 @@ function compileDefinitionFilter(
 			);
 		}
 
-		case "registered": {
+		case FILTER_KIND_REGISTERED: {
 			if (!definition.binding) return undefined;
 
-			if (definition.binding.kind === "list") {
+			if (definition.binding.kind === FILTER_BINDING_LIST) {
 				return compileListFilter(definition, value);
 			}
 
-			if (definition.binding.kind === "boolean") {
+			if (definition.binding.kind === FILTER_BINDING_BOOLEAN) {
 				return value === true ? compileConditionGroup("", definition.binding.trueFilter) : undefined;
 			}
 
 			return compileConditionGroup("", definition.binding.valueFilter, value);
 		}
 
-		case "column": {
+		case FILTER_KIND_COLUMN: {
 			const scalarValue = sanitizeScalarValue(value);
 			const arrayValue = sanitizeArrayValue(value);
 			const defaultValue = scalarValue ?? arrayValue;
 			return defaultValue !== undefined ? compileDefaultValueFilter(definition.ownerColumnId, defaultValue) : undefined;
 		}
 
-		case "advanced": {
+		case FILTER_KIND_ADVANCED: {
 			const arrayValue = sanitizeArrayValue(value);
 			return arrayValue?.length ? compileDefaultValueFilter(definition.ownerColumnId, arrayValue) : undefined;
 		}
@@ -874,12 +935,12 @@ export function flattenFilterValuesToODataDependencies(
 	const dependencies: Record<string, string[]> = {};
 
 	for (const definition of normalizedDefinitions) {
-		if (definition.kind !== "segment" && definition.kind !== "tree") continue;
+		if (definition.kind !== FILTER_KIND_SEGMENT && definition.kind !== FILTER_KIND_TREE) continue;
 
 		const value = normalizedValues[definition.id];
 		if (value === undefined) continue;
 
-		if (definition.kind === "segment") {
+		if (definition.kind === FILTER_KIND_SEGMENT) {
 			const scalarValue = typeof value === "string" ? value : undefined;
 			const arrayValue = sanitizeStringArray(value);
 			const selectedValues = scalarValue ? [scalarValue] : arrayValue;

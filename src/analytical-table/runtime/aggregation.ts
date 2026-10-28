@@ -1,9 +1,16 @@
+import {
+	ANALYTICAL_AGGREGATION_SUM,
+	ANALYTICAL_AGGREGATION_MIN,
+	ANALYTICAL_AGGREGATION_MAX,
+	ANALYTICAL_AGGREGATION_AVG,
+	ANALYTICAL_AGGREGATION_COUNT
+} from "../definition/analyticalDefinitionConstants";
 import { type AnalyticalAggregation } from "../types";
 
 /** null/пустые/нечисловые значения не превращаются в ноль; count считает непустые факты. */
 export function aggregateAnalyticalValues(values: readonly unknown[], aggregation: AnalyticalAggregation): number | null {
 	const present = values.filter((value) => value !== null && value !== undefined && value !== "");
-	if (aggregation === "count") return present.length;
+	if (aggregation === ANALYTICAL_AGGREGATION_COUNT) return present.length;
 
 	let count = 0;
 	let sum = 0;
@@ -21,13 +28,13 @@ export function aggregateAnalyticalValues(values: readonly unknown[], aggregatio
 	if (count === 0) return null;
 
 	switch (aggregation) {
-		case "sum":
+		case ANALYTICAL_AGGREGATION_SUM:
 			return sum;
-		case "min":
+		case ANALYTICAL_AGGREGATION_MIN:
 			return minimum;
-		case "max":
+		case ANALYTICAL_AGGREGATION_MAX:
 			return maximum;
-		case "avg":
+		case ANALYTICAL_AGGREGATION_AVG:
 			return sum / count;
 	}
 }

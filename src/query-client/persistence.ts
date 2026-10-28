@@ -5,9 +5,21 @@ import { createQueryRestoreSchedulerGuard } from "./createQueryRestoreSchedulerG
 import { createQueryRestoreStorage } from "./createQueryRestoreStorage";
 import { QUERY_RESTORED_DATA_PARSER } from "./queryMeta";
 import { getQueryPersistenceProjectAdapter } from "./queryPersistenceAdapter";
+import {
+	SESSION_QUERY_CACHE_MAX_ENTRIES,
+	SESSION_QUERY_CACHE_NAME_PATTERN,
+	SESSION_QUERY_REVISION_FIELD_PATTERN
+} from "./sessionPersistenceConstants";
 
 const STORE_NAME = "queries";
 const SESSION_PERSISTENCE_MARKER = "session";
+
+const INDEXED_DB_ACTION_KEEP = "keep";
+const INDEXED_DB_ACTION_SET = "set";
+const INDEXED_DB_ACTION_REMOVE = "remove";
+const INDEXED_DB_MODE_READ_WRITE = "readwrite";
+const INDEXED_DB_MODE_READ_ONLY = "readonly";
+const INDEXED_DB_SCHEMA_VERSION = 1;
 
 export const REACT_QUERY_PERSISTENCE_BUSTER = __REACT_QUERY_PERSISTENCE_BUSTER__;
 export const REACT_QUERY_PERSISTENCE_MAX_AGE = 90 * 24 * 60 * 60 * 1000;
@@ -32,9 +44,9 @@ let activeSessionPersistenceScope: SessionQueryPersistenceScope | null = null;
  * Отдельный result позволяет вернуть вызывающему коду вычисленный снимок только после commit.
  */
 export type IndexedDbAtomicUpdateDecision<TStorageValue, TResult> =
-	| { readonly action: "keep"; readonly result: TResult }
-	| { readonly action: "set"; readonly value: TStorageValue; readonly result: TResult }
-	| { readonly action: "remove"; readonly result: TResult };
+	| { readonly action: typeof INDEXED_DB_ACTION_KEEP; readonly result: TResult }
+	| { readonly action: typeof INDEXED_DB_ACTION_SET; readonly value: TStorageValue; readonly result: TResult }
+	| { readonly action: typeof INDEXED_DB_ACTION_REMOVE; readonly result: TResult };
 
 export type IndexedDbQueryStorage<TStorageValue> = AsyncStorage<TStorageValue> & {
 	/** Перечисляет записи object store для garbage collection и bounded persistence. */
@@ -154,14 +166,15 @@ function readSessionQueryPersistencePolicy(query: Pick<Query, "meta">) {
 	const policy = query.meta?.sessionPersistence;
 	if (query.meta?.sessionScoped !== true || !policy || typeof policy !== "object") return null;
 	if (!("cacheName" in policy) || !("maxEntries" in policy)) return null;
-	if (typeof policy.cacheName !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(policy.cacheName)) return null;
-	if (!Number.isSafeInteger(policy.maxEntries) || policy.maxEntries < 1 || policy.maxEntries > 5_000) return null;
+	if (typeof policy.cacheName !== "string" || !SESSION_QUERY_CACHE_NAME_PATTERN.test(policy.cacheName)) return null;
+	if (!Number.isSafeInteger(policy.maxEntries) || policy.maxEntries < 1 || policy.maxEntries > SESSION_QUERY_CACHE_MAX_ENTRIES)
+		return null;
 	const refetchOnRestore = "refetchOnRestore" in policy ? policy.refetchOnRestore : undefined;
 	if (refetchOnRestore !== undefined && typeof refetchOnRestore !== "boolean") return null;
 	const monotonicRevisionField = "monotonicRevisionField" in policy ? policy.monotonicRevisionField : undefined;
 	if (
 		monotonicRevisionField !== undefined &&
-		(typeof monotonicRevisionField !== "string" || !/^[A-Za-z][A-Za-z0-9_]{0,63}$/u.test(monotonicRevisionField))
+		(typeof monotonicRevisionField !== "string" || !SESSION_QUERY_REVISION_FIELD_PATTERN.test(monotonicRevisionField))
 	) {
 		return null;
 	}
@@ -197,7 +210,7 @@ export function createIndexedDbQueryStorage<TStorageValue = unknown>(
 		if (dbPromise) return dbPromise;
 
 		dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-			const request = idb.open(dbName, 1);
+			const request = idb.open(dbName, INDEXED_DB_SCHEMA_VERSION);
 
 			request.onupgradeneeded = () => {
 				const db = request.result;
@@ -248,7 +261,7 @@ export function createIndexedDbQueryStorage<TStorageValue = unknown>(
 	) {
 		const db = await openDb();
 		return new Promise<TResult>((resolve, reject) => {
-			const tx = db.transaction(storeName, "readwrite");
+			const tx = db.transaction(storeName, INDEXED_DB_MODE_READ_WRITE);
 			const store = tx.objectStore(storeName);
 			const request = store.get(key);
 			let result: TResult;
@@ -269,8 +282,8 @@ export function createIndexedDbQueryStorage<TStorageValue = unknown>(
 					const decision = update(request.result as TStorageValue | undefined);
 					result = decision.result;
 					hasResult = true;
-					if (decision.action === "set") store.put(decision.value, key);
-					else if (decision.action === "remove") store.delete(key);
+					if (decision.action === INDEXED_DB_ACTION_SET) store.put(decision.value, key);
+					else if (decision.action === INDEXED_DB_ACTION_REMOVE) store.delete(key);
 				} catch (error) {
 					tx.abort();
 					reject(error);
@@ -280,15 +293,15 @@ export function createIndexedDbQueryStorage<TStorageValue = unknown>(
 	}
 
 	return {
-		getItem: (key) => runTransaction<TStorageValue | undefined>("readonly", (store) => store.get(key)),
-		setItem: (key, value) => runWrite("readwrite", (store) => store.put(value, key)),
-		removeItem: (key) => runWrite("readwrite", (store) => store.delete(key)),
+		getItem: (key) => runTransaction<TStorageValue | undefined>(INDEXED_DB_MODE_READ_ONLY, (store) => store.get(key)),
+		setItem: (key, value) => runWrite(INDEXED_DB_MODE_READ_WRITE, (store) => store.put(value, key)),
+		removeItem: (key) => runWrite(INDEXED_DB_MODE_READ_WRITE, (store) => store.delete(key)),
 		updateItem,
 		entries: async () => {
 			const db = await openDb();
 
 			return new Promise<Array<[key: string, value: TStorageValue]>>((resolve, reject) => {
-				const tx = db.transaction(storeName, "readonly");
+				const tx = db.transaction(storeName, INDEXED_DB_MODE_READ_ONLY);
 				const store = tx.objectStore(storeName);
 				const request = store.openCursor();
 				const entries: Array<[key: string, value: TStorageValue]> = [];
@@ -365,13 +378,13 @@ export function createReactQueryPersister() {
 					await indexedDbStorage.setItem(key, value);
 				} else {
 					await indexedDbStorage.updateItem(key, (stored) => {
-						if (!stored || stored.buster !== value.buster) return { action: "set", value, result: undefined };
+						if (!stored || stored.buster !== value.buster) return { action: INDEXED_DB_ACTION_SET, value, result: undefined };
 						const storedRevision = readMonotonicDecimalRevision(stored, monotonicRevisionField);
 						const nextRevision = readMonotonicDecimalRevision(value, monotonicRevisionField);
 						if (storedRevision !== null && nextRevision !== null && compareDecimalRevisions(storedRevision, nextRevision) > 0) {
-							return { action: "keep", result: undefined };
+							return { action: INDEXED_DB_ACTION_KEEP, result: undefined };
 						}
-						return { action: "set", value, result: undefined };
+						return { action: INDEXED_DB_ACTION_SET, value, result: undefined };
 					});
 				}
 				pruneQueue = pruneQueue.then(async () => {

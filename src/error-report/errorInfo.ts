@@ -1,12 +1,15 @@
 import { normalizeText } from "../formatters";
 
 import { getErrorReportCaptureOptions } from "./captureOptions";
+import { ERROR_REPORT_VALUE_POLICY_VERBATIM } from "./capturePolicyConstants";
+import { ERROR_REPORT_ERROR_NAME_MAX_LENGTH, ERROR_REPORT_ERROR_CODE_MAX_LENGTH } from "./errorReportCaptureLimits";
 import { ERROR_REPORT_STACK_TRACE_MAX_BYTES, ERROR_REPORT_VERBATIM_MESSAGE_MAX_BYTES } from "./payload";
 import { sanitizeDiagnosticText, sanitizeDiagnosticTextBytes } from "./safeValue";
 
 import type { ErrorReportErrorInfo } from "./types";
 
 const DEFAULT_ERROR_MESSAGE = "Неизвестная ошибка";
+const DEFAULT_ERROR_NAME = "Error";
 
 /**
  * Гарантирует непустое диагностическое сообщение, сохраняя исходный текст ошибки.
@@ -14,7 +17,7 @@ const DEFAULT_ERROR_MESSAGE = "Неизвестная ошибка";
  */
 function resolveErrorMessage(message: string) {
 	if (!normalizeText(message)) return DEFAULT_ERROR_MESSAGE;
-	return getErrorReportCaptureOptions().valuePolicy === "verbatim"
+	return getErrorReportCaptureOptions().valuePolicy === ERROR_REPORT_VALUE_POLICY_VERBATIM
 		? sanitizeDiagnosticTextBytes(message, ERROR_REPORT_VERBATIM_MESSAGE_MAX_BYTES)
 		: sanitizeDiagnosticText(message);
 }
@@ -44,7 +47,7 @@ function readServerFnTransportErrorInfo(error: unknown): ErrorReportErrorInfo | 
 	return {
 		name: "AppError",
 		message: resolveErrorMessage(message),
-		code: normalizeText(payload.code) ? sanitizeDiagnosticText(String(payload.code), 128) : undefined,
+		code: normalizeText(payload.code) ? sanitizeDiagnosticText(String(payload.code), ERROR_REPORT_ERROR_CODE_MAX_LENGTH) : undefined,
 		httpStatus: readStatus(payload)
 	};
 }
@@ -62,7 +65,7 @@ export function createErrorInfo(error: unknown): ErrorReportErrorInfo {
 
 	if (error instanceof Error) {
 		return {
-			name: sanitizeDiagnosticText(error.name || "Error", 256),
+			name: sanitizeDiagnosticText(error.name || DEFAULT_ERROR_NAME, ERROR_REPORT_ERROR_NAME_MAX_LENGTH),
 			message: resolveErrorMessage(error.message),
 			stackTrace: error.stack ? sanitizeDiagnosticTextBytes(error.stack, ERROR_REPORT_STACK_TRACE_MAX_BYTES) : undefined
 		};
@@ -71,7 +74,10 @@ export function createErrorInfo(error: unknown): ErrorReportErrorInfo {
 	if (error && typeof error === "object") {
 		const record = error as Record<string, unknown>;
 		return {
-			name: sanitizeDiagnosticText(typeof record.name === "string" ? record.name : "Error", 256),
+			name: sanitizeDiagnosticText(
+				typeof record.name === "string" ? record.name : DEFAULT_ERROR_NAME,
+				ERROR_REPORT_ERROR_NAME_MAX_LENGTH
+			),
 			message: resolveErrorMessage(typeof record.message === "string" ? record.message : String(error)),
 			stackTrace:
 				typeof record.stack === "string"
@@ -82,7 +88,7 @@ export function createErrorInfo(error: unknown): ErrorReportErrorInfo {
 	}
 
 	return {
-		name: "Error",
+		name: DEFAULT_ERROR_NAME,
 		message: resolveErrorMessage(typeof error === "string" ? error : String(error ?? DEFAULT_ERROR_MESSAGE))
 	};
 }

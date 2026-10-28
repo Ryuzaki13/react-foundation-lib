@@ -8,8 +8,24 @@ import {
 	getStartOfYear
 } from "./calendarDate";
 
-export type CalendarPeriodSelectionMode = "day" | "week" | "month" | "year";
-export type CalendarWeekEndDay = "friday" | "saturday" | "sunday";
+const CALENDAR_YEAR_END_MONTH_INDEX = 11;
+const CALENDAR_YEAR_END_DAY = 31;
+
+/** Значения выбора периода отделены от точности его текстового представления. */
+const CALENDAR_PERIOD_MODE_DAY = "day";
+const CALENDAR_PERIOD_MODE_WEEK = "week";
+const CALENDAR_PERIOD_MODE_MONTH = "month";
+const CALENDAR_PERIOD_MODE_YEAR = "year";
+const CALENDAR_WEEK_END_FRIDAY = "friday";
+const CALENDAR_WEEK_END_SATURDAY = "saturday";
+const CALENDAR_WEEK_END_SUNDAY = "sunday";
+
+export type CalendarPeriodSelectionMode =
+	| typeof CALENDAR_PERIOD_MODE_DAY
+	| typeof CALENDAR_PERIOD_MODE_WEEK
+	| typeof CALENDAR_PERIOD_MODE_MONTH
+	| typeof CALENDAR_PERIOD_MODE_YEAR;
+export type CalendarWeekEndDay = typeof CALENDAR_WEEK_END_FRIDAY | typeof CALENDAR_WEEK_END_SATURDAY | typeof CALENDAR_WEEK_END_SUNDAY;
 
 export interface CalendarPeriodOptions {
 	/**
@@ -33,9 +49,9 @@ export interface CalendarPeriodDateBounds {
 }
 
 const WEEK_END_DAY_OFFSETS: Record<CalendarWeekEndDay, number> = {
-	friday: 4,
-	saturday: 5,
-	sunday: 6
+	[CALENDAR_WEEK_END_FRIDAY]: 4,
+	[CALENDAR_WEEK_END_SATURDAY]: 5,
+	[CALENDAR_WEEK_END_SUNDAY]: 6
 };
 
 function isValidCalendarDate(value: Date | null | undefined): value is Date {
@@ -43,11 +59,11 @@ function isValidCalendarDate(value: Date | null | undefined): value is Date {
 }
 
 function resolveCalendarWeekEndDay(weekEndDay?: CalendarWeekEndDay): CalendarWeekEndDay {
-	return weekEndDay ?? "sunday";
+	return weekEndDay ?? CALENDAR_WEEK_END_SUNDAY;
 }
 
 function resolveCalendarPeriodSelectionMode(selectionMode?: CalendarPeriodSelectionMode): CalendarPeriodSelectionMode {
-	return selectionMode ?? "day";
+	return selectionMode ?? CALENDAR_PERIOD_MODE_DAY;
 }
 
 /**
@@ -59,14 +75,14 @@ export function getCalendarPeriod(value: Date | null | undefined, options: Calen
 	const selectionMode = resolveCalendarPeriodSelectionMode(options.selectionMode);
 
 	switch (selectionMode) {
-		case "day": {
+		case CALENDAR_PERIOD_MODE_DAY: {
 			return {
 				start: getStartOfDay(value),
 				end: getEndOfDay(value)
 			};
 		}
 
-		case "week": {
+		case CALENDAR_PERIOD_MODE_WEEK: {
 			const start = getStartOfWeek(value);
 			const weekEndOffset = WEEK_END_DAY_OFFSETS[resolveCalendarWeekEndDay(options.weekEndDay)];
 
@@ -76,17 +92,17 @@ export function getCalendarPeriod(value: Date | null | undefined, options: Calen
 			};
 		}
 
-		case "month": {
+		case CALENDAR_PERIOD_MODE_MONTH: {
 			return {
 				start: getStartOfMonth(value),
 				end: getEndOfDay(createCalendarDate(value.getFullYear(), value.getMonth() + 1, 0))
 			};
 		}
 
-		case "year": {
+		case CALENDAR_PERIOD_MODE_YEAR: {
 			return {
 				start: getStartOfYear(value),
-				end: getEndOfDay(createCalendarDate(value.getFullYear(), 11, 31))
+				end: getEndOfDay(createCalendarDate(value.getFullYear(), CALENDAR_YEAR_END_MONTH_INDEX, CALENDAR_YEAR_END_DAY))
 			};
 		}
 

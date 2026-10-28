@@ -1,12 +1,15 @@
 import { DEFAULT_DATE_PRESET_NAMES, getDatePreset, type DateFormatPreset } from "../formatters/date";
 import { getNumberPreset } from "../formatters/number";
+import { NUMBER_PRESET_NAME_DECIMAL, NUMBER_PRESET_NAME_INTEGER } from "../formatters/number/numberPresetNameConstants";
 import {
 	validateFormattersPipelineConfig,
 	type FormattersPipelineConfig,
 	type FormattersPipelineTypedValueFormatConfig
 } from "../formatters/pipeline";
+import { PIPELINE_FORMATTER_TYPED_VALUE_FORMAT } from "../formatters/pipeline/formattersPipelineConstants";
 import { type ColumnRole, type ScalarMetaType } from "../metadata/metadataTypes";
 import { isScalarBooleanType, isScalarDateType, isScalarIntegerType, isScalarNumericType } from "../metadata/scalarTypeClassification";
+import { SCALAR_ROLE_MEASURE, SCALAR_TYPE_DATETIME, SCALAR_TYPE_DATETIME_OFFSET, SCALAR_TYPE_TIME } from "../metadata/scalarTypeConstants";
 
 import { downloadExcelFile, downloadExcelWorkbook, type ExcelCellStyle, type ExcelColumn, type ExcelRow } from "./excel";
 
@@ -52,6 +55,10 @@ export type DownloadResolvedExcelWorkbookArgs = {
 
 const INTEGER_EXCEL_FORMAT = "#,##0";
 const DEFAULT_DECIMAL_EXCEL_FORMAT = "#,##0.0";
+// Prefix определяет семейство встроенного date preset, а не скалярный тип данных.
+const DATE_PRESET_PREFIX_DATE = "date";
+const DATE_PRESET_PREFIX_TIME = "time";
+const DATE_PRESET_PREFIX_DATETIME = "datetime";
 const EXCEL_DATE_FORMAT = "dd.mm.yyyy";
 /**
  * Excel-маски календарных пресетов сохраняют экранную детализацию:
@@ -71,9 +78,9 @@ function resolveTypedValueFormatConfig(
 	formattersPipeline: FormattersPipelineConfig | undefined
 ): FormattersPipelineTypedValueFormatConfig | undefined {
 	const validation = validateFormattersPipelineConfig(formattersPipeline);
-	const typedValueFormatStep = validation.plan?.steps.find((step) => step.type === "typedValueFormat");
+	const typedValueFormatStep = validation.plan?.steps.find((step) => step.type === PIPELINE_FORMATTER_TYPED_VALUE_FORMAT);
 
-	return typedValueFormatStep?.type === "typedValueFormat" ? typedValueFormatStep.config : undefined;
+	return typedValueFormatStep?.type === PIPELINE_FORMATTER_TYPED_VALUE_FORMAT ? typedValueFormatStep.config : undefined;
 }
 
 export function resolveTableExcelColumnType(descriptor: TableExcelColumnDescriptor): ExcelColumn["type"] {
@@ -81,15 +88,15 @@ export function resolveTableExcelColumnType(descriptor: TableExcelColumnDescript
 	if (isScalarDateType(descriptor.odataType)) return Date;
 	if (isScalarBooleanType(descriptor.odataType)) return Boolean;
 	if (isScalarNumericType(descriptor.odataType)) return Number;
-	if (descriptor.role === "measure") return Number;
+	if (descriptor.role === SCALAR_ROLE_MEASURE) return Number;
 	return String;
 }
 
 function resolveNumberPresetName(descriptor: TableExcelColumnDescriptor): string {
 	const configuredPresetName = resolveTypedValueFormatConfig(descriptor.formattersPipeline)?.numberPresetName?.trim();
 	if (configuredPresetName && getNumberPreset(configuredPresetName)) return configuredPresetName;
-	if (isScalarIntegerType(descriptor.odataType)) return "integer";
-	return "decimal";
+	if (isScalarIntegerType(descriptor.odataType)) return NUMBER_PRESET_NAME_INTEGER;
+	return NUMBER_PRESET_NAME_DECIMAL;
 }
 
 function resolveExcelNumberFormat(descriptor: TableExcelColumnDescriptor): string {
@@ -101,8 +108,9 @@ function resolveExcelNumberFormat(descriptor: TableExcelColumnDescriptor): strin
 function resolveDatePresetName(descriptor: TableExcelColumnDescriptor): string {
 	const configuredPresetName = resolveTypedValueFormatConfig(descriptor.formattersPipeline)?.datePresetName?.trim();
 	if (configuredPresetName) return configuredPresetName;
-	if (descriptor.odataType === "time") return DEFAULT_DATE_PRESET_NAMES.time;
-	if (descriptor.odataType === "datetime" || descriptor.odataType === "datetimeOffset") return DEFAULT_DATE_PRESET_NAMES.datetime;
+	if (descriptor.odataType === SCALAR_TYPE_TIME) return DEFAULT_DATE_PRESET_NAMES.time;
+	if (descriptor.odataType === SCALAR_TYPE_DATETIME || descriptor.odataType === SCALAR_TYPE_DATETIME_OFFSET)
+		return DEFAULT_DATE_PRESET_NAMES.datetime;
 	return DEFAULT_DATE_PRESET_NAMES.date;
 }
 
@@ -139,19 +147,19 @@ function resolveBuiltinDatePresetExcelFormat(presetName: string): string | undef
 		return EXCEL_MONTH_YEAR_LONG_FORMAT;
 	}
 
-	if (presetName.startsWith("datetime")) {
+	if (presetName.startsWith(DATE_PRESET_PREFIX_DATETIME)) {
 		return presetName === DEFAULT_DATE_PRESET_NAMES.datetime || presetName === DEFAULT_DATE_PRESET_NAMES.datetimeShort
 			? EXCEL_DATETIME_FORMAT
 			: EXCEL_DATETIME_SECONDS_FORMAT;
 	}
 
-	if (presetName.startsWith("time")) {
+	if (presetName.startsWith(DATE_PRESET_PREFIX_TIME)) {
 		return presetName === DEFAULT_DATE_PRESET_NAMES.time || presetName === DEFAULT_DATE_PRESET_NAMES.timeShort
 			? EXCEL_TIME_FORMAT
 			: EXCEL_TIME_SECONDS_FORMAT;
 	}
 
-	if (presetName.startsWith("date")) return EXCEL_DATE_FORMAT;
+	if (presetName.startsWith(DATE_PRESET_PREFIX_DATE)) return EXCEL_DATE_FORMAT;
 
 	return undefined;
 }

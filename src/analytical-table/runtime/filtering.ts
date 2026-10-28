@@ -1,6 +1,20 @@
 import { normalizeTextToLower } from "../../formatters";
 import { type AnalyticalColumn, type AnalyticalDataRow, type AnalyticalFilter } from "../types";
 
+import {
+	ANALYTICAL_FILTER_EQUALS,
+	ANALYTICAL_FILTER_NOT_EQUALS,
+	ANALYTICAL_FILTER_CONTAINS,
+	ANALYTICAL_FILTER_STARTS_WITH,
+	ANALYTICAL_FILTER_IN,
+	ANALYTICAL_FILTER_BETWEEN,
+	ANALYTICAL_FILTER_GT,
+	ANALYTICAL_FILTER_GTE,
+	ANALYTICAL_FILTER_LT,
+	ANALYTICAL_FILTER_LTE,
+	ANALYTICAL_FILTER_EMPTY,
+	ANALYTICAL_FILTER_NOT_EMPTY
+} from "./analyticalViewConstants";
 import { type AnalyticalHierarchyNode } from "./hierarchy";
 import { compareAnalyticalValues } from "./valueComparison";
 
@@ -11,30 +25,30 @@ export function matchesAnalyticalFilter<T>(row: AnalyticalDataRow<T>, filter: An
 	const expected = filter.value;
 	const compare = (other: unknown) => compareAnalyticalValues(value, other, column);
 	const empty = value === null || value === undefined || value === "";
-	switch (filter.operator ?? "equals") {
-		case "equals":
+	switch (filter.operator ?? ANALYTICAL_FILTER_EQUALS) {
+		case ANALYTICAL_FILTER_EQUALS:
 			return compare(expected) === 0;
-		case "notEquals":
+		case ANALYTICAL_FILTER_NOT_EQUALS:
 			return compare(expected) !== 0;
-		case "contains":
+		case ANALYTICAL_FILTER_CONTAINS:
 			return normalizeTextToLower(String(value ?? "")).includes(normalizeTextToLower(String(expected ?? "")));
-		case "startsWith":
+		case ANALYTICAL_FILTER_STARTS_WITH:
 			return normalizeTextToLower(String(value ?? "")).startsWith(normalizeTextToLower(String(expected ?? "")));
-		case "in":
+		case ANALYTICAL_FILTER_IN:
 			return Array.isArray(expected) && expected.some((item: unknown) => compare(item) === 0);
-		case "between":
+		case ANALYTICAL_FILTER_BETWEEN:
 			return Array.isArray(expected) && expected.length === 2 && !empty && compare(expected[0]) >= 0 && compare(expected[1]) <= 0;
-		case "gt":
+		case ANALYTICAL_FILTER_GT:
 			return !empty && compare(expected) > 0;
-		case "gte":
+		case ANALYTICAL_FILTER_GTE:
 			return !empty && compare(expected) >= 0;
-		case "lt":
+		case ANALYTICAL_FILTER_LT:
 			return !empty && compare(expected) < 0;
-		case "lte":
+		case ANALYTICAL_FILTER_LTE:
 			return !empty && compare(expected) <= 0;
-		case "empty":
+		case ANALYTICAL_FILTER_EMPTY:
 			return empty;
-		case "notEmpty":
+		case ANALYTICAL_FILTER_NOT_EMPTY:
 			return !empty;
 	}
 }

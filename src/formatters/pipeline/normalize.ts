@@ -1,7 +1,36 @@
 import { type State } from "../../types";
+import {
+	VALUE_STATE_EMPTY,
+	VALUE_STATE_NONE,
+	VALUE_STATE_INFORMATION,
+	VALUE_STATE_SUCCESS,
+	VALUE_STATE_WARNING,
+	VALUE_STATE_ERROR
+} from "../../types/valueStateConstants";
 import { isRecord } from "../../validators/isRecord";
+import {
+	THRESHOLD_BOUNDARY_LOWER,
+	THRESHOLD_BOUNDARY_UPPER,
+	VALUE_STATE_RESOLVER_KIND_FIXED,
+	VALUE_STATE_RESOLVER_KIND_THRESHOLD
+} from "../valueState/valueStateResolverConstants";
 
 import { cloneFormattersPipelineConfig } from "./clone";
+import {
+	PIPELINE_OVERRIDE_MODE_FIELD,
+	PIPELINE_OVERRIDE_MODE_FORMULA,
+	PIPELINE_STATE_SOURCE_VALUE,
+	PIPELINE_ICON_POSITION_LEFT,
+	PIPELINE_ICON_POSITION_RIGHT,
+	PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS,
+	PIPELINE_FORMATTER_ROW_BASED_OVERRIDE,
+	PIPELINE_FORMATTER_RESOLVE_VALUE_STATE,
+	PIPELINE_FORMATTER_TYPED_VALUE_FORMAT,
+	PIPELINE_NODE_SOURCE,
+	PIPELINE_NODE_SINK,
+	PIPELINE_STATE_SOURCE_FORMULA,
+	FORMATTERS_PIPELINE_VERSION
+} from "./formattersPipelineConstants";
 import {
 	type FormattersPipelineConfig,
 	type FormattersPipelineEdge,
@@ -15,7 +44,14 @@ import {
 } from "./types";
 import { validateFormattersPipelineConfig } from "./validate";
 
-const VALUE_STATES: readonly State[] = ["", "none", "information", "success", "warning", "error"];
+const VALUE_STATES: readonly State[] = [
+	VALUE_STATE_EMPTY,
+	VALUE_STATE_NONE,
+	VALUE_STATE_INFORMATION,
+	VALUE_STATE_SUCCESS,
+	VALUE_STATE_WARNING,
+	VALUE_STATE_ERROR
+];
 
 function isState(value: unknown): value is State {
 	return typeof value === "string" && VALUE_STATES.some((state) => state === value);
@@ -39,11 +75,11 @@ function isTypedValueFormatConfig(value: unknown): value is FormattersPipelineTy
 function isRowBasedOverrideConfig(value: unknown): value is FormattersPipelineRowBasedOverrideConfig {
 	if (!isRecord(value)) return false;
 
-	if (value.mode === "field") {
+	if (value.mode === PIPELINE_OVERRIDE_MODE_FIELD) {
 		return typeof value.fieldKey === "string" && isOptionalBoolean(value.fallbackToRaw);
 	}
 
-	if (value.mode === "formula") {
+	if (value.mode === PIPELINE_OVERRIDE_MODE_FORMULA) {
 		return (
 			typeof value.formulaId === "string" &&
 			(value.dependencyIds === undefined ||
@@ -60,7 +96,7 @@ function isThresholdDefinition(value: unknown): boolean {
 		typeof value === "number" ||
 		(isRecord(value) &&
 			typeof value.value === "number" &&
-			(value.boundary === undefined || value.boundary === "lower" || value.boundary === "upper"))
+			(value.boundary === undefined || value.boundary === THRESHOLD_BOUNDARY_LOWER || value.boundary === THRESHOLD_BOUNDARY_UPPER))
 	);
 }
 
@@ -72,8 +108,8 @@ function isResolveValueStateConfig(value: unknown): value is FormattersPipelineR
 	const hasValidSource =
 		source === undefined ||
 		(isRecord(source) &&
-			(source.kind === "value" ||
-				(source.kind === "formula" &&
+			(source.kind === PIPELINE_STATE_SOURCE_VALUE ||
+				(source.kind === PIPELINE_STATE_SOURCE_FORMULA &&
 					typeof source.formulaId === "string" &&
 					Array.isArray(source.dependencyIds) &&
 					source.dependencyIds.every((dependencyId) => typeof dependencyId === "string"))));
@@ -82,11 +118,13 @@ function isResolveValueStateConfig(value: unknown): value is FormattersPipelineR
 		(isRecord(icon) &&
 			isOptionalBoolean(icon.enabled) &&
 			isOptionalBoolean(icon.showValue) &&
-			(icon.position === undefined || icon.position === "left" || icon.position === "right"));
+			(icon.position === undefined ||
+				icon.position === PIPELINE_ICON_POSITION_LEFT ||
+				icon.position === PIPELINE_ICON_POSITION_RIGHT));
 
 	if (!hasValidIcon || !hasValidSource) return false;
 
-	if (resolver.kind === "fixed") {
+	if (resolver.kind === VALUE_STATE_RESOLVER_KIND_FIXED) {
 		return (
 			isRecord(resolver.entries) &&
 			Object.values(resolver.entries).every(isState) &&
@@ -94,7 +132,7 @@ function isResolveValueStateConfig(value: unknown): value is FormattersPipelineR
 		);
 	}
 
-	if (resolver.kind === "threshold") {
+	if (resolver.kind === VALUE_STATE_RESOLVER_KIND_THRESHOLD) {
 		return (
 			Array.isArray(resolver.thresholds) &&
 			resolver.thresholds.every(isThresholdDefinition) &&
@@ -110,22 +148,22 @@ function isResolveValueStateConfig(value: unknown): value is FormattersPipelineR
 function isPipelineStep(value: unknown): value is FormattersPipelineStep {
 	if (!isRecord(value) || typeof value.id !== "string") return false;
 
-	if (value.type === "normalizeLeadingZeros") {
+	if (value.type === PIPELINE_FORMATTER_NORMALIZE_LEADING_ZEROS) {
 		return (
 			value.config === undefined ||
 			(isRecord(value.config) && (value.config.fixed === undefined || typeof value.config.fixed === "number"))
 		);
 	}
 
-	if (value.type === "rowBasedOverride") {
+	if (value.type === PIPELINE_FORMATTER_ROW_BASED_OVERRIDE) {
 		return isRowBasedOverrideConfig(value.config);
 	}
 
-	if (value.type === "resolveValueState") {
+	if (value.type === PIPELINE_FORMATTER_RESOLVE_VALUE_STATE) {
 		return isResolveValueStateConfig(value.config);
 	}
 
-	if (value.type === "typedValueFormat") {
+	if (value.type === PIPELINE_FORMATTER_TYPED_VALUE_FORMAT) {
 		return isTypedValueFormatConfig(value.config);
 	}
 
@@ -143,7 +181,7 @@ function isPipelinePosition(value: unknown): value is { x: number; y: number } {
 function isPipelineNode(value: unknown): value is FormattersPipelineNode {
 	if (!isRecord(value) || typeof value.id !== "string" || !isPipelinePosition(value.position)) return false;
 
-	if (value.type === "source" || value.type === "sink") {
+	if (value.type === PIPELINE_NODE_SOURCE || value.type === PIPELINE_NODE_SINK) {
 		return true;
 	}
 
@@ -167,7 +205,7 @@ function isPipelineGraph(value: unknown): value is FormattersPipelineGraph {
 function isPipelineConfig(value: unknown): value is FormattersPipelineConfig {
 	return (
 		isRecord(value) &&
-		value.version === 1 &&
+		value.version === FORMATTERS_PIPELINE_VERSION &&
 		(value.plan === undefined || isPipelinePlan(value.plan)) &&
 		(value.graph === undefined || isPipelineGraph(value.graph)) &&
 		(isPipelinePlan(value.plan) || isPipelineGraph(value.graph))

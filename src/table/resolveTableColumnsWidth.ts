@@ -1,3 +1,5 @@
+const TABLE_COLUMN_FIXED_WIDTH_PATTERN = /^(?:\d+(?:\.\d+)?|\.\d+)(?:em|px)$/;
+
 /**
  * Возвращает сумму определённых ширин колонок без измерения DOM.
  *
@@ -6,7 +8,7 @@
  * браузерной раскладки: для них нельзя получить независимую сумму колонок.
  */
 export function resolveTableColumnsWidth(widths: readonly string[]): string | undefined {
-	if (widths.length === 0 || widths.some((width) => !/^(?:\d+(?:\.\d+)?|\.\d+)(?:em|px)$/.test(width))) {
+	if (widths.length === 0 || widths.some((width) => !TABLE_COLUMN_FIXED_WIDTH_PATTERN.test(width))) {
 		return undefined;
 	}
 

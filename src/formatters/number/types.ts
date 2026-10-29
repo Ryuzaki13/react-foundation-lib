@@ -2,7 +2,9 @@ import {
 	type COMPACT_ROUNDING_MODE_ROUND,
 	type COMPACT_ROUNDING_MODE_FLOOR,
 	type COMPACT_ROUNDING_MODE_CEIL,
-	type COMPACT_ROUNDING_MODE_TRUNC
+	type COMPACT_ROUNDING_MODE_TRUNC,
+	type NUMBER_FORMAT_STYLE_DECIMAL,
+	type NUMBER_FORMAT_STYLE_PERCENT
 } from "./numberFormatConstants";
 
 export type NumberFormatCompactRoundingMode =
@@ -46,6 +48,8 @@ export type NumberFormatCompactOptions = {
 /** Параметры предустановки форматирования чисел */
 export interface NumberFormatPreset {
 	name: string;
+	/** Без style сохраняется обычное число; percent отображает долю как процент. С compact не совмещается. */
+	style?: typeof NUMBER_FORMAT_STYLE_DECIMAL | typeof NUMBER_FORMAT_STYLE_PERCENT;
 	/** Количество десятичных знаков */
 	decimals: number;
 	/** Разделитель дробной части */

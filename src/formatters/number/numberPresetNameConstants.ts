@@ -6,6 +6,7 @@ export const NUMBER_PRESET_NAME_DECIMAL3 = "decimal-3";
 export const NUMBER_PRESET_NAME_CURRENCY = "currency";
 export const NUMBER_PRESET_NAME_PRICE = "price";
 export const NUMBER_PRESET_NAME_PERCENT = "percent";
+export const NUMBER_PRESET_NAME_RATIO_PERCENT = "ratio-percent";
 export const NUMBER_PRESET_NAME_TONNAGE = "tonnage";
 export const NUMBER_PRESET_NAME_COMPACT_CURRENCY = "compact-currency";
 export const NUMBER_PRESET_NAME_COMPACT_CURRENCY_ROUND = "compact-currency-round";

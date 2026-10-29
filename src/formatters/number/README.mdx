@@ -74,6 +74,7 @@ const text = value === undefined ? "Некорректно" : formatNumber(value
 | `currency`               |              0 | Денежное число без символа валюты                          |
 | `price`                  |              0 | Цена без символа валюты                                    |
 | `percent`                |              2 | Процентное число без автоматического умножения и знака `%` |
+| `ratio-percent`          |              2 | Доля с процентным масштабированием и знаком `%`            |
 | `tonnage`                |              1 | Тоннаж                                                     |
 | `compact-currency`       |              0 | Компактное число, усечение                                 |
 | `compact-currency-round` |              0 | Компактное число, округление                               |
@@ -97,6 +98,38 @@ import { DEFAULT_NUMBER_PRESET_NAMES, formatNumber } from "@ryuzaki13/react-foun
 formatNumber(1234.5, DEFAULT_NUMBER_PRESET_NAMES.decimal2);
 ```
 
+## Числовой процент и доля
+
+`percent` и `formatNumberAsPercent` форматируют уже подготовленное число с двумя дробными знаками. `ratio-percent` принимает долю: числу `0.2` соответствует отображение `20,00%`. Передавать предварительно умноженное на 100 значение для этого preset не нужно.
+
+```ts
+import {
+	DEFAULT_NUMBER_PRESET_NAMES,
+	NUMBER_PRESET_NAME_RATIO_PERCENT,
+	formatNumber,
+	formatNumberAsPercent
+} from "@ryuzaki13/react-foundation-lib/formatters";
+
+formatNumber(0.2, "percent"); // "0,20"
+formatNumberAsPercent(0.2); // "0,20"
+formatNumber(0.2, NUMBER_PRESET_NAME_RATIO_PERCENT); // "20,00%"
+formatNumber(1, DEFAULT_NUMBER_PRESET_NAMES.ratioPercent); // "100,00%"
+formatNumber(0, "ratio-percent"); // "0,00%"
+```
+
+Число остаётся неизменным; процентное масштабирование относится только к представлению. Для formatter pipeline достаточно обычного `typedValueFormat` с `numberPresetName: "ratio-percent"`, в том числе у числовой колонки с целочисленным типом `int`. Смена preset не изменяет числовую семантику формул.
+
+Необязательное поле `NumberFormatPreset.style` задаёт способ представления: отсутствие поля или `"decimal"` сохраняет обычный числовой формат, `"percent"` отображает долю со знаком `%`. Встроенный `ratio-percent` использует два дробных знака, собственный preset использует свой `decimals`:
+
+```ts
+registerNumberPreset({ name: "ratio-3", style: "percent", decimals: 3 });
+formatNumber(0.12345, "ratio-3"); // "12,345%"
+```
+
+`style: "percent"` нельзя сочетать с `compact`: такая комбинация явно отклоняется. Существующие compact presets без marker сохраняют своё поведение.
+
+При экспорте через `createTableExcelColumn` из `/excel` этот style создаёт native percentage mask с точностью preset. В строку книги передаётся исходное число `0.2`, а Excel отображает процент. Готовую строку `"20%"` или число `20` вместо доли передавать не следует. Формат старого `percent` остаётся обычным числовым.
+
 ## `formatNumber(value, presetOrName)`
 
 ```ts
@@ -109,7 +142,7 @@ function formatNumber(value: unknown, presetOrName: string | NumberFormatPreset)
 2. вызывает `Number(value)`;
 3. для `NaN` и бесконечности возвращает `"0"`;
 4. находит preset по имени или использует переданный объект;
-5. округляет и форматирует число;
+5. округляет и форматирует число с учётом выбранного `style`;
 6. применяет compact-семантику, если она задана.
 
 ```ts
@@ -175,7 +208,7 @@ formatNumberAsCurrency(1250); // "1 250", без ₽
 formatNumberAsPercent(12.5); // "12,50", без %
 ```
 
-Если нужен суффикс, добавляйте его на UI-уровне или используйте специализированный модуль единиц измерения.
+Для доли со знаком `%` используйте `ratio-percent`. Другие суффиксы добавляйте на UI-уровне или используйте специализированный модуль единиц измерения.
 
 ## Wrappers `OrEmpty`
 
@@ -388,7 +421,7 @@ formatNumber(1234.5, "accounting-2"); // "1 234,50"
 
 Регистрация глобальна для текущего экземпляра модуля. Выполняйте её один раз при старте приложения до компиляции formatter pipeline.
 
-Имя не trim-ится и поля не валидируются. Передавайте непустое устойчивое имя, не меняйте встроенные presets без явной необходимости и проверяйте числовые параметры.
+Имя не trim-ится. Передавайте непустое устойчивое имя, не меняйте встроенные presets без явной необходимости и проверяйте числовые параметры. Сочетание `style: "percent"` с `compact` не поддерживается и отклоняется при регистрации или разрешении preset.
 
 ### `resetNumberPresets()`
 
@@ -426,7 +459,7 @@ formatNumber(1234567.89, {
 
 Такой объект не попадает в реестр. Он полезен для локального стабильного правила; переиспользуемый формат лучше зарегистрировать централизованно.
 
-Параметры не валидируются. Используйте:
+Числовые параметры автоматически не валидируются. Используйте:
 
 - `decimals` — целое неотрицательное число в диапазоне, допустимом `Intl.NumberFormat`;
 - `groupingSize` — положительное целое число;
@@ -450,7 +483,7 @@ truncateNumber(123.789, -1); // 120
 
 ## Кеш `Intl.NumberFormat`
 
-Модуль кеширует formatter по комбинации `decimals + grouping`, что важно для сотен ячеек таблицы.
+Модуль кеширует formatter по комбинации `style + decimals + grouping`, что важно для сотен ячеек таблицы. Числовой и процентный режимы не используют один formatter даже при одинаковой точности.
 
 ```ts
 clearFormatCache();
@@ -506,7 +539,7 @@ const text = parsed === undefined ? "—" : formatNumber(parsed, "decimal-2");
 
 ### Считать `percent` математическим процентом
 
-Preset не умножает `0.25` на 100 и не добавляет `%`. Он выведет `0,25`.
+Preset не умножает `0.25` на 100 и не добавляет `%`. Он выведет `0,25`. Для отображения доли как `25,00%` выбирайте `ratio-percent`.
 
 ### Ожидать валютный символ
 
@@ -529,7 +562,7 @@ Preset не умножает `0.25` на 100 и не добавляет `%`. О�
 | Ноль как пустое              | все перечисленные wrappers с суффиксом `OrEmpty`                                                                                                                                                        |
 | Парсинг                      | `toFiniteNumber`, `parseNumber`, `isPositiveValue`, `toPositiveInteger`                                                                                                                                 |
 | Проверка нуля                | `isZeroValue`                                                                                                                                                                                           |
-| Presets                      | `DEFAULT_NUMBER_PRESET_NAMES`, `NUMBER_FORMAT_DEFAULTS`, `getNumberPreset`, `getNumberPresetNames`, `registerNumberPreset`, `resetNumberPresets`                                                        |
+| Presets                      | `DEFAULT_NUMBER_PRESET_NAMES`, `NUMBER_PRESET_NAME_RATIO_PERCENT`, `NUMBER_FORMAT_DEFAULTS`, `getNumberPreset`, `getNumberPresetNames`, `registerNumberPreset`, `resetNumberPresets`                    |
 | Низкоуровневое               | `truncateNumber`, `clearFormatCache`                                                                                                                                                                    |
 | Типы                         | `NumberFormatPreset`, `NumberFormatPresetConfig`, `NumberFormatCompactOptions`, `NumberFormatCompactUnit`, `NumberFormatCompactRoundingMode`                                                            |
 
@@ -540,3 +573,4 @@ Preset не умножает `0.25` на 100 и не добавляет `%`. О�
 - [Обзор `formatters`](../README.mdx)
 - [Строковая нормализация](../strings/README.mdx)
 - [Formatter pipeline](../pipeline/README.mdx)
+- [Excel](../../excel/README.mdx)

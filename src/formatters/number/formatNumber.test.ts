@@ -10,11 +10,11 @@ import {
 	formatNumberAsCurrencyChartTooltip
 } from "./formatCompactNumber";
 import { truncateNumber } from "./formatNumber";
-
-import type { NumberFormatPreset } from "./types";
+import { type NumberFormatPreset } from "./types";
 
 import {
 	clearFormatCache,
+	DEFAULT_NUMBER_PRESET_NAMES,
 	formatNumber,
 	formatNumberAsCurrency,
 	formatNumberAsCurrencyOrEmpty,
@@ -36,6 +36,7 @@ import {
 	getNumberPresetNames,
 	isZeroValue,
 	NUMBER_FORMAT_DEFAULTS,
+	NUMBER_PRESET_NAME_RATIO_PERCENT,
 	registerNumberPreset,
 	resetNumberPresets
 } from "./index";
@@ -57,6 +58,7 @@ describe("реестр предустановок", () => {
 		"currency",
 		"price",
 		"percent",
+		"ratio-percent",
 		"tonnage",
 		"compact-currency",
 		"compact-currency-round",
@@ -128,6 +130,84 @@ describe("реестр предустановок", () => {
 		resetNumberPresets();
 		expect(getNumberPresetNames()).not.toContain("Custom");
 		expect(getNumberPresetNames()).toHaveLength(defaultPresets.length);
+	});
+});
+
+describe("представление числовой доли", () => {
+	it.each([
+		[0.2, "20,00%"],
+		[1, "100,00%"],
+		[0, "0,00%"],
+		[-0.123456, "-12,35%"],
+		[0.99995, "100,00%"],
+		[Number.MIN_VALUE, "0,00%"]
+	])("ratio-percent форматирует %s как %s", (value, expected) => {
+		expect(formatNumber(value, NUMBER_PRESET_NAME_RATIO_PERCENT)).toBe(expected);
+	});
+
+	it("экспортирует имя и не меняет прежние presets и их object shape", () => {
+		expect(DEFAULT_NUMBER_PRESET_NAMES.ratioPercent).toBe(NUMBER_PRESET_NAME_RATIO_PERCENT);
+		expect(getNumberPreset(NUMBER_PRESET_NAME_RATIO_PERCENT)).toEqual({
+			...NUMBER_FORMAT_DEFAULTS,
+			name: "ratio-percent",
+			decimals: 2,
+			style: "percent"
+		});
+		expect(NUMBER_FORMAT_DEFAULTS).not.toHaveProperty("style");
+		expect(getNumberPreset("percent")).not.toHaveProperty("style");
+		expect(formatNumberAsPercent(0.2)).toBe("0,20");
+	});
+
+	it.each([
+		[0, "23%"],
+		[3, "23,450%"]
+	])("custom style использует собственную точность %s независимо от имени", (decimals, expected) => {
+		const preset = Object.freeze({ ...NUMBER_FORMAT_DEFAULTS, name: "share", decimals, style: "percent" } satisfies NumberFormatPreset);
+		expect(formatNumber(0.2345, preset)).toBe(expected);
+	});
+
+	it("сохраняет custom separators и нестандартную группировку масштабированного представления", () => {
+		const preset = registerNumberPreset({
+			name: "share-custom",
+			style: "percent",
+			decimals: 2,
+			decimalSeparator: ".",
+			groupingSeparator: "_"
+		});
+		expect(formatNumber(123.45678, preset)).toBe("12_345.68%");
+		expect(formatNumber(123.45678, { ...preset, groupingSize: 2 })).toBe("1_23_45.68%");
+		expect(formatNumber(123.45678, { ...preset, grouping: false })).toBe("12345.68%");
+	});
+
+	it("не смешивает decimal и percent в cache и не масштабирует повторный вызов дважды", () => {
+		for (let index = 0; index < 2; index += 1) {
+			expect(formatNumber(0.2, "decimal-2")).toBe("0,20");
+			expect(formatNumber(0.2, "ratio-percent")).toBe("20,00%");
+			expect(formatNumber(0.2, "percent")).toBe("0,20");
+		}
+	});
+
+	it.each([Number.MAX_VALUE, -Number.MAX_VALUE])("finite вход %s не переполняется при процентном представлении", (value) => {
+		const formatted = formatNumber(value, "ratio-percent");
+		expect(formatted).not.toMatch(/NaN|Infinity|∞/);
+		expect(formatted.endsWith(",00%")).toBe(true);
+		expect(formatted.length).toBeGreaterThan(300);
+	});
+
+	it.each(["", " ", "invalid", undefined, NaN, Infinity])("сохраняет прежний fallback для %s", (value) => {
+		expect(formatNumber(value, "ratio-percent")).toBe("0");
+	});
+
+	it("сохраняет обычное числовое преобразование null и строк без нового parser", () => {
+		expect(formatNumber(null, "ratio-percent")).toBe("0,00%");
+		expect(formatNumber("0.2", "ratio-percent")).toBe("20,00%");
+	});
+
+	it("отклоняет percent с compact в registry и прямом preset без перезаписи прежней записи", () => {
+		const saved = getNumberPreset("ratio-percent");
+		expect(() => registerNumberPreset({ name: "ratio-percent", style: "percent", compact: {} })).toThrow(/compact/);
+		expect(getNumberPreset("ratio-percent")).toBe(saved);
+		expect(() => formatNumber(0.2, { ...NUMBER_FORMAT_DEFAULTS, name: "invalid", style: "percent", compact: {} })).toThrow(/compact/);
 	});
 });
 

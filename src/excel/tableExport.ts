@@ -1,6 +1,7 @@
 import { DEFAULT_DATE_PRESET_NAMES, getDatePreset, type DateFormatPreset } from "../formatters/date";
-import { getNumberPreset } from "../formatters/number";
+import { NUMBER_FORMAT_STYLE_PERCENT } from "../formatters/number/numberFormatConstants";
 import { NUMBER_PRESET_NAME_DECIMAL, NUMBER_PRESET_NAME_INTEGER } from "../formatters/number/numberPresetNameConstants";
+import { getNumberPreset, resolveNumberPreset } from "../formatters/number/presets";
 import {
 	validateFormattersPipelineConfig,
 	type FormattersPipelineConfig,
@@ -102,7 +103,13 @@ function resolveNumberPresetName(descriptor: TableExcelColumnDescriptor): string
 function resolveExcelNumberFormat(descriptor: TableExcelColumnDescriptor): string {
 	const preset = getNumberPreset(resolveNumberPresetName(descriptor));
 	if (!preset) return DEFAULT_DECIMAL_EXCEL_FORMAT;
-	return preset.decimals > 0 ? `#,##0.${"0".repeat(preset.decimals)}` : INTEGER_EXCEL_FORMAT;
+
+	const resolvedPreset = resolveNumberPreset(preset);
+	const format = resolvedPreset.decimals > 0 ? `#,##0.${"0".repeat(resolvedPreset.decimals)}` : INTEGER_EXCEL_FORMAT;
+
+	// Excel масштабирует числовую долю только при отображении native %-маски.
+	// Имя preset не задаёт семантику: старый percent без style остаётся decimal.
+	return resolvedPreset.style === NUMBER_FORMAT_STYLE_PERCENT ? `${format}%` : format;
 }
 
 function resolveDatePresetName(descriptor: TableExcelColumnDescriptor): string {

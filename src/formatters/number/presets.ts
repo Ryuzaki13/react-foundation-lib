@@ -2,7 +2,8 @@ import {
 	STANDARD_NUMBER_GROUP_SIZE,
 	NUMBER_FORMAT_LOCALE,
 	INTL_NUMBER_PART_GROUP,
-	COMPACT_ROUNDING_MODE_ROUND
+	COMPACT_ROUNDING_MODE_ROUND,
+	NUMBER_FORMAT_STYLE_PERCENT
 } from "./numberFormatConstants";
 import {
 	NUMBER_PRESET_NAME_INTEGER,
@@ -12,6 +13,7 @@ import {
 	NUMBER_PRESET_NAME_CURRENCY,
 	NUMBER_PRESET_NAME_PRICE,
 	NUMBER_PRESET_NAME_PERCENT,
+	NUMBER_PRESET_NAME_RATIO_PERCENT,
 	NUMBER_PRESET_NAME_TONNAGE,
 	NUMBER_PRESET_NAME_COMPACT_CURRENCY,
 	NUMBER_PRESET_NAME_COMPACT_CURRENCY_ROUND,
@@ -20,8 +22,7 @@ import {
 	NUMBER_PRESET_NAME_COMPACT_TONNAGE,
 	NUMBER_PRESET_NAME_COMPACT_TONNAGE_ROUND
 } from "./numberPresetNameConstants";
-
-import type { NumberFormatPreset, NumberFormatPresetConfig } from "./types";
+import { type NumberFormatPreset, type NumberFormatPresetConfig } from "./types";
 
 /** Четырёхзначная проба извлекает групповой разделитель выбранной локали. */
 const GROUP_SEPARATOR_PROBE_VALUE = 1_000;
@@ -48,6 +49,7 @@ export const DEFAULT_NUMBER_PRESET_NAMES = Object.freeze({
 	currency: NUMBER_PRESET_NAME_CURRENCY,
 	price: NUMBER_PRESET_NAME_PRICE,
 	percent: NUMBER_PRESET_NAME_PERCENT,
+	ratioPercent: NUMBER_PRESET_NAME_RATIO_PERCENT,
 	tonnage: NUMBER_PRESET_NAME_TONNAGE,
 	compactCurrency: NUMBER_PRESET_NAME_COMPACT_CURRENCY,
 	compactCurrencyRound: NUMBER_PRESET_NAME_COMPACT_CURRENCY_ROUND,
@@ -72,6 +74,7 @@ const BUILTIN: NumberFormatPresetConfig[] = [
 	{ name: NUMBER_PRESET_NAME_CURRENCY, decimals: 0, decimalSeparator: "" },
 	{ name: NUMBER_PRESET_NAME_PRICE, decimals: 0, decimalSeparator: "" },
 	{ name: NUMBER_PRESET_NAME_PERCENT, decimals: 2 },
+	{ name: NUMBER_PRESET_NAME_RATIO_PERCENT, decimals: 2, style: NUMBER_FORMAT_STYLE_PERCENT },
 	{ name: NUMBER_PRESET_NAME_TONNAGE },
 	{ name: NUMBER_PRESET_NAME_COMPACT_CURRENCY, decimals: 0, decimalSeparator: "", compact: {} },
 	{
@@ -92,6 +95,13 @@ const BUILTIN: NumberFormatPresetConfig[] = [
 
 const registry = new Map<string, NumberFormatPreset>();
 
+/** Compact использует собственный масштаб; процентный style требует отдельного однозначного представления доли. */
+function validateNumberPresetStyle(preset: NumberFormatPreset): void {
+	if (preset.style === NUMBER_FORMAT_STYLE_PERCENT && preset.compact !== undefined) {
+		throw new Error("Процентный style предустановки не поддерживает compact.");
+	}
+}
+
 function init(): void {
 	for (const cfg of BUILTIN) {
 		registry.set(cfg.name, { ...NUMBER_FORMAT_DEFAULTS, ...cfg });
@@ -111,6 +121,9 @@ export function getNumberPresetNames(): string[] {
 /** Зарегистрировать или перезаписать предустановку. Недостающие поля берутся из FORMAT_DEFAULTS. */
 export function registerNumberPreset(config: NumberFormatPresetConfig): NumberFormatPreset {
 	const preset: NumberFormatPreset = { ...NUMBER_FORMAT_DEFAULTS, ...config };
+
+	validateNumberPresetStyle(preset);
+
 	registry.set(preset.name, preset);
 	return preset;
 }
@@ -122,10 +135,16 @@ export function resetNumberPresets(): void {
 }
 
 export function resolveNumberPreset(presetOrName: string | NumberFormatPreset): NumberFormatPreset {
-	if (typeof presetOrName !== "string") return presetOrName;
+	if (typeof presetOrName !== "string") {
+		validateNumberPresetStyle(presetOrName);
+
+		return presetOrName;
+	}
 
 	const found = getNumberPreset(presetOrName);
 	if (!found) throw new Error(`Предустановка "${presetOrName}" не найдена`);
+
+	validateNumberPresetStyle(found);
 
 	return found;
 }

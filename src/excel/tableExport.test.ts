@@ -1,7 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { downloadExcelFile, downloadExcelWorkbook } from "./excel";
-import { createTableExcelColumn, downloadResolvedExcelTable, downloadResolvedExcelWorkbook } from "./tableExport";
+import { registerNumberPreset, resetNumberPresets } from "../formatters/number";
+
+import { buildExcelSheetData, downloadExcelFile, downloadExcelWorkbook } from "./excel";
+import {
+	createTableExcelColumn,
+	downloadResolvedExcelTable,
+	downloadResolvedExcelWorkbook,
+	type TableExcelColumnDescriptor
+} from "./tableExport";
 
 vi.mock("./excel", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("./excel")>();
@@ -20,6 +27,8 @@ beforeEach(() => {
 	mockedDownloadExcelFile.mockReset();
 	mockedDownloadExcelWorkbook.mockReset();
 });
+
+afterEach(resetNumberPresets);
 
 describe("shared/lib/excel/tableExport", () => {
 	it("выводит тип колонки из OData-типа, роли и clientOnly-флага", () => {
@@ -68,6 +77,99 @@ describe("shared/lib/excel/tableExport", () => {
 			type: Number,
 			format: "#,##0.00"
 		});
+	});
+
+	it("передаёт долю в Excel числом без изменения frozen pipeline и строк", () => {
+		const descriptor = {
+			id: "SHARE",
+			header: "Доля",
+			odataType: "decimal",
+			formattersPipeline: {
+				version: 1,
+				plan: {
+					steps: [
+						{
+							id: "typed",
+							type: "typedValueFormat",
+							config: { numberPresetName: "ratio-percent" }
+						}
+					]
+				}
+			}
+		} satisfies TableExcelColumnDescriptor;
+		const step = descriptor.formattersPipeline.plan.steps[0];
+		Object.freeze(step.config);
+		Object.freeze(step);
+		Object.freeze(descriptor.formattersPipeline.plan.steps);
+		Object.freeze(descriptor.formattersPipeline.plan);
+		Object.freeze(descriptor.formattersPipeline);
+		Object.freeze(descriptor);
+		const rows = [Object.freeze({ SHARE: 0.2 })];
+		Object.freeze(rows);
+		const column = Object.freeze(createTableExcelColumn(descriptor));
+		const columns = [column];
+		Object.freeze(columns);
+
+		const data = buildExcelSheetData({ columns, rows });
+
+		expect(column).toMatchObject({ type: Number, format: "#,##0.00%" });
+		expect(data[1]?.[0]).toMatchObject({ value: 0.2, type: Number, format: "#,##0.00%" });
+		expect(rows).toEqual([{ SHARE: 0.2 }]);
+		expect(step.config).toEqual({ numberPresetName: "ratio-percent" });
+	});
+
+	it.each([
+		{ name: "whole-share", decimals: 0, expectedFormat: "#,##0%" },
+		{ name: "precise-share", decimals: 3, expectedFormat: "#,##0.000%" }
+	])("выводит процентную маску custom preset $name по style и точности", ({ name, decimals, expectedFormat }) => {
+		registerNumberPreset({ name, decimals, style: "percent" });
+
+		const column = createTableExcelColumn({
+			id: "SHARE",
+			header: "Доля",
+			odataType: "decimal",
+			formattersPipeline: {
+				version: 1,
+				plan: { steps: [{ id: "typed", type: "typedValueFormat", config: { numberPresetName: name } }] }
+			}
+		});
+
+		expect(column).toMatchObject({ type: Number, format: expectedFormat });
+	});
+
+	it("не выводит процентную маску только по имени ratio-percent", () => {
+		registerNumberPreset({ name: "ratio-percent", decimals: 3, style: "decimal" });
+
+		const column = createTableExcelColumn({
+			id: "SHARE",
+			header: "Доля",
+			odataType: "decimal",
+			formattersPipeline: {
+				version: 1,
+				plan: { steps: [{ id: "typed", type: "typedValueFormat", config: { numberPresetName: "ratio-percent" } }] }
+			}
+		});
+
+		expect(column).toMatchObject({ type: Number, format: "#,##0.000" });
+	});
+
+	it("повторно проверяет несовместимость percent и compact при чтении изменённого preset", () => {
+		const preset = registerNumberPreset({ name: "mutated-share", style: "percent" });
+		// Registry возвращает mutable public preset, поэтому ранее валидный объект
+		// мог измениться до создания Excel-колонки.
+		preset.compact = {};
+
+		expect(() =>
+			createTableExcelColumn({
+				id: "SHARE",
+				header: "Доля",
+				odataType: "decimal",
+				formattersPipeline: {
+					version: 1,
+					plan: { steps: [{ id: "typed", type: "typedValueFormat", config: { numberPresetName: preset.name } }] }
+				}
+			})
+		).toThrow();
 	});
 
 	it("применяет числовой preset только для Number-колонки", () => {

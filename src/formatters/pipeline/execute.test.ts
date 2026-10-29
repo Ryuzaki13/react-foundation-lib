@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { configureRowBasedFormatterRegistry, createRowBasedFormatterRegistry } from "../rowBased";
 
 import { compileFormattersPipelineExecutor } from "./execute";
+import { type FormattersPipelineExecutionContext } from "./types";
 
 beforeEach(() => {
 	configureRowBasedFormatterRegistry(
@@ -18,6 +19,45 @@ beforeEach(() => {
 });
 
 describe("table column formatters pipeline execute", () => {
+	it.each([
+		{ value: 0.2, expected: "20,00%" },
+		{ value: 1, expected: "100,00%" },
+		{ value: 0, expected: "0,00%" }
+	])("форматирует долю $value через явный ratio-percent с integer metadata", ({ value, expected }) => {
+		const compiled = compileFormattersPipelineExecutor({
+			config: {
+				version: 1,
+				plan: { steps: [{ id: "ratio", type: "typedValueFormat", config: { numberPresetName: "ratio-percent" } }] }
+			},
+			column: { role: "measure", type: "int" }
+		});
+
+		expect(compiled.ok).toBe(true);
+		if (!compiled.ok) return;
+
+		const rowData = Object.freeze({ SHARE: value });
+		const input: FormattersPipelineExecutionContext = Object.freeze({
+			value,
+			rowData,
+			rowKind: "plain",
+			isGroupRow: false,
+			isTotalsRow: false,
+			rowLevel: 0,
+			groupingIds: [],
+			columnId: "SHARE"
+		});
+
+		const first = compiled.executor.execute(input);
+		const second = compiled.executor.execute(input);
+
+		expect(first.value).toBe(expected);
+		expect(first.hasTypedValueFormat).toBe(true);
+		expect(second.value).toBe(expected);
+		expect(input.value).toBe(value);
+		expect(input.rowData).toBe(rowData);
+		expect(rowData).toEqual({ SHARE: value });
+	});
+
 	it("использует настроенный registry в rowBasedOverride formula-режиме", () => {
 		const compiled = compileFormattersPipelineExecutor({
 			config: {

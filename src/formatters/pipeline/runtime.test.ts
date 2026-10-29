@@ -4,8 +4,7 @@ import { configureTableFormulaRegistry, createTableFormulaRegistry } from "../..
 
 import { formatTypedCellValue } from "./execute";
 import { compileFormattersPipelineRuntime, compileFormattersPipelineRuntimeFields, formatPipelineDisplayValue } from "./runtime";
-
-import type { FormattersPipelineRuntimeField } from "./types";
+import { type FormattersPipelineRowKind, type FormattersPipelineRuntimeField } from "./types";
 
 beforeEach(() => {
 	configureTableFormulaRegistry(
@@ -139,6 +138,62 @@ describe("compileFormattersPipelineRuntime", () => {
 });
 
 describe("formatPipelineDisplayValue", () => {
+	it("форматирует дробный результат формулы в разных типах строк без изменения исходных значений", () => {
+		configureTableFormulaRegistry(
+			createTableFormulaRegistry([
+				{
+					id: "ratio",
+					name: "Отношение",
+					description: "Проверяет передачу готовой доли из формулы в formatter pipeline.",
+					fn: (context) => context.num(0) / context.num(1)
+				}
+			])
+		);
+		const field = compileFormattersPipelineRuntime(
+			measureField("SHARE", {
+				type: "int",
+				formulaId: "ratio",
+				formulaDependencies: ["AMOUNT", "TOTAL"],
+				formattersPipeline: {
+					version: 1,
+					plan: { steps: [{ id: "ratio", type: "typedValueFormat", config: { numberPresetName: "ratio-percent" } }] }
+				}
+			})
+		);
+		const rowData = Object.freeze({ AMOUNT: 20, TOTAL: 100 });
+		const rowKinds: readonly FormattersPipelineRowKind[] = ["plain", "group", "totals"];
+
+		for (const rowKind of rowKinds) {
+			const cell = formatPipelineDisplayValue({ field, rawValue: undefined, rowData, rowKind });
+
+			expect(cell.value).toBe("20,00%");
+			expect(cell.state).toBe("none");
+			expect(field.formulaExecutor?.(rowData)).toEqual({ ok: true, value: 0.2 });
+		}
+
+		expect(rowData).toEqual({ AMOUNT: 20, TOTAL: 100 });
+	});
+
+	it.each([
+		{ preset: "percent", expected: "0,20" },
+		{ preset: "ratio-percent", expected: "20,00%" }
+	])("сохраняет разный смысл числового preset $preset", ({ preset, expected }) => {
+		const field = compileFormattersPipelineRuntime(
+			measureField("SHARE", {
+				formattersPipeline: {
+					version: 1,
+					plan: { steps: [{ id: "typed", type: "typedValueFormat", config: { numberPresetName: preset } }] }
+				}
+			})
+		);
+		const rowData = Object.freeze({ SHARE: 0.2 });
+
+		const cell = formatPipelineDisplayValue({ field, rawValue: rowData.SHARE, rowData, rowKind: "plain" });
+
+		expect(cell.value).toBe(expected);
+		expect(rowData.SHARE).toBe(0.2);
+	});
+
 	it("возвращает пустое значение для purely-derived поля при ошибке формулы", () => {
 		const runtime = compileFormattersPipelineRuntimeFields({
 			MARKUP: measureField("MARKUP", {

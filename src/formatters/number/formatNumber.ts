@@ -4,8 +4,12 @@ import {
 	STANDARD_NUMBER_GROUP_SIZE,
 	FORMATTED_NUMBER_ZERO,
 	NUMBER_FORMAT_LOCALE,
+	NUMBER_FORMAT_STYLE_DECIMAL,
+	NUMBER_FORMAT_STYLE_PERCENT,
 	INTL_NUMBER_PART_GROUP,
-	INTL_NUMBER_PART_DECIMAL
+	INTL_NUMBER_PART_DECIMAL,
+	INTL_NUMBER_PART_PERCENT_SIGN,
+	INTL_NUMBER_PART_LITERAL
 } from "./numberFormatConstants";
 import {
 	NUMBER_PRESET_NAME_INTEGER,
@@ -18,10 +22,9 @@ import {
 	NUMBER_PRESET_NAME_TONNAGE
 } from "./numberPresetNameConstants";
 import { NUMBER_FORMAT_DEFAULTS, resolveNumberPreset } from "./presets";
+import { type NumberFormatPreset } from "./types";
 
-import type { NumberFormatPreset } from "./types";
-
-/** Кеш Intl.NumberFormat по ключу "decimals:grouping" */
+/** Style входит в ключ: decimal и доля с одинаковой точностью не разделяют formatter. */
 const cache = new Map<string, Intl.NumberFormat>();
 
 /** Усечение дробной части без округления: 1234.789 → 1234.7 (при decimals=1) */
@@ -31,11 +34,16 @@ export function truncateNumber(num: number, decimals: number): number {
 	return Math.trunc(num * factor) / factor;
 }
 
-function getFormatter(decimals: number, grouping: boolean): Intl.NumberFormat {
-	const key = `${decimals}:${grouping ? 1 : 0}`;
+function getFormatter(
+	decimals: number,
+	grouping: boolean,
+	style: NumberFormatPreset["style"] = NUMBER_FORMAT_STYLE_DECIMAL
+): Intl.NumberFormat {
+	const key = `${style}:${decimals}:${grouping ? 1 : 0}`;
 	let fmt = cache.get(key);
 	if (!fmt) {
 		fmt = new Intl.NumberFormat(NUMBER_FORMAT_LOCALE, {
+			style,
 			minimumFractionDigits: decimals,
 			maximumFractionDigits: decimals,
 			useGrouping: grouping
@@ -43,6 +51,18 @@ function getFormatter(decimals: number, grouping: boolean): Intl.NumberFormat {
 		cache.set(key, fmt);
 	}
 	return fmt;
+}
+
+/**
+ * Intl масштабирует долю без промежуточного умножения JS-числа, включая Number.MAX_VALUE.
+ * Локализованный суффикс убирается из частей: единый знак добавляется после наших разделителей и группировки.
+ */
+function formatNumberParts(num: number, decimals: number, grouping: boolean, style: NumberFormatPreset["style"]): Intl.NumberFormatPart[] {
+	const parts = getFormatter(decimals, grouping, style).formatToParts(num);
+
+	return style === NUMBER_FORMAT_STYLE_PERCENT
+		? parts.filter((part) => part.type !== INTL_NUMBER_PART_PERCENT_SIGN && part.type !== INTL_NUMBER_PART_LITERAL)
+		: parts;
 }
 
 /** Разделители совпадают с ru-RU — можно использовать format() напрямую */
@@ -58,13 +78,19 @@ function isStandard(p: NumberFormatPreset): boolean {
  * Быстрый путь (99% вызовов): format() напрямую, без постобработки.
  * ru-RU уже даёт неразрывный пробел и запятую — именно то, что нужно.
  */
-function formatStandard(num: number, decimals: number, grouping: boolean): string {
+function formatStandard(num: number, decimals: number, grouping: boolean, style: NumberFormatPreset["style"]): string {
+	if (style === NUMBER_FORMAT_STYLE_PERCENT) {
+		return formatNumberParts(num, decimals, grouping, style)
+			.map((part) => part.value)
+			.join("");
+	}
+
 	return getFormatter(decimals, grouping).format(num);
 }
 
 /** Кастомные разделители: formatToParts() с подстановкой */
 function formatCustomSeparator(num: number, preset: NumberFormatPreset): string {
-	const parts = getFormatter(preset.decimals, preset.grouping).formatToParts(num);
+	const parts = formatNumberParts(num, preset.decimals, preset.grouping, preset.style);
 	let result = "";
 	for (const p of parts) {
 		if (p.type === INTL_NUMBER_PART_GROUP) result += preset.groupingSeparator;
@@ -76,7 +102,7 @@ function formatCustomSeparator(num: number, preset: NumberFormatPreset): string 
 
 /** Нестандартный размер группы: Intl для округления, ручная группировка */
 function formatManualGroup(num: number, preset: NumberFormatPreset): string {
-	const raw = getFormatter(preset.decimals, false).format(num);
+	const raw = formatStandard(num, preset.decimals, false, preset.style);
 
 	// ru-RU без группировки: "1234567,89" — запятая как десятичный разделитель
 	const sep = raw.indexOf(",");
@@ -99,7 +125,7 @@ function formatManualGroup(num: number, preset: NumberFormatPreset): string {
 
 function formatPlainNumber(num: number, preset: NumberFormatPreset): string {
 	// 99% — стандартный ru-RU формат, format() без постобработки
-	if (isStandard(preset)) return formatStandard(num, preset.decimals, preset.grouping);
+	if (isStandard(preset)) return formatStandard(num, preset.decimals, preset.grouping, preset.style);
 
 	// Стандартный размер группы (3), но кастомные разделители
 	if (preset.groupingSize === STANDARD_NUMBER_GROUP_SIZE || !preset.grouping) return formatCustomSeparator(num, preset);
@@ -112,7 +138,7 @@ function formatPlainNumber(num: number, preset: NumberFormatPreset): string {
  * Форматирование числа по предустановке.
  * Оптимизировано для 500+ вызовов: кеш Intl.NumberFormat + быстрый путь через format().
  *
- * Не использовать напрямую! Использовать `formatNumberAs*`
+ * Для именованных и собственных presets используется этот public API; `formatNumberAs*` выбирают готовые имена.
  */
 export function formatNumber(value: unknown, presetOrName: string | NumberFormatPreset): string {
 	if (typeof value === "string" && value.trim() === "") return FORMATTED_NUMBER_ZERO;
@@ -121,10 +147,6 @@ export function formatNumber(value: unknown, presetOrName: string | NumberFormat
 	if (!Number.isFinite(num)) return FORMATTED_NUMBER_ZERO;
 
 	const preset = resolveNumberPreset(presetOrName);
-
-	// Усечение без округления — Intl занимается только группировкой и разделителями
-	// const truncated = truncateNumber(num, preset.decimals);
-	// NOTE: 30.04.2026 выяснилось, что всё таки должно быть именно округление, а не усечение
 
 	if (preset.compact) {
 		return formatCompactNumberValue({
@@ -135,7 +157,9 @@ export function formatNumber(value: unknown, presetOrName: string | NumberFormat
 		});
 	}
 
-	return formatPlainNumber(num, preset);
+	const formatted = formatPlainNumber(num, preset);
+
+	return preset.style === NUMBER_FORMAT_STYLE_PERCENT ? `${formatted}%` : formatted;
 }
 
 /**

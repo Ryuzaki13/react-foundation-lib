@@ -6,7 +6,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 Модуль `@ryuzaki13/react-foundation-lib/formulas` предоставляет безопасную инфраструктуру для заранее написанных клиентских формул таблицы.
 
-Формула получает значения полей текущей строки и числовые константы, выполняет синхронный расчёт и возвращает конечное JavaScript-число. Например, она может вычислить сумму, разницу, отношение или процент для calculated-колонки.
+Формула получает значения полей текущей строки и числовые константы либо заранее подготовленные host-приложением позиции, выполняет синхронный расчёт и возвращает конечное JavaScript-число. Например, она может вычислить сумму, разницу, отношение или процент для calculated-колонки.
 
 ```text
 данные строки + упорядоченные зависимости
@@ -30,6 +30,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - [Чтение активного реестра](#чтение-активного-реестра)
 - [Выполнение формулы](#выполнение-формулы)
 - [Предварительная компиляция](#предварительная-компиляция)
+- [Заранее разрешённые аргументы](#заранее-разрешённые-аргументы)
 - [Валидация зависимостей](#валидация-зависимостей)
 - [Интеграция с formatter pipeline](#интеграция-с-formatter-pipeline)
 - [Отличие от row-based formatter](#отличие-от-row-based-formatter)
@@ -50,6 +51,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - хранит один активный реестр в текущем экземпляре модуля;
 - выполняет формулы без выбрасывания их runtime-ошибок наружу;
 - компилирует formula + keys в переиспользуемый executor;
+- исполняет ту же зарегистрированную функцию над готовыми позиционными значениями без промежуточных полей строки;
 - проверяет существование формулы и корректность выбранных dependencies;
 - сообщает, какие dependency indexes реально использовала формула на тестовых данных.
 
@@ -68,7 +70,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 Host-приложение владеет прикладными `TableFormulaDefinition`: оно объявляет их в коде, тестирует, собирает в реестр и устанавливает на старте приложения.
 
-Сериализуемая конфигурация колонки хранит только стабильный `formulaId` и ordered dependencies. Реальная функция остаётся доверенным кодом приложения.
+В row-only API сериализуемая конфигурация колонки хранит стабильный `formulaId` и ordered dependencies. Реальная функция остаётся доверенным кодом приложения.
 
 ## Импорт
 
@@ -77,16 +79,21 @@ Host-приложение владеет прикладными `TableFormulaDef
 ```ts
 import {
 	compileTableFormula,
+	compileTableFormulaWithResolvedArguments,
 	configureTableFormulaRegistry,
 	createTableFormulaRegistry,
 	executeTableFormula,
+	executeTableFormulaWithResolvedArguments,
 	getTableFormulaById,
 	getTableFormulaList,
 	formatTableFormulaExpression,
-	validateTableFormulaDependencies
+	validateTableFormulaDependencies,
+	type TableFormulaDefinition,
+	type TableFormulaExecutionResult,
+	type TableFormulaRegistry,
+	type TableFormulaResolvedArgument,
+	type TableFormulaResolvedExecutor
 } from "@ryuzaki13/react-foundation-lib/formulas";
-
-import type { TableFormulaDefinition, TableFormulaExecutionResult, TableFormulaRegistry } from "@ryuzaki13/react-foundation-lib/formulas";
 ```
 
 Корневой импорт пакета и private imports из исходников не поддерживаются:
@@ -365,7 +372,7 @@ interface TableFormulaContext {
 
 ### `ctx.key(index)`
 
-Возвращает id dependency по индексу:
+В row-only API возвращает id dependency по индексу:
 
 ```ts
 // keys = ["planned", "actual"]
@@ -380,6 +387,8 @@ ctx.key(1.5); // undefined
 
 Пустая строка технически может вернуться из `key`, если она была передана в `keys`, но `value` и `num` считают пустой key отсутствующим. Используйте только непустые dependency ids.
 
+Для [заранее разрешённых аргументов](#заранее-разрешённые-аргументы) key передаёт host; он не используется для поиска значения в строке.
+
 ### `ctx.value(index)`
 
 Возвращает исходное значение без преобразования:
@@ -389,7 +398,7 @@ ctx.key(1.5); // undefined
 ctx.value(1); // "25"
 ```
 
-Для константы возвращается непосредственно её числовое значение. Для неправильного индекса, пустого key или отсутствующего свойства возвращается `undefined`.
+В row-only API для константы возвращается непосредственно её числовое значение. Для неправильного индекса, пустого key или отсутствующего свойства возвращается `undefined`. Для готовых позиций действуют [правила разрешённых аргументов](#заранее-разрешённые-аргументы).
 
 Используйте `value`, когда нужно отличать отсутствующее значение от нуля или применять собственный parser:
 
@@ -809,9 +818,69 @@ if (compiled.ok) {
 
 ### Синхронность и повторный вход
 
-Compiled executor переиспользует один context с изменяемой внутренней ссылкой на `rowData`. Это безопасно для обычной синхронной формулы.
+Executor `compileTableFormula` переиспользует один context с изменяемой внутренней ссылкой на `rowData`. Это безопасно для обычной синхронной формулы.
 
-Не делайте formula `async`, не сохраняйте `ctx` во внешнем state и не запускайте тот же executor рекурсивно из formula. Такой код нарушает lifecycle переиспользуемого context.
+Не делайте formula `async`, не сохраняйте `ctx` во внешнем state и не запускайте тот же row-only executor рекурсивно из formula. Такой код нарушает lifecycle переиспользуемого context. Отдельный контракт повторного входа для готовых позиций описан ниже.
+
+## Заранее разрешённые аргументы
+
+Когда значения относятся к разным строкам или вычисляются host-приложением, передайте их в позициях непосредственно. Используются существующие `TableFormulaDefinition`, registry и методы `ctx.key`, `ctx.value`, `ctx.num`; новую арифметическую функцию для другого источника писать не требуется.
+
+```ts
+type TableFormulaResolvedArgument = {
+	readonly value: unknown;
+	readonly key?: string;
+};
+
+type TableFormulaResolvedExecutor = (resolvedArguments: readonly TableFormulaResolvedArgument[]) => TableFormulaExecutionResult;
+```
+
+### Подготовка и выполнение
+
+Реестр из быстрого старта уже содержит `sum`. Host получает значения до вызова runtime и сохраняет нужный порядок:
+
+```ts
+import {
+	compileTableFormulaWithResolvedArguments,
+	executeTableFormulaWithResolvedArguments,
+	type TableFormulaResolvedArgument
+} from "@ryuzaki13/react-foundation-lib/formulas";
+
+const resolvedArguments: readonly TableFormulaResolvedArgument[] = [
+	{ value: 20, key: "amount" }, // Поле текущей строки.
+	{ value: 100 } // Уже полученное host-ом значение другой строки.
+];
+
+const result = executeTableFormulaWithResolvedArguments({ formulaId: "sum", arguments: resolvedArguments });
+// result: { ok: true, value: 120 }
+
+const compiled = compileTableFormulaWithResolvedArguments({ formulaId: "sum" });
+
+if (compiled.ok) {
+	const first = compiled.execute(resolvedArguments);
+	const second = compiled.execute([{ value: 30, key: "amount" }, { value: 200 }]);
+	// first.value === 120, second.value === 230 при успешном результате.
+}
+```
+
+Compile result содержит либо `ok: true` и `execute: TableFormulaResolvedExecutor`, либо `ok: false, reason: "formula_not_found"`. Массив передаётся при каждом execute, а не при compile. Для разового вычисления `executeTableFormulaWithResolvedArguments` выполняет compile и один вызов executor.
+
+### Значения, ключи и границы
+
+- `value(index)` возвращает переданный `value` буквально, включая `null`, `undefined`, число или числовую строку. Значение не ищется в `rowData`; `key` не влияет на его чтение.
+- Host задаёт `key` только для поля текущей строки. Для константы и внешнего источника его опускают, поэтому `key(index)` возвращает `undefined`. Не создавайте фиктивные ID вроде `TOTAL:Amount`.
+- Порядок и повторы сохраняются. Для отрицательного, нецелого или вышедшего за массив индекса `key()` и `value()` возвращают `undefined`, `num()` — `0`.
+- `num()` использует [действующее числовое преобразование](#числовое-преобразование-ctxnum). Исключение преобразования даёт `runtime_error`, а не успешный ноль.
+- Каждая позиция содержит собственное поле `value`: `{ value: undefined }` корректен, дырка массива или запись без `value` дают `runtime_error`. Ошибка подготовки не подменяется временным нулём.
+- Используется существующий `TableFormulaExecutionResult`: не конечный результат формулы даёт `invalid_result`, исключение — `runtime_error`. Значения и текст исключения не добавляются в результат ошибки.
+
+### Время жизни и ответственность host
+
+Compiled executor сохраняет зарегистрированную функцию без массива аргументов. Контекст создаётся для отдельного синхронного вызова, поэтому вложенное выполнение того же executor не подменяет значения внешнего или следующего вызова. Входные массивы и записи не изменяются; значения не нормализуются и не копируются глубоко. Формулы остаются чистыми и синхронными; `ctx` нельзя сохранять для чтения после завершения вызова.
+
+Host владеет сериализуемой ссылкой на источник, её доступностью, загрузкой, выбором исходного или вычисленного значения и проверкой циклов. Для ожидания данных он может явно подготовить `{ value: 0 }`, сохраняя состояние загрузки и диагностику отдельно. Runtime не получает DataSource callbacks и не разрешает ИТОГО или родителя самостоятельно.
+
+`TableFormulaDependency`, row-only compile/execute, validator зависимостей, formatter выражения и formatter pipeline сохраняют свои контракты. `validateTableFormulaDependencies` не проверяет адреса внешних источников, а `formatTableFormulaExpression` не строит для них scoped preview. Готовые позиции — вход текущего выполнения, а не новый формат сохранённой конфигурации.
 
 ## Валидация зависимостей
 
@@ -862,7 +931,7 @@ Validator:
 | ------------------------------- | ----------------------------------------------------------- |
 | `formula_not_found`             | Formula id отсутствует в registry                           |
 | `dependency_not_available`      | Dependency id отсутствует среди доступных колонок           |
-| `invalid_constant`              | Константа не содержит конечное числовое значение             |
+| `invalid_constant`              | Константа не содержит конечное числовое значение            |
 | `dependency_index_out_of_range` | Formula прочитала index, для которого dependency не передан |
 
 ### Warnings
@@ -1165,7 +1234,7 @@ expect(
 быстрее:   compileTableFormula один раз → execute(rowData) для каждой строки
 ```
 
-Compiled executor переиспользует context и не делает registry lookup на каждую строку.
+Executor `compileTableFormula` переиспользует context и не делает registry lookup на каждую строку. `compileTableFormulaWithResolvedArguments` также находит функцию один раз, но создаёт отдельный контекст на каждый вызов; значения host подготавливает перед execute.
 
 Formatter pipeline уже использует этот подход: runtime field компилируется на construction-stage.
 
@@ -1235,42 +1304,46 @@ Promise не является конечным number и даст `invalid_resul
 
 ### Runtime functions
 
-| API                                | Назначение                       | Важное поведение                                        |
-| ---------------------------------- | -------------------------------- | ------------------------------------------------------- |
-| `createTableFormulaContext`        | Создать context вручную          | Копирует keys, но не rowData; `num` использует `Number` |
-| `createTableFormulaRegistry`       | Собрать нормализованный registry | Бросает `Error` для пустого/повторного id               |
-| `configureTableFormulaRegistry`    | Установить активный registry     | Полностью заменяет module-level registry                |
-| `getTableFormulaList`              | Получить ordered catalog         | Возвращает тот же readonly list                         |
-| `getTableFormulaById`              | Найти definition                 | Trim id; `undefined` для пустого/неизвестного           |
-| `formatTableFormulaExpression`     | Подставить ID в шаблон превью    | Сохраняет незаполненные `$n`; не исполняет выражение    |
-| `compileTableFormula`              | Подготовить reusable executor    | Фиксирует formula и копирует keys                       |
-| `executeTableFormula`              | Compile + один execute           | Возвращает controlled result, не бросает formula error  |
-| `validateTableFormulaDependencies` | Проверить mapping dependencies   | Дважды исполняет formula на synthetic data              |
+| API                                        | Назначение                           | Важное поведение                                        |
+| ------------------------------------------ | ------------------------------------ | ------------------------------------------------------- |
+| `createTableFormulaContext`                | Создать context вручную              | Копирует keys, но не rowData; `num` использует `Number` |
+| `createTableFormulaRegistry`               | Собрать нормализованный registry     | Бросает `Error` для пустого/повторного id               |
+| `configureTableFormulaRegistry`            | Установить активный registry         | Полностью заменяет module-level registry                |
+| `getTableFormulaList`                      | Получить ordered catalog             | Возвращает тот же readonly list                         |
+| `getTableFormulaById`                      | Найти definition                     | Trim id; `undefined` для пустого/неизвестного           |
+| `formatTableFormulaExpression`             | Подставить ID в шаблон превью        | Сохраняет незаполненные `$n`; не исполняет выражение    |
+| `compileTableFormula`                      | Подготовить reusable executor        | Фиксирует formula и копирует keys                       |
+| `executeTableFormula`                      | Compile + один execute               | Возвращает controlled result, не бросает formula error  |
+| `compileTableFormulaWithResolvedArguments` | Подготовить executor готовых позиций | Фиксирует функцию; аргументы передаются при execute     |
+| `executeTableFormulaWithResolvedArguments` | Выполнить готовые позиции один раз   | Использует тот же registry и execution result           |
+| `validateTableFormulaDependencies`         | Проверить mapping dependencies       | Дважды исполняет formula на synthetic data              |
 
 ### Публичные TypeScript-типы
 
-| Тип                                        | Назначение                                 |
-| ------------------------------------------ | ------------------------------------------ |
-| `TableFormulaRowData`                      | Строка `Record<string, unknown>`           |
+| Тип                                        | Назначение                                      |
+| ------------------------------------------ | ----------------------------------------------- |
+| `TableFormulaRowData`                      | Строка `Record<string, unknown>`                |
 | `TableFormulaDependency`                   | ID поля либо объект конечной числовой константы |
-| `TableFormulaContext`                      | Методы `key`, `value`, `num`               |
-| `TableFormulaFn`                           | Синхронная function `context → number`     |
-| `TableFormulaDefinition`                   | Metadata и function одной formula          |
-| `TableFormulaRegistry`                     | Readonly `list` + `byId`                   |
-| `TableFormulaExecutionResult`              | Success/error результат execute            |
-| `TableFormulaCompiledExecutor`             | Переиспользуемый `(rowData) → result`      |
-| `TableFormulaValidationMessage`            | `{ code, message }` validation diagnostics |
-| `TableFormulaDependenciesValidationResult` | Errors, warnings и usage dependencies      |
+| `TableFormulaContext`                      | Методы `key`, `value`, `num`                    |
+| `TableFormulaFn`                           | Синхронная function `context → number`          |
+| `TableFormulaDefinition`                   | Metadata и function одной formula               |
+| `TableFormulaRegistry`                     | Readonly `list` + `byId`                        |
+| `TableFormulaExecutionResult`              | Success/error результат execute                 |
+| `TableFormulaCompiledExecutor`             | Переиспользуемый `(rowData) → result`           |
+| `TableFormulaResolvedArgument`             | Готовое `value` и optional `key` позиции        |
+| `TableFormulaResolvedExecutor`             | Переиспользуемый `(resolvedArguments) → result` |
+| `TableFormulaValidationMessage`            | `{ code, message }` validation diagnostics      |
+| `TableFormulaDependenciesValidationResult` | Errors, warnings и usage dependencies           |
 
 `ValidationCode`, instrumentation type и compile-result type не экспортируются как именованные публичные типы. Их конкретные значения доступны через публичные function signatures и unions, описанные выше.
 
 ### Причины execution error
 
-| Reason              | Значение                                |
-| ------------------- | --------------------------------------- |
-| `formula_not_found` | Formula отсутствует в активном registry |
-| `invalid_result`    | Function вернула не конечный number     |
-| `runtime_error`     | Function выбросила исключение           |
+| Reason              | Значение                                                              |
+| ------------------- | --------------------------------------------------------------------- |
+| `formula_not_found` | Formula отсутствует в активном registry                               |
+| `invalid_result`    | Function вернула не конечный number                                   |
+| `runtime_error`     | Некорректные готовые позиции или исключение выполнения/преобразования |
 
 ### Validation codes
 

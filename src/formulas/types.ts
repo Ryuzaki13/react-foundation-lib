@@ -10,8 +10,19 @@ export type TableFormulaRowData = Record<string, unknown>;
  */
 export type TableFormulaDependency = string | { readonly kind: typeof TABLE_FORMULA_DEPENDENCY_KIND_CONSTANT; readonly value: number };
 
+/**
+ * Значение позиционного аргумента, источник которого уже разрешило host-приложение.
+ *
+ * value сохраняется буквально, включая undefined. key задаётся только для поля
+ * текущей строки: константам и внешним агрегатам синтетические ключи не нужны.
+ */
+export type TableFormulaResolvedArgument = {
+	readonly value: unknown;
+	readonly key?: string;
+};
+
 export interface TableFormulaContext {
-	/** Возвращает ID только для аргумента-поля; у константы ключа строки нет. */
+	/** Возвращает ID поля текущей строки; у констант и внешних значений ключа строки нет. */
 	key: (index: number) => string | undefined;
 	value: (index: number) => unknown;
 	num: (index: number) => number;

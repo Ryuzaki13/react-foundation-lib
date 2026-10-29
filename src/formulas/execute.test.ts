@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { compileTableFormula, createTableFormulaContext, executeTableFormula } from "./execute";
+import {
+	compileTableFormula,
+	compileTableFormulaWithResolvedArguments,
+	createTableFormulaContext,
+	executeTableFormula,
+	executeTableFormulaWithResolvedArguments,
+	type TableFormulaExecutionResult,
+	type TableFormulaResolvedExecutor
+} from "./execute";
 import { configureTableFormulaRegistry, createTableFormulaRegistry } from "./registry";
+import { type TableFormulaDefinition, type TableFormulaResolvedArgument } from "./types";
 
 beforeEach(() => {
 	configureTableFormulaRegistry(
@@ -196,5 +205,237 @@ describe("compileTableFormula", () => {
 			ok: false,
 			reason: "formula_not_found"
 		});
+	});
+});
+
+/** Один контракт проверяется у обоих публичных способов исполнения, без зависимости от private context builder. */
+function resolvedFormulaRunner(formulaId: string, mode: "direct" | "compiled"): TableFormulaResolvedExecutor {
+	if (mode === "direct") {
+		return (resolvedArguments) => executeTableFormulaWithResolvedArguments({ formulaId, arguments: resolvedArguments });
+	}
+
+	const compiled = compileTableFormulaWithResolvedArguments({ formulaId });
+	if (!compiled.ok) throw new Error(`Не удалось подготовить тестовую формулу '${formulaId}'.`);
+
+	return compiled.execute;
+}
+
+describe.each(["direct", "compiled"] as const)("разрешённые аргументы: %s", (mode) => {
+	it.each([
+		{ numerator: 20, denominator: 100, value: 0.2 },
+		{ numerator: 20, denominator: 40, value: 0.5 },
+		{ numerator: 100, denominator: 100, value: 1 },
+		{ numerator: 0, denominator: 0, value: 0 },
+		{ numerator: 100, denominator: 20, value: 5 }
+	])("передаёт подготовленные позиции $numerator / $denominator без смены формулы", ({ numerator, denominator, value }) => {
+		const execute = resolvedFormulaRunner("ratio", mode);
+
+		expect(execute([{ value: numerator, key: "AMOUNT" }, { value: denominator }])).toEqual({ ok: true, value });
+	});
+
+	it("сохраняет повтор одного аргумента в разных позициях", () => {
+		const argument = Object.freeze({ value: 20 });
+		const resolvedArguments = Object.freeze([argument, argument]);
+		const execute = resolvedFormulaRunner("sum", mode);
+
+		expect(execute(resolvedArguments)).toEqual({ ok: true, value: 40 });
+	});
+
+	it("передаёт literal values и local key, сохраняя числовое преобразование и frozen inputs", () => {
+		const literalObject = Object.freeze({ source: "literal" });
+		const values: unknown[] = [null, undefined, 0, -2.5, "12.5", Number.NaN, Infinity, "не число", true, literalObject];
+		const resolvedArguments = Object.freeze(
+			values.map((value, index) => Object.freeze(index === 0 ? { value, key: "LOCAL_AMOUNT" } : { value }))
+		);
+		const readValues: unknown[] = [];
+		const readKeys: Array<string | undefined> = [];
+		const readNumbers: number[] = [];
+		configureTableFormulaRegistry(
+			createTableFormulaRegistry([
+				{
+					id: "inspect",
+					name: "Чтение аргументов",
+					description: "Проверяет значения без их нормализации и подмены полями строки.",
+					fn: (context) => {
+						for (const index of values.keys()) {
+							readValues.push(context.value(index));
+							readKeys.push(context.key(index));
+							readNumbers.push(context.num(index));
+						}
+
+						return 0;
+					}
+				}
+			])
+		);
+		const execute = resolvedFormulaRunner("inspect", mode);
+
+		expect(execute(resolvedArguments)).toEqual({ ok: true, value: 0 });
+		expect(readValues).toEqual(values);
+		expect(readValues.at(-1)).toBe(literalObject);
+		expect(readKeys).toEqual([
+			"LOCAL_AMOUNT",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined
+		]);
+		expect(readNumbers).toEqual([0, 0, 0, -2.5, 12.5, 0, 0, 0, 1, 0]);
+		expect(resolvedArguments.map((argument) => argument.value)).toEqual(values);
+	});
+
+	it("возвращает пустые значения для недопустимого индекса и позиции за границей массива", () => {
+		const indexes = [-1, 0.5, 1, 10, Number.NaN, Infinity, -Infinity];
+		const reads: Array<{ key: string | undefined; value: unknown; numeric: number }> = [];
+		configureTableFormulaRegistry(
+			createTableFormulaRegistry([
+				{
+					id: "bounds",
+					name: "Границы аргументов",
+					description: "Неверная позиция не читает случайный аргумент.",
+					fn: (context) => {
+						for (const index of indexes) {
+							reads.push({ key: context.key(index), value: context.value(index), numeric: context.num(index) });
+						}
+
+						return 0;
+					}
+				}
+			])
+		);
+		const execute = resolvedFormulaRunner("bounds", mode);
+
+		expect(execute([{ value: 42, key: "LOCAL_AMOUNT" }])).toEqual({ ok: true, value: 0 });
+		expect(reads).toEqual(indexes.map(() => ({ key: undefined, value: undefined, numeric: 0 })));
+	});
+
+	it.each(["hole", "missing", "inherited"] as const)("отклоняет неполный вход %s до выполнения формулы", (kind) => {
+		const formula = vi.fn(() => 42);
+		configureTableFormulaRegistry(
+			createTableFormulaRegistry([{ id: "ignores-input", name: "Без чтения", description: "Не читает аргументы.", fn: formula }])
+		);
+		const resolvedArguments: TableFormulaResolvedArgument[] = [{ value: 1 }, { value: 2 }];
+		if (kind === "hole") {
+			resolvedArguments.length = 3;
+		} else {
+			// Воспроизводим повреждённый внешний объект без ослабления public TypeScript-контракта.
+			const argument: TableFormulaResolvedArgument = { value: 3 };
+			Reflect.deleteProperty(argument, "value");
+			if (kind === "inherited") Object.setPrototypeOf(argument, { value: 3 });
+			resolvedArguments.push(argument);
+		}
+		const execute = resolvedFormulaRunner("ignores-input", mode);
+
+		expect(execute(resolvedArguments)).toEqual({ ok: false, reason: "runtime_error" });
+		expect(formula).not.toHaveBeenCalled();
+	});
+
+	it("применяет нулевое чтение отсутствующих позиций к корректному пустому массиву", () => {
+		const execute = resolvedFormulaRunner("sum", mode);
+
+		expect(execute([])).toEqual({ ok: true, value: 0 });
+	});
+
+	it.each([Number.NaN, Infinity, -Infinity])("сохраняет безопасную ошибку для результата %s", (value) => {
+		configureTableFormulaRegistry(
+			createTableFormulaRegistry([
+				{ id: "invalid-result", name: "Не конечное число", description: "Не раскрывает входы.", fn: () => value }
+			])
+		);
+		const execute = resolvedFormulaRunner("invalid-result", mode);
+
+		expect(execute([{ value: "SENSITIVE_INPUT" }])).toEqual({ ok: false, reason: "invalid_result" });
+	});
+
+	it("скрывает исключения формулы и числового преобразования за прежней причиной", () => {
+		const executeThrowing = resolvedFormulaRunner("runtime-error", mode);
+		const executeSum = resolvedFormulaRunner("sum", mode);
+
+		expect(executeThrowing([{ value: "SENSITIVE_INPUT" }])).toEqual({ ok: false, reason: "runtime_error" });
+		expect(executeSum([{ value: Symbol("SENSITIVE_INPUT") }, { value: 1 }])).toEqual({ ok: false, reason: "runtime_error" });
+	});
+});
+
+describe("compiled executor разрешённых аргументов", () => {
+	it("сохраняет receiver нормализованного определения у прежних и новых entry point", () => {
+		const receivers: TableFormulaDefinition[] = [];
+		configureTableFormulaRegistry(
+			createTableFormulaRegistry([
+				{
+					id: "receiver",
+					name: "  Определение формулы  ",
+					description: "Формула читает собственные metadata через receiver.",
+					args: ["Значение", "Константа"],
+					fn(this: TableFormulaDefinition, context) {
+						receivers.push(this);
+
+						return (this.args?.length ?? 0) + context.num(0);
+					}
+				}
+			])
+		);
+		const rowCompiled = compileTableFormula({ formulaId: "receiver", keys: ["AMOUNT"] });
+		if (!rowCompiled.ok) throw new Error("Не удалось подготовить формулу с receiver.");
+
+		expect(rowCompiled.execute({ AMOUNT: 10 })).toEqual({ ok: true, value: 12 });
+		expect(executeTableFormula({ formulaId: "receiver", keys: ["AMOUNT"], rowData: { AMOUNT: 10 } })).toEqual({ ok: true, value: 12 });
+		expect(resolvedFormulaRunner("receiver", "compiled")([{ value: 10 }])).toEqual({ ok: true, value: 12 });
+		expect(executeTableFormulaWithResolvedArguments({ formulaId: "receiver", arguments: [{ value: 10 }] })).toEqual({
+			ok: true,
+			value: 12
+		});
+		expect(receivers).toHaveLength(4);
+		expect(receivers.every((receiver) => receiver.name === "Определение формулы")).toBe(true);
+	});
+
+	it.each(["missing", "", undefined])("сохраняет formula_not_found для ID %s в обоих entry point", (formulaId) => {
+		expect(compileTableFormulaWithResolvedArguments({ formulaId })).toEqual({ ok: false, reason: "formula_not_found" });
+		expect(executeTableFormulaWithResolvedArguments({ formulaId, arguments: [{ value: 20 }] })).toEqual({
+			ok: false,
+			reason: "formula_not_found"
+		});
+	});
+
+	it("читает аргументы каждого вызова заново и продолжает работу после ошибки", () => {
+		const execute = resolvedFormulaRunner("ratio", "compiled");
+		const first = Object.freeze([Object.freeze({ value: 20 }), Object.freeze({ value: 100 })]);
+		const second = Object.freeze([Object.freeze({ value: 20 }), Object.freeze({ value: 40 })]);
+
+		expect(execute(first)).toEqual({ ok: true, value: 0.2 });
+		expect(execute(second)).toEqual({ ok: true, value: 0.5 });
+		expect(execute([{ value: Symbol("invalid") }, { value: 1 }])).toEqual({ ok: false, reason: "runtime_error" });
+		expect(execute(first)).toEqual({ ok: true, value: 0.2 });
+	});
+
+	it.each([false, true])("сохраняет внешний контекст при вложенном вызове с ошибкой: %s", (innerThrows) => {
+		const nestedResults: TableFormulaExecutionResult[] = [];
+		configureTableFormulaRegistry(
+			createTableFormulaRegistry([
+				{
+					id: "nested",
+					name: "Вложенный вызов",
+					description: "Повторно входит в тот же executor и затем продолжает читать внешний контекст.",
+					fn: (context) => {
+						if (context.key(0) !== "OUTER") return context.num(0) + context.num(1);
+
+						const first = context.num(0);
+
+						nestedResults.push(execute([{ value: innerThrows ? Symbol("invalid") : 2 }, { value: 3 }]));
+
+						return first + context.num(1);
+					}
+				}
+			])
+		);
+		const execute = resolvedFormulaRunner("nested", "compiled");
+
+		expect(execute([{ value: 20, key: "OUTER" }, { value: 100 }])).toEqual({ ok: true, value: 120 });
+		expect(nestedResults).toEqual([innerThrows ? { ok: false, reason: "runtime_error" } : { ok: true, value: 5 }]);
+		expect(execute([{ value: 4 }, { value: 5 }])).toEqual({ ok: true, value: 9 });
 	});
 });

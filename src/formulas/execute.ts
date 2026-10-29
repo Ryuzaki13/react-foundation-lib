@@ -6,7 +6,13 @@ import {
 	TABLE_FORMULA_INVALID_RESULT,
 	TABLE_FORMULA_RUNTIME_ERROR
 } from "./tableFormulaConstants";
-import { type TableFormulaContext, type TableFormulaDependency, type TableFormulaRowData } from "./types";
+import {
+	type TableFormulaContext,
+	type TableFormulaDefinition,
+	type TableFormulaDependency,
+	type TableFormulaResolvedArgument,
+	type TableFormulaRowData
+} from "./types";
 
 type TableFormulaContextInstrumentation = {
 	onReadIndex?: (index: number) => void;
@@ -80,6 +86,90 @@ export type TableFormulaExecutionResult =
 
 export type TableFormulaCompiledExecutor = (rowData: TableFormulaRowData) => TableFormulaExecutionResult;
 
+/** Каждый вызов получает свой набор готовых значений, не удерживаемый compiled executor. */
+export type TableFormulaResolvedExecutor = (resolvedArguments: readonly TableFormulaResolvedArgument[]) => TableFormulaExecutionResult;
+
+/** Общая граница ошибок охватывает подготовку контекста, чтение аргументов и саму формулу. */
+function executeWithContext(formula: TableFormulaDefinition, createContext: () => TableFormulaContext): TableFormulaExecutionResult {
+	try {
+		const value = formula.fn(createContext());
+		if (!Number.isFinite(value)) {
+			return { ok: false, reason: TABLE_FORMULA_INVALID_RESULT };
+		}
+
+		return { ok: true, value };
+	} catch {
+		return { ok: false, reason: TABLE_FORMULA_RUNTIME_ERROR };
+	}
+}
+
+function createResolvedArgumentsContext(resolvedArguments: readonly TableFormulaResolvedArgument[]): TableFormulaContext {
+	if (!Array.isArray(resolvedArguments)) {
+		throw new TypeError("Разрешённые аргументы формулы должны быть массивом записей со значением value.");
+	}
+
+	// Отсутствующая запись означает ошибку host-подготовки, а собственный value: undefined допустим.
+	// Проверяем весь массив, чтобы неиспользуемая позиция также не скрыла неполный набор входов.
+	for (let index = 0; index < resolvedArguments.length; index++) {
+		const argument: TableFormulaResolvedArgument | undefined = resolvedArguments[index];
+		if (
+			!Object.hasOwn(resolvedArguments, index) ||
+			typeof argument !== "object" ||
+			argument === null ||
+			!Object.hasOwn(argument, "value") ||
+			(argument.key !== undefined && typeof argument.key !== "string")
+		) {
+			throw new TypeError("Каждый разрешённый аргумент формулы должен содержать собственное value и необязательный строковый key.");
+		}
+	}
+
+	const readArgument = (index: number): TableFormulaResolvedArgument | undefined => {
+		if (!Number.isInteger(index) || index < 0 || index >= resolvedArguments.length) return undefined;
+		return resolvedArguments[index];
+	};
+
+	return {
+		key: (index) => readArgument(index)?.key,
+		value: (index) => readArgument(index)?.value,
+		num: (index) => toFiniteNumberOrZero(readArgument(index)?.value)
+	};
+}
+
+type CompileTableFormulaWithResolvedArgumentsResult =
+	{ ok: true; execute: TableFormulaResolvedExecutor } | { ok: false; reason: typeof TABLE_FORMULA_NOT_FOUND };
+
+/**
+ * Компилирует зарегистрированную формулу независимо от строк и источников её аргументов.
+ * Host разрешает позиции перед каждым execute; отдельный контекст сохраняет корректность
+ * вложенного вызова того же executor без общего изменяемого указателя на массив.
+ */
+export function compileTableFormulaWithResolvedArguments(args: {
+	formulaId: string | undefined;
+}): CompileTableFormulaWithResolvedArgumentsResult {
+	const formula = getTableFormulaById(args.formulaId);
+	if (!formula) {
+		return { ok: false, reason: TABLE_FORMULA_NOT_FOUND };
+	}
+
+	return {
+		ok: true,
+		execute: (resolvedArguments) => executeWithContext(formula, () => createResolvedArgumentsContext(resolvedArguments))
+	};
+}
+
+/** Разовое выполнение готовых позиций; загрузка источников и их диагностика принадлежат host. */
+export function executeTableFormulaWithResolvedArguments(args: {
+	formulaId: string | undefined;
+	arguments: readonly TableFormulaResolvedArgument[];
+}): TableFormulaExecutionResult {
+	const compiled = compileTableFormulaWithResolvedArguments({ formulaId: args.formulaId });
+	if (!compiled.ok) {
+		return { ok: false, reason: compiled.reason };
+	}
+
+	return compiled.execute(args.arguments);
+}
+
 type CompileTableFormulaResult =
 	| {
 			ok: true;
@@ -126,22 +216,14 @@ export function compileTableFormula(args: {
 			return typeof dependency === "string" ? toFiniteNumberOrZero(rowDataRef[dependency]) : dependency.value;
 		}
 	};
+	const createContext = () => context;
 
 	return {
 		ok: true,
 		execute: (rowData) => {
 			rowDataRef = rowData;
 
-			try {
-				const value = formula.fn(context);
-				if (!Number.isFinite(value)) {
-					return { ok: false, reason: TABLE_FORMULA_INVALID_RESULT };
-				}
-
-				return { ok: true, value };
-			} catch {
-				return { ok: false, reason: TABLE_FORMULA_RUNTIME_ERROR };
-			}
+			return executeWithContext(formula, createContext);
 		}
 	};
 }

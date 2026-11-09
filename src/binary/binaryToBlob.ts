@@ -136,7 +136,17 @@ const copyBytesToArrayBuffer = (byteArray: Uint8Array): ArrayBuffer => {
 const decodeHeaderFromBase64 = (binaryData: string): string | null => {
 	try {
 		const { data } = getBase64RawPayload(binaryData);
-		const headerData = data.slice(0, BASE64_HEADER_SCAN_CHARACTERS);
+		let headerData = "";
+
+		// Пробелы и переносы допустимы в Base64 и не должны обрывать блок заголовка.
+		for (let index = 0; index < data.length && headerData.length < BASE64_HEADER_SCAN_CHARACTERS; index++) {
+			const character = data[index];
+
+			if (!/\s/.test(character)) {
+				headerData += character;
+			}
+		}
+
 		const binaryString = atob(normalizeBase64(headerData));
 
 		return binaryString;
@@ -221,11 +231,9 @@ export const binaryToBlob = (binaryData: string, mimeType: string = MIME_TYPE_OC
 };
 
 /**
- * Определяет MIME-тип по имени файла, data URL или сигнатуре base64-данных.
- *
- * Если определить тип не удалось, используется PDF: большинство документов в этом контуре приходят именно так.
+ * Ищет MIME-тип по метаданным или сигнатуре без подстановки значения по умолчанию.
  */
-export const detectMimeType = (fileName?: string, binaryData?: string): string => {
+export const findMimeType = (fileName?: string, binaryData?: string): string | null => {
 	if (fileName) {
 		const extension = fileName.toLowerCase().split(".").pop();
 
@@ -248,5 +256,12 @@ export const detectMimeType = (fileName?: string, binaryData?: string): string =
 		}
 	}
 
-	return MIME_TYPE_PDF;
+	return null;
 };
+
+/**
+ * Определяет MIME-тип по имени файла, data URL или сигнатуре base64-данных.
+ *
+ * Если определить тип не удалось, используется PDF: большинство документов в этом контуре приходят именно так.
+ */
+export const detectMimeType = (fileName?: string, binaryData?: string): string => findMimeType(fileName, binaryData) ?? MIME_TYPE_PDF;

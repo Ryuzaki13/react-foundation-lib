@@ -1,3 +1,3 @@
-export * from "./binaryToBlob";
+export { binaryToBlob, detectMimeType } from "./binaryToBlob";
 export { getBase64DecodedSize } from "./getBase64DecodedSize";
-export * from "./useBinaryFile";
+export { useBinaryFile, type UseBinaryFileResult } from "./useBinaryFile";

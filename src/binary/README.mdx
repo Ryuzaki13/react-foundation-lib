@@ -4,7 +4,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 # Работа с бинарными данными
 
-Модуль `binary` преобразует строковое бинарное содержимое в браузерный `Blob`, определяет предполагаемый MIME-тип документа и предоставляет React hook для типового сценария «base64 → `{ blob, mime }`». Отдельная pure function `getBase64DecodedSize` проверяет стандартный Base64 payload и считает размер без декодирования в browser или server runtime.
+Модуль `binary` преобразует строковое бинарное содержимое в браузерный `Blob`, определяет предполагаемый MIME-тип документа и предоставляет React hook, результат которого показывает, удалось ли определить MIME. Отдельная pure function `getBase64DecodedSize` проверяет стандартный Base64 payload и считает размер без декодирования в browser или server runtime.
 
 Основной сценарий:
 
@@ -278,7 +278,7 @@ const raw = String.fromCharCode(65, 66, 67);
 | Превратить base64 data URL в `Blob`                    | `binaryToBlob`                                    |
 | Превратить raw binary string в `Blob`                  | `binaryToBlob(..., ..., false)`                   |
 | Предположить MIME по имени и данным                    | `detectMimeType`                                  |
-| В React получить `{ blob, mime }` из base64 prop/state | `useBinaryFile`                                   |
+| В React получить `Blob` и результат определения MIME   | `useBinaryFile`                                   |
 | Скачать готовый `Blob`                                 | `downloadFileFromBlob` из `/dom`                  |
 | Прочитать пользовательский `File`                      | `readFile` или `readImageFile` из `/file`         |
 | Использовать известные filename и MIME                 | Вызвать `detectMimeType`/`binaryToBlob` вручную   |
@@ -762,32 +762,28 @@ Fallback PDF является осознанным предметно-незав
 ### Сигнатура
 
 ```ts
-function useBinaryFile(bin: string | undefined): {
+type UseBinaryFileResult = {
 	data: {
 		blob: Blob;
 		mime: string;
+		isMimeDetected: boolean;
 	} | null;
 	error: string | null;
 };
+
+function useBinaryFile(bin: string | undefined): UseBinaryFileResult;
 ```
 
-Hook принимает только base64/base64 data URL. Он всегда вызывает:
-
-```ts
-const mime = detectMimeType(undefined, bin);
-const blob = binaryToBlob(bin, mime, true);
-```
-
-Filename передать нельзя, raw binary mode использовать нельзя.
+Hook принимает base64 или base64 data URL. Имя файла и MIME можно передать отдельно через `detectMimeType` и `binaryToBlob`.
 
 ### Возвращаемое состояние
 
-| Поле    | Значение         | Смысл                                |
-| ------- | ---------------- | ------------------------------------ |
-| `data`  | `{ blob, mime }` | Декодирование завершилось успешно    |
-| `data`  | `null`           | Нет результата либо произошла ошибка |
-| `error` | `string`         | Строковое представление ошибки       |
-| `error` | `null`           | Ошибки нет                           |
+| Поле    | Значение                        | Смысл                                |
+| ------- | ------------------------------- | ------------------------------------ |
+| `data`  | `{ blob, mime, isMimeDetected }` | Декодирование завершилось успешно    |
+| `data`  | `null`                          | Нет результата либо произошла ошибка |
+| `error` | `string`                        | Строковое представление ошибки       |
+| `error` | `null`                          | Ошибки нет                           |
 
 ### Lifecycle
 
@@ -795,19 +791,20 @@ Filename передать нельзя, raw binary mode использовать
 
 1. первый render возвращает `{ data: null, error: null }`;
 2. после commit effect обрабатывает `bin`;
-3. успех записывает `{ blob, mime }` и очищает ошибку;
+3. успех записывает `{ blob, mime, isMimeDetected }` и очищает ошибку;
 4. ошибка очищает `data` и записывает `String(error)`;
 5. `undefined` или пустая строка очищают оба поля.
 
 Пример последовательности:
 
-| `bin`                 | Состояние после effect                                     |
-| --------------------- | ---------------------------------------------------------- |
-| `undefined`           | `{ data: null, error: null }`                              |
-| `""`                  | `{ data: null, error: null }`                              |
-| Корректный base64 PDF | `{ data: { blob, mime: "application/pdf" }, error: null }` |
-| Некорректный base64   | `{ data: null, error: "Error: ..." }`                      |
-| Строка из пробелов    | Ошибка после удаления пробелов                             |
+| `bin`                              | Состояние после effect                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------- |
+| `undefined`                        | `{ data: null, error: null }`                                             |
+| `""`                               | `{ data: null, error: null }`                                             |
+| Корректный base64 PDF              | `data.mime === "application/pdf"`, `data.isMimeDetected === true`          |
+| Корректный base64 неизвестного типа | `data.mime === "application/octet-stream"`, `data.isMimeDetected === false` |
+| Некорректный base64                | `{ data: null, error: "Error: ..." }`                                     |
+| Строка из пробелов                 | Ошибка после удаления пробелов                                          |
 
 У hook нет отдельного `isLoading`/`isProcessing`. На первом render `data: null` и `error: null` может означать как отсутствие входа, так и ещё не выполненный effect.
 
@@ -833,15 +830,16 @@ Hook не знает filename. Приоритет будет таким:
 
 1. MIME из data URL;
 2. сигнатура;
-3. fallback `application/pdf`.
+3. fallback `application/octet-stream`.
 
-Обычный base64 текста без data URL и известной сигнатуры станет `Blob` с `application/pdf`:
+Проверяйте `data.isMimeDetected` перед выбором просмотрщика. Значение `true` означает, что MIME взят из data URL или определён по сигнатуре. Значение `false` означает, что hook подставил нейтральный MIME и сохранил декодированные байты.
 
 ```tsx
 const { data } = useBinaryFile("SGVsbG8=");
 
 // После effect:
-// data?.mime === "application/pdf"
+// data?.mime === "application/octet-stream"
+// data?.isMimeDetected === false
 ```
 
 Если известны имя или MIME, вызывайте `detectMimeType` и `binaryToBlob` вручную.
@@ -885,6 +883,10 @@ export function BinaryDocument(props: BinaryDocumentProps) {
 
 	if (!data) {
 		return <p>Подготовка документа…</p>;
+	}
+
+	if (!data.isMimeDetected) {
+		return <p>Формат файла не распознан</p>;
 	}
 
 	return <DocumentViewer blob={data.blob} mime={data.mime} />;
@@ -936,7 +938,7 @@ Effect синхронизирует React с внешним browser API и си�
 Не используйте `useBinaryFile`, если:
 
 - код выполняется вне React;
-- MIME уже известен и не равен PDF fallback;
+- MIME передаётся отдельно от base64;
 - нужно учитывать filename;
 - данные являются raw binary string;
 - результат нужен немедленно в event handler;
@@ -1148,19 +1150,13 @@ const mime = detectMimeType(fileName, payload);
 const blob = binaryToBlob(payload, mime);
 ```
 
-### Hook определил текст как PDF
+### Hook вернул `isMimeDetected: false`
 
-Причина: `useBinaryFile` не получает filename, сигнатура текста неизвестна, поэтому применяется PDF fallback.
-
-Решения:
-
-- передать data URL с MIME;
-- вызвать функции вручную с известным MIME;
-- не использовать hook для этого контракта.
+Байты успешно декодированы. Их можно скачать как `application/octet-stream`. Если тип известен из метаданных, передайте его в data URL или вызовите `binaryToBlob` с этим MIME.
 
 ### MIME не совпал с содержимым
 
-Проверьте приоритет:
+Проверьте порядок определения MIME в `detectMimeType`:
 
 1. filename;
 2. data URL;
@@ -1260,7 +1256,7 @@ Base64 обычно примерно на треть больше исходно
 
 ### `detectMimeType` декодирует только начало
 
-Signature detection декодирует ограниченное начало base64, поэтому дешевле полного декодирования. При этом распознавание data URL выполняется регулярным выражением над входной строкой и может просканировать весь payload. Последующий `binaryToBlob` в любом случае обрабатывает полный payload.
+Для поиска сигнатуры декодируются первые 128 непробельных символов Base64. Распознавание data URL выполняется регулярным выражением над входной строкой и может просканировать весь payload. Последующий `binaryToBlob` обрабатывает полный payload.
 
 ### Рекомендации
 
@@ -1344,6 +1340,7 @@ import { binaryToBlob, detectMimeType, useBinaryFile } from "@ryuzaki13/react-fo
 | `binaryToBlob` MIME                | `application/octet-stream` |
 | `binaryToBlob` input mode          | base64                     |
 | `detectMimeType` fallback          | `application/pdf`          |
+| `useBinaryFile` fallback           | `application/octet-stream` |
 | `useBinaryFile` initial `data`     | `null`                     |
 | `useBinaryFile` initial `error`    | `null`                     |
 | `useBinaryFile` raw binary support | Нет                        |

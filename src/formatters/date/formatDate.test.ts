@@ -210,6 +210,14 @@ describe("форматирование дат в плавающей календ
 		expect(formatDate("03.03.2026", "date")).toBe("03.03.2026");
 	});
 
+	it("форматирует дату с точками и временем без применения смещения", () => {
+		const value = "09.11.2024T03:00:00+03:00";
+
+		expect(formatDate(value, "date")).toBe("09.11.2024");
+		expect(formatDate(value, "datetime")).toBe("09.11.2024 03:00");
+		expect(formatDate(value, "time-seconds")).toBe("03:00:00");
+	});
+
 	it("форматирует дату MM/DD/YYYY", () => {
 		expect(formatDate("03/03/2026", "date")).toBe("03.03.2026");
 	});

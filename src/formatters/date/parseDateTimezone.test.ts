@@ -5,6 +5,38 @@ import { parseDate, parseDateTZ, parseDateValueTZ } from "./parseDate";
 const BASE_INSTANT_MS = Date.UTC(2026, 2, 3, 15, 3, 50, 327);
 
 describe("parseDateValueTZ", () => {
+	it.each([
+		["09.11.2024T03:00:00+03:00", "2024-11-09T00:00:00.000Z"],
+		["09.11.2024T01:00:00+03:00", "2024-11-08T22:00:00.000Z"],
+		["09.11.2024T23:00:00-04:30", "2024-11-10T03:30:00.000Z"],
+		["09.11.2024T03:00:00.123456789+0330", "2024-11-08T23:30:00.123Z"],
+		["09.11.2024T03:00:00Z", "2024-11-09T03:00:00.000Z"]
+	])("применяет смещение даты с точками и временем: %s", (value, expectedInstant) => {
+		expect(parseDateValueTZ(value)).toEqual({
+			kind: "date-time",
+			source: "abap-dotted",
+			date: new Date(expectedInstant)
+		});
+	});
+
+	it.each(["09.11.2024T03:00:00", "09.11.2024 03:00:00"])(
+		"сохраняет календарные компоненты даты с точками и временем без смещения: %s",
+		(value) => {
+			expect(parseDateValueTZ(value)).toEqual({
+				kind: "date-time",
+				source: "abap-dotted",
+				date: new Date(2024, 10, 9, 3)
+			});
+		}
+	);
+
+	it.each(["09.11.2024T03:00:00+24:00", "09.11.2024T03:00:00+03:60", "31.11.2024T03:00:00+03:00"])(
+		"отклоняет невалидную дату с точками или смещение: %s",
+		(value) => {
+			expect(parseDateValueTZ(value)).toBeNull();
+		}
+	);
+
 	it("применяет положительный и отрицательный ISO timezone offset", () => {
 		expect(parseDateValueTZ("2026-03-03T18:03:50.327+05:30")).toEqual({
 			kind: "date-time",
@@ -108,6 +140,13 @@ describe("parseDateValueTZ", () => {
 });
 
 describe("parseDateTZ", () => {
+	it("применяет смещение даты с точками только при явном выборе TZ-разбора", () => {
+		const value = "09.11.2024T03:00:00+03:00";
+
+		expect(parseDate(value)).toEqual(new Date(2024, 10, 9, 3));
+		expect(parseDateTZ(value)?.toISOString()).toBe("2024-11-09T00:00:00.000Z");
+	});
+
 	it("возвращает Date с абсолютным моментом времени", () => {
 		expect(parseDateTZ("2026-03-03T18:03:50.327+05:30")).toEqual(new Date("2026-03-03T12:33:50.327Z"));
 		expect(parseDateTZ(`/Date(${BASE_INSTANT_MS}+0300)/`)).toEqual(new Date(BASE_INSTANT_MS));

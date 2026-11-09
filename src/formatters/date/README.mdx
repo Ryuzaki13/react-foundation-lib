@@ -32,7 +32,7 @@ import {
 
 ### Floating: сохранить видимые компоненты
 
-Обычные `parseDateValue` и `parseDate` намеренно не пересчитывают ISO/OData timezone в timezone компьютера пользователя.
+Обычные `parseDateValue` и `parseDate` намеренно не пересчитывают явный timezone в timezone компьютера пользователя. Это относится к ISO/OData и датам с точками и временем.
 
 ```ts
 const date = parseDate("2026-03-03T18:03:50+05:00");
@@ -108,10 +108,19 @@ formatDateAsDate("not-a-date", { fallback: "—" }); // "—"
 | ABAP date         | `20260303`                      | `abap-compact`           |
 | ABAP timestamp    | `20260303180350`                | `abap-timestamp`         |
 | Dotted            | `03.03.2026`                    | `abap-dotted`            |
+| Дата и время      | `09.11.2024T03:00:00+03:00`     | `abap-dotted`            |
 | Slash             | `03/03/2026`                    | `slash-date`             |
 | ISO local         | `2026-03-03T18:03:50`           | `iso-local`              |
 | ISO zoned         | `2026-03-03T18:03:50Z`          | `iso-zoned`              |
 | ISO duration      | `PT02H30M`                      | `iso-duration`           |
+
+Для `DD.MM.YYYY` время можно отделять буквой `T` или пробелом. Поддерживаются те же временные суффиксы, что и у ISO: необязательные минуты и секунды, дробные секунды, `Z` или смещение `±HH:mm`/`±HHmm`.
+
+```ts
+formatDateAsDateTime("09.11.2024T03:00:00+03:00"); // "09.11.2024 03:00"
+parseDate("09.11.2024T03:00:00+03:00")?.getHours(); // 3
+parseDateTZ("09.11.2024T03:00:00+03:00")?.toISOString(); // "2024-11-09T00:00:00.000Z"
+```
 
 Slash-формат интерпретируется как `MM/DD/YYYY`, а не `DD/MM/YYYY`:
 
@@ -151,7 +160,7 @@ if (parsed?.kind === "duration") {
 
 ### `parseDateValueTZ(value)`
 
-Возвращает такую же структуру, но timestamp, ISO zoned и OData ticks интерпретируются как instant. Форматы без timezone всё равно остаются локальными календарными компонентами.
+Возвращает такую же структуру, но timestamp, ISO zoned, даты с точками и явным смещением, а также OData ticks интерпретируются как instant. Форматы без timezone всё равно остаются локальными календарными компонентами.
 
 ### `parseDate(value)` и `parseDateTZ(value)`
 

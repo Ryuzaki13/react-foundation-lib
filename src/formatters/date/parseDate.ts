@@ -104,9 +104,10 @@ const ABAP_COMPACT_RE = /^\d{8}$/;
 const ABAP_TIMESTAMP_RE = /^\d{14,}$/;
 
 /**
- * Регулярное выражение для даты вида `DD.MM.YYYY`.
+ * Регулярное выражение для даты вида `DD.MM.YYYY` с необязательным временем.
+ * Проверку времени и timezone выполняют те же парсеры, что и для ISO-входов.
  */
-const ABAP_DOTTED_RE = /^(\d{2})\.(\d{2})\.(\d{4})$/;
+const ABAP_DOTTED_RE = /^(\d{2})\.(\d{2})\.(\d{4})([T ].+)?$/;
 
 /**
  * Регулярное выражение для даты вида `MM/DD/YYYY`.
@@ -555,11 +556,23 @@ function parseAbapTimestamp(value: string): ParsedDateTimeValue | null {
 }
 
 /**
- * Парсит дату формата `DD.MM.YYYY`.
+ * Парсит дату формата `DD.MM.YYYY`, в том числе со временем и timezone.
+ *
+ * Для временного суффикса меняется только порядок компонентов даты:
+ * общий ISO-механизм проверяет время и применяет смещение только в TZ-режиме.
+ * Источник остаётся `abap-dotted` независимо от наличия времени и смещения.
  */
-function parseAbapDotted(value: string): ParsedDateTimeValue | null {
+function parseAbapDotted(value: string, mode: DateParsingMode = DEFAULT_DATE_PARSING_MODE): ParsedDateTimeValue | null {
 	const match = ABAP_DOTTED_RE.exec(value);
 	if (!match) return null;
+
+	const timeSuffix = match[4];
+	if (timeSuffix) {
+		const normalizedValue = `${match[3]}-${match[2]}-${match[1]}${timeSuffix}`;
+		const parsed = parseIsoZoned(normalizedValue, mode) ?? parseIsoLocal(normalizedValue);
+
+		return parsed ? asDateTimeValue(parsed.date, DATE_INPUT_SOURCE_ABAP_DOTTED) : null;
+	}
 
 	const day = Number(match[1]);
 	const month = Number(match[2]);
@@ -651,7 +664,7 @@ function parseDateString(
 	const localIso = parseIsoLocal(value);
 	if (localIso) return withSourceOverride(localIso, sourceOverride);
 
-	const dotted = parseAbapDotted(value);
+	const dotted = parseAbapDotted(value, mode);
 	if (dotted) return withSourceOverride(dotted, sourceOverride);
 
 	const slashed = parseSlashDate(value);
@@ -888,7 +901,7 @@ export function parseDateValue(value: unknown): ParsedDateValue | null {
 /**
  * Универсально парсит вход даты/времени из `unknown` как абсолютный instant.
  *
- * Явные timezone в ISO/OData и Unix timestamp преобразуются в `Date`
+ * Явные timezone в ISO/OData и датах с точками, а также Unix timestamp преобразуются в `Date`
  * с сохранением момента времени; форматы без timezone остаются календарными.
  */
 export function parseDateValueTZ(value: unknown): ParsedDateValue | null {

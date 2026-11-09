@@ -785,19 +785,11 @@ Hook принимает base64 или base64 data URL. Имя файла и MIME
 | `error` | `string`                        | Строковое представление ошибки       |
 | `error` | `null`                          | Ошибки нет                           |
 
-### Lifecycle
+### Результат при рендере
 
-Преобразование выполняется после commit в React effect:
+Хук синхронно декодирует текущий `bin` при рендере. При смене `bin` результат сразу относится к новому входу. Мемоизация позволяет повторно использовать `Blob` при рендере с тем же `bin`.
 
-1. первый render возвращает `{ data: null, error: null }`;
-2. после commit effect обрабатывает `bin`;
-3. успех записывает `{ blob, mime, isMimeDetected }` и очищает ошибку;
-4. ошибка очищает `data` и записывает `String(error)`;
-5. `undefined` или пустая строка очищают оба поля.
-
-Пример последовательности:
-
-| `bin`                              | Состояние после effect                                                  |
+| `bin`                              | Результат                                                               |
 | ---------------------------------- | ----------------------------------------------------------------------- |
 | `undefined`                        | `{ data: null, error: null }`                                             |
 | `""`                               | `{ data: null, error: null }`                                             |
@@ -805,24 +797,6 @@ Hook принимает base64 или base64 data URL. Имя файла и MIME
 | Корректный base64 неизвестного типа | `data.mime === "application/octet-stream"`, `data.isMimeDetected === false` |
 | Некорректный base64                | `{ data: null, error: "Error: ..." }`                                     |
 | Строка из пробелов                 | Ошибка после удаления пробелов                                          |
-
-У hook нет отдельного `isLoading`/`isProcessing`. На первом render `data: null` и `error: null` может означать как отсутствие входа, так и ещё не выполненный effect.
-
-### Смена `bin`
-
-При смене одного непустого `bin` на другой предыдущие `data`/`error` могут оставаться видимыми до выполнения следующего effect. Hook не очищает состояние синхронно во время render.
-
-Если нельзя кратковременно показать предыдущий документ:
-
-- разместите hook в компоненте, который remount-ится по стабильному ID документа;
-- или выполните преобразование на явной границе загрузки;
-- или добавьте внешний state machine с identity результата.
-
-Не используйте саму большую base64-строку как React `key`. Используйте безопасный стабильный ID документа:
-
-```tsx
-<BinaryDocument key={document.id} bin={document.content} />
-```
 
 ### Определение MIME внутри hook
 
@@ -837,7 +811,6 @@ Hook не знает filename. Приоритет будет таким:
 ```tsx
 const { data } = useBinaryFile("SGVsbG8=");
 
-// После effect:
 // data?.mime === "application/octet-stream"
 // data?.isMimeDetected === false
 ```
@@ -846,12 +819,7 @@ const { data } = useBinaryFile("SGVsbG8=");
 
 ### Ошибки и logging
 
-При ошибке hook:
-
-1. вызывает внутренний `logError(error)`;
-2. `logError` пишет ошибку в `console.error`;
-3. возвращает `error: String(error)`;
-4. очищает `data`.
+При ошибке хук возвращает `{ data: null, error: String(error) }` во время рендера. После commit эффект передаёт исходную ошибку в `logError`, который пишет её в `console.error`.
 
 Для обычного `Error` строка включает имя:
 
@@ -877,12 +845,8 @@ export function BinaryDocument(props: BinaryDocumentProps) {
 		return <p role="alert">Не удалось подготовить документ</p>;
 	}
 
-	if (!props.bin) {
-		return <p>Документ не передан</p>;
-	}
-
 	if (!data) {
-		return <p>Подготовка документа…</p>;
+		return <p>Документ не передан</p>;
 	}
 
 	if (!data.isMimeDetected) {
@@ -1181,7 +1145,7 @@ data:<mime>,<percent-encoded-payload>
 
 ### Ошибка появляется в `console.error`
 
-Это текущее поведение `useBinaryFile`: hook логирует пойманную ошибку перед записью `error` state. Для ручного `binaryToBlob` logging не выполняется.
+`useBinaryFile` логирует пойманную ошибку после commit. При прямом вызове `binaryToBlob` за журналирование отвечает вызывающий код.
 
 ### Object URL перестал работать
 
@@ -1341,8 +1305,7 @@ import { binaryToBlob, detectMimeType, useBinaryFile } from "@ryuzaki13/react-fo
 | `binaryToBlob` input mode          | base64                     |
 | `detectMimeType` fallback          | `application/pdf`          |
 | `useBinaryFile` fallback           | `application/octet-stream` |
-| `useBinaryFile` initial `data`     | `null`                     |
-| `useBinaryFile` initial `error`    | `null`                     |
+| `useBinaryFile` без входа          | `{ data: null, error: null }` |
 | `useBinaryFile` raw binary support | Нет                        |
 | Автоматическое создание object URL | Нет                        |
 

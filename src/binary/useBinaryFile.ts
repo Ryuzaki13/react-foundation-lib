@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import { MIME_TYPE_OCTET_STREAM } from "../file/mimeTypeConstants";
 import { logError } from "../utils";
@@ -17,33 +17,32 @@ export type UseBinaryFileResult = {
 	error: string | null;
 };
 
+/**
+ * Декодирует текущий bin при рендере. Мемоизация позволяет просмотрщику
+ * переиспользовать Blob при повторном рендере с тем же входом.
+ */
 export function useBinaryFile(bin: string | undefined): UseBinaryFileResult {
-	const [entry, setEntry] = useState<BinaryFileData | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const { data, failure } = useMemo(() => {
+		if (!bin) {
+			return { data: null, failure: null };
+		}
 
-	const updateEntry = useEffectEvent((data: BinaryFileData | null) => setEntry(data));
-	const updateError = useEffectEvent((error: string | null) => setError(error));
+		try {
+			const detectedMime = findMimeType(undefined, bin);
+			const mime = detectedMime ?? MIME_TYPE_OCTET_STREAM;
+			const blob = binaryToBlob(bin, mime, true);
 
-	useEffect(() => {
-		if (bin) {
-			try {
-				const detectedMime = findMimeType(undefined, bin);
-				const mime = detectedMime ?? MIME_TYPE_OCTET_STREAM;
-				const blob = binaryToBlob(bin, mime, true);
-
-				updateEntry({ blob, mime, isMimeDetected: detectedMime !== null });
-				updateError(null);
-			} catch (e) {
-				logError(e);
-
-				updateError(String(e));
-				updateEntry(null);
-			}
-		} else {
-			updateEntry(null);
-			updateError(null);
+			return { data: { blob, mime, isMimeDetected: detectedMime !== null }, failure: null };
+		} catch (cause) {
+			return { data: null, failure: { cause, message: String(cause) } };
 		}
 	}, [bin]);
 
-	return { data: entry, error };
+	useEffect(() => {
+		if (failure) {
+			logError(failure.cause);
+		}
+	}, [failure]);
+
+	return { data, error: failure?.message ?? null };
 }

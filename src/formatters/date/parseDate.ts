@@ -93,9 +93,9 @@ const ISO_LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2})(?::(\d{2})(?::(\d{2
 const ISO_ZONED_RE = /(Z|([+-])(\d{2}):?(\d{2}))$/i;
 
 /**
- * Регулярное выражение для ABAP даты `YYYYMMDD`.
+ * Регулярное выражение для компактного ABAP месяца `YYYYMM` или даты `YYYYMMDD`.
  */
-const ABAP_COMPACT_RE = /^\d{8}$/;
+const ABAP_COMPACT_RE = /^\d{6}(?:\d{2})?$/;
 
 /**
  * Регулярное выражение для ABAP timestamp `YYYYMMDDHHmmss...`.
@@ -525,14 +525,14 @@ function parseIsoZoned(value: string, mode: DateParsingMode = DEFAULT_DATE_PARSI
 }
 
 /**
- * Парсит ABAP дату формата `YYYYMMDD`.
+ * Парсит компактную ABAP дату. Месяц без дня соответствует первому дню месяца.
  */
 function parseAbapCompact(value: string): ParsedDateTimeValue | null {
 	if (!ABAP_COMPACT_RE.test(value)) return null;
 
 	const year = Number(value.slice(0, ABAP_YEAR_END_OFFSET));
 	const month = Number(value.slice(ABAP_YEAR_END_OFFSET, ABAP_MONTH_END_OFFSET));
-	const day = Number(value.slice(ABAP_MONTH_END_OFFSET, ABAP_DAY_END_OFFSET));
+	const day = value.length === ABAP_MONTH_END_OFFSET ? 1 : Number(value.slice(ABAP_MONTH_END_OFFSET, ABAP_DAY_END_OFFSET));
 
 	const parsed = createCalendarDate(year, month, day);
 	return parsed ? asDateTimeValue(parsed, DATE_INPUT_SOURCE_ABAP_COMPACT) : null;

@@ -116,6 +116,19 @@ describe("parseDateValue", () => {
 		});
 	});
 
+	it("распознаёт ABAP месяц как компактную дату с первым днём месяца", () => {
+		expect(parseDateValue("202603")).toEqual({
+			kind: "date-time",
+			source: "abap-compact",
+			date: new Date(2026, 2, 1)
+		});
+	});
+
+	it("сохраняет разбор числовых timestamp, если значение не распознано как ABAP месяц", () => {
+		expect(parseDateValue("202613")).toEqual(parseDateValue(202613));
+		expect(parseDateValue(202603)).toMatchObject({ source: "timestamp" });
+	});
+
 	it.each([
 		["09.11.2024T03:00:00+03:00", 0],
 		["09.11.2024T03:00:00-04:30", 0],
@@ -197,6 +210,10 @@ describe("parseDateValue", () => {
 describe("parseDate", () => {
 	it("возвращает Date для обычной даты", () => {
 		expect(parseDate("2026-03-03T18:03:50.327Z")).toEqual(new Date(2026, 2, 3, 18, 3, 50, 327));
+	});
+
+	it("возвращает первый день месяца для ABAP строки YYYYMM", () => {
+		expect(parseDate("202612")).toEqual(new Date(2026, 11, 1));
 	});
 
 	it("сохраняет календарные компоненты даты с точками, временем и смещением", () => {

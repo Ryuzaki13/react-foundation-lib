@@ -189,7 +189,7 @@ pnpm run pack:dry-run
 Поведение из тестов:
 
 - пустые и невалидные значения дают fallback, по умолчанию пустую строку;
-- `Date`, ISO, OData ticks/literals, ABAP compact `YYYYMMDD`, dotted/slash dates и ISO duration поддержаны;
+- поддерживаются `Date`, ISO, OData ticks/literals, компактные ABAP даты `YYYYMMDD` и месяцы `YYYYMM` с днём `01`, даты с точками и косыми чертами и ISO duration;
 - `normalizeDateRange` упорядочивает даты и по умолчанию расширяет до границ дня;
 - `timeZone` и `timeZoneName` в `Intl`-preset намеренно игнорируются.
 

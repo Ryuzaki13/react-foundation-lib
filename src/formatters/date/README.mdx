@@ -105,6 +105,7 @@ formatDateAsDate("not-a-date", { fallback: "—" }); // "—"
 | Unix milliseconds | `1_772_563_200_000`             | `timestamp`              |
 | OData v2 ticks    | `/Date(1772563200000+0500)/`    | `odata-ticks`            |
 | OData literal     | `datetime'2026-03-03T18:03:50'` | `odata-literal`          |
+| ABAP месяц        | `202603`                        | `abap-compact`           |
 | ABAP date         | `20260303`                      | `abap-compact`           |
 | ABAP timestamp    | `20260303180350`                | `abap-timestamp`         |
 | Dotted            | `03.03.2026`                    | `abap-dotted`            |
@@ -113,6 +114,8 @@ formatDateAsDate("not-a-date", { fallback: "—" }); // "—"
 | ISO local         | `2026-03-03T18:03:50`           | `iso-local`              |
 | ISO zoned         | `2026-03-03T18:03:50Z`          | `iso-zoned`              |
 | ISO duration      | `PT02H30M`                      | `iso-duration`           |
+
+Строка ABAP месяца `YYYYMM` даёт первый день месяца в локальном календаре. Числа и целочисленные строки, не распознанные как календарные значения, разбираются как Unix timestamp.
 
 Для `DD.MM.YYYY` время можно отделять буквой `T` или пробелом. Поддерживаются те же временные суффиксы, что и у ISO: необязательные минуты и секунды, дробные секунды, `Z` или смещение `±HH:mm`/`±HHmm`.
 

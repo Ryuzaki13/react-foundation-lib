@@ -1303,7 +1303,7 @@ const selection = useTableRowSelection({
 });
 ```
 
-Внешний owner должен передавать новый snapshot после принятого пользовательского изменения. Не мутируйте `selectedIds` на месте.
+Внешний owner должен передавать новый snapshot после принятого пользовательского изменения. Снимки сравниваются по содержимому, поэтому новый массив с теми же id в том же порядке не сбрасывает локальный выбор. Не мутируйте `selectedIds` на месте.
 
 ### Почему нужен стабильный `rowById`
 
@@ -1319,7 +1319,7 @@ const rowById = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows])
 
 ### Низкоуровневый setter
 
-`setRowSelection` нужен для интеграции с API TanStack Table. Если установить произвольный state, hook позже очистит его при изменении `availableRowIds`, `selectedRowIds` или mode.
+`setRowSelection` нужен для интеграции с API TanStack Table. Если установить произвольный state, hook нормализует его при изменении режима или содержимого `availableRowIds` либо `selectedRowIds`.
 
 Для обычной активации строки предпочитайте `activateRowSelection`: он соблюдает `selectionMode` и `canSelect`.
 

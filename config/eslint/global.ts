@@ -39,7 +39,7 @@ const globalConfig: Linter.Config = {
 	},
 	rules: {
 		...(reactHooks.configs.recommended.rules as Linter.RulesRecord),
-		"react-hooks/set-state-in-effect": "warn",
+		"react-hooks/set-state-in-effect": "error",
 		"react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
 		"@typescript-eslint/no-empty-object-type": "off",
 		"import-x/no-unresolved": ["error", { ignore: ["\\?raw$"] }],

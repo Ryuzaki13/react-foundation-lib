@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { type RowSelectionState } from "@tanstack/react-table";
 
-import { pruneTableRowSelection, toggleTableRowSelection } from "./selection";
+import { arraysEqual } from "../array";
+
+import { areTableRowSelectionsEqual, pruneTableRowSelection, toggleTableRowSelection } from "./selection";
 import { TABLE_SELECTION_MODE_NONE } from "./tableSelectionConstants";
 import { type TableSelectionMode } from "./types";
 
@@ -12,6 +14,14 @@ interface UseTableRowSelectionParams<TData extends object> {
 	selectionMode: TableSelectionMode;
 	selectedRowIds?: readonly string[];
 	onRowSelectionChange?: (rows: TData[]) => void;
+}
+
+function resolveControlledRowSelection(
+	selectedRowIds: readonly string[],
+	availableRowIds: readonly string[],
+	selectionMode: TableSelectionMode
+): RowSelectionState {
+	return pruneTableRowSelection(Object.fromEntries(selectedRowIds.map((rowId) => [rowId, true])), availableRowIds, selectionMode);
 }
 
 /**
@@ -24,77 +34,52 @@ export function useTableRowSelection<TData extends object>({
 	selectedRowIds,
 	onRowSelectionChange
 }: UseTableRowSelectionParams<TData>) {
-	const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-	const shouldSkipNextSelectionEmitRef = useRef(false);
+	const [selection, setSelection] = useState(() => ({
+		availableRowIds,
+		selectedRowIds,
+		selectionMode,
+		rowSelection: selectedRowIds === undefined ? {} : resolveControlledRowSelection(selectedRowIds, availableRowIds, selectionMode),
+		notifyChange: selectedRowIds === undefined
+	}));
+	const { rowSelection, notifyChange } = selection;
 
-	/**
-	 * Сравнивает состояния выбора без лишних перерисовок.
-	 */
-	const areSelectionsEqual = useCallback((left: RowSelectionState, right: RowSelectionState) => {
-		const leftRowIds = Object.keys(left).filter((rowId) => left[rowId]);
-		const rightRowIds = Object.keys(right).filter((rowId) => right[rowId]);
+	const availableRowsChanged = availableRowIds !== selection.availableRowIds && !arraysEqual(availableRowIds, selection.availableRowIds);
+	// Порядок выбранных id влияет на результат в режиме single.
+	const selectedRowsChanged =
+		selectedRowIds !== selection.selectedRowIds &&
+		(selectedRowIds === undefined || selection.selectedRowIds === undefined || !arraysEqual(selectedRowIds, selection.selectedRowIds));
 
-		if (leftRowIds.length !== rightRowIds.length) {
-			return false;
-		}
+	// Подбираем состояние к новому снимку до commit, чтобы таблица сразу получила актуальный выбор.
+	if (availableRowsChanged || selectedRowsChanged || selectionMode !== selection.selectionMode) {
+		const next = { availableRowIds, selectedRowIds, selectionMode, rowSelection, notifyChange };
 
-		return leftRowIds.every((rowId) => right[rowId]);
+		if (selectedRowIds === undefined) {
+			const nextSelection = pruneTableRowSelection(rowSelection, availableRowIds, selectionMode);
 
-		/*
+			// Нормализация только удаляет ключи. Если состав прежний, сохраняем ссылку и пропускаем уведомление.
+			if (Object.keys(nextSelection).length !== Object.keys(rowSelection).length) {
+				next.rowSelection = nextSelection;
+				next.notifyChange = true;
+			}
+		} else {
+			const nextSelection = resolveControlledRowSelection(selectedRowIds, availableRowIds, selectionMode);
 
-        Более оптимизированная версия, но для текущего случая может быть практически незначительной
-
-        let leftCount = 0;
-		let rightCount = 0;
-
-		for (const rowId of Object.keys(left)) {
-			if (!left[rowId]) continue;
-			leftCount += 1;
-			if (!right[rowId]) {
-				return false;
+			if (!areTableRowSelectionsEqual(rowSelection, nextSelection)) {
+				next.rowSelection = nextSelection;
+				next.notifyChange = false;
 			}
 		}
 
-		for (const rowId of Object.keys(right)) {
-			if (right[rowId]) {
-				rightCount += 1;
-			}
-		}
+		setSelection(next);
+	}
 
-		if (leftCount !== rightCount) {
-			return false;
-		}
+	const setRowSelection = useCallback<Dispatch<SetStateAction<RowSelectionState>>>((update) => {
+		setSelection((current) => {
+			const nextSelection = typeof update === "function" ? update(current.rowSelection) : update;
 
-		return true;
-
-         */
+			return nextSelection === current.rowSelection ? current : { ...current, rowSelection: nextSelection, notifyChange: true };
+		});
 	}, []);
-
-	const syncRowSelectionState = useEffectEvent((nextAvailableRowIds: readonly string[]) => {
-		setRowSelection((currentSelection) => pruneTableRowSelection(currentSelection, nextAvailableRowIds, selectionMode));
-	});
-
-	const syncControlledRowSelectionState = useEffectEvent(
-		(nextSelectedRowIds: readonly string[], nextAvailableRowIds: readonly string[]) => {
-			const nextSelection = pruneTableRowSelection(
-				Object.fromEntries(nextSelectedRowIds.map((rowId) => [rowId, true])),
-				nextAvailableRowIds,
-				selectionMode
-			);
-
-			setRowSelection((currentSelection) => {
-				if (areSelectionsEqual(currentSelection, nextSelection)) {
-					return currentSelection;
-				}
-
-				// Пропускаем следующий emit, потому что это синхронизация от внешнего controlled-состояния,
-				// а не пользовательское изменение выбора внутри таблицы.
-				shouldSkipNextSelectionEmitRef.current = true;
-
-				return nextSelection;
-			});
-		}
-	);
 
 	const emitRowSelectionChange = useEffectEvent((currentSelection: RowSelectionState) => {
 		if (!onRowSelectionChange) {
@@ -116,22 +101,10 @@ export function useTableRowSelection<TData extends object>({
 	});
 
 	useEffect(() => {
-		if (selectedRowIds !== undefined) {
-			syncControlledRowSelectionState(selectedRowIds, availableRowIds);
-			return;
+		if (notifyChange) {
+			emitRowSelectionChange(rowSelection);
 		}
-
-		syncRowSelectionState(availableRowIds);
-	}, [availableRowIds, selectedRowIds, selectionMode]);
-
-	useEffect(() => {
-		if (shouldSkipNextSelectionEmitRef.current) {
-			shouldSkipNextSelectionEmitRef.current = false;
-			return;
-		}
-
-		emitRowSelectionChange(rowSelection);
-	}, [rowSelection]);
+	}, [notifyChange, rowSelection]);
 
 	/**
 	 * Применяет изменение выбора при активации конкретной строки.
@@ -144,7 +117,7 @@ export function useTableRowSelection<TData extends object>({
 
 			setRowSelection((currentSelection) => toggleTableRowSelection(currentSelection, rowId, selectionMode));
 		},
-		[selectionMode]
+		[selectionMode, setRowSelection]
 	);
 
 	return {

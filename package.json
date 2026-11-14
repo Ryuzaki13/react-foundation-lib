@@ -238,6 +238,7 @@
 	"scripts": {
 		"build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
 		"typecheck": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.type-tests.json --noEmit",
+		"format": "prettier --write src",
 		"test": "vitest run",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",

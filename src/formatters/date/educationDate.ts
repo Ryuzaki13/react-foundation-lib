@@ -1,5 +1,5 @@
 import { addCalendarDays, createCalendarDate, getStartOfDay } from "./calendarDate";
-import { CALENDAR_LAST_SECOND, CALENDAR_DAYS_PER_WEEK, CALENDAR_LAST_HOUR, CALENDAR_LAST_MINUTE } from "./calendarDateConstants";
+import { CALENDAR_DAYS_PER_WEEK, CALENDAR_LAST_HOUR, CALENDAR_LAST_MINUTE, CALENDAR_LAST_SECOND } from "./calendarDateConstants";
 
 const EDUCATION_DATE_KEY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const EDUCATION_TIME_KEY_RE = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;

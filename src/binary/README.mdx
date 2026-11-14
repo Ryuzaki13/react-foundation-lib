@@ -272,17 +272,17 @@ const raw = String.fromCharCode(65, 66, 67);
 
 ## Как выбрать API
 
-| Нужно                                                  | Использовать                                      |
-| ------------------------------------------------------ | ------------------------------------------------- |
-| Превратить base64 в `Blob`                             | `binaryToBlob`                                    |
-| Превратить base64 data URL в `Blob`                    | `binaryToBlob`                                    |
-| Превратить raw binary string в `Blob`                  | `binaryToBlob(..., ..., false)`                   |
-| Предположить MIME по имени и данным                    | `detectMimeType`                                  |
-| В React получить `Blob` и результат определения MIME   | `useBinaryFile`                                   |
-| Скачать готовый `Blob`                                 | `downloadFileFromBlob` из `/dom`                  |
-| Прочитать пользовательский `File`                      | `readFile` или `readImageFile` из `/file`         |
-| Использовать известные filename и MIME                 | Вызвать `detectMimeType`/`binaryToBlob` вручную   |
-| Полностью проверить файл                               | Специализированный validator, не `detectMimeType` |
+| Нужно                                                | Использовать                                      |
+| ---------------------------------------------------- | ------------------------------------------------- |
+| Превратить base64 в `Blob`                           | `binaryToBlob`                                    |
+| Превратить base64 data URL в `Blob`                  | `binaryToBlob`                                    |
+| Превратить raw binary string в `Blob`                | `binaryToBlob(..., ..., false)`                   |
+| Предположить MIME по имени и данным                  | `detectMimeType`                                  |
+| В React получить `Blob` и результат определения MIME | `useBinaryFile`                                   |
+| Скачать готовый `Blob`                               | `downloadFileFromBlob` из `/dom`                  |
+| Прочитать пользовательский `File`                    | `readFile` или `readImageFile` из `/file`         |
+| Использовать известные filename и MIME               | Вызвать `detectMimeType`/`binaryToBlob` вручную   |
+| Полностью проверить файл                             | Специализированный validator, не `detectMimeType` |
 
 ## Быстрый старт
 
@@ -778,25 +778,25 @@ Hook принимает base64 или base64 data URL. Имя файла и MIME
 
 ### Возвращаемое состояние
 
-| Поле    | Значение                        | Смысл                                |
-| ------- | ------------------------------- | ------------------------------------ |
+| Поле    | Значение                         | Смысл                                |
+| ------- | -------------------------------- | ------------------------------------ |
 | `data`  | `{ blob, mime, isMimeDetected }` | Декодирование завершилось успешно    |
-| `data`  | `null`                          | Нет результата либо произошла ошибка |
-| `error` | `string`                        | Строковое представление ошибки       |
-| `error` | `null`                          | Ошибки нет                           |
+| `data`  | `null`                           | Нет результата либо произошла ошибка |
+| `error` | `string`                         | Строковое представление ошибки       |
+| `error` | `null`                           | Ошибки нет                           |
 
 ### Результат при рендере
 
 Хук синхронно декодирует текущий `bin` при рендере. При смене `bin` результат сразу относится к новому входу. Мемоизация позволяет повторно использовать `Blob` при рендере с тем же `bin`.
 
-| `bin`                              | Результат                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------- |
-| `undefined`                        | `{ data: null, error: null }`                                             |
-| `""`                               | `{ data: null, error: null }`                                             |
-| Корректный base64 PDF              | `data.mime === "application/pdf"`, `data.isMimeDetected === true`          |
+| `bin`                               | Результат                                                                   |
+| ----------------------------------- | --------------------------------------------------------------------------- |
+| `undefined`                         | `{ data: null, error: null }`                                               |
+| `""`                                | `{ data: null, error: null }`                                               |
+| Корректный base64 PDF               | `data.mime === "application/pdf"`, `data.isMimeDetected === true`           |
 | Корректный base64 неизвестного типа | `data.mime === "application/octet-stream"`, `data.isMimeDetected === false` |
-| Некорректный base64                | `{ data: null, error: "Error: ..." }`                                     |
-| Строка из пробелов                 | Ошибка после удаления пробелов                                          |
+| Некорректный base64                 | `{ data: null, error: "Error: ..." }`                                       |
+| Строка из пробелов                  | Ошибка после удаления пробелов                                              |
 
 ### Определение MIME внутри hook
 
@@ -1299,15 +1299,15 @@ import { binaryToBlob, detectMimeType, useBinaryFile } from "@ryuzaki13/react-fo
 
 ### Defaults
 
-| Контракт                           | Значение                   |
-| ---------------------------------- | -------------------------- |
-| `binaryToBlob` MIME                | `application/octet-stream` |
-| `binaryToBlob` input mode          | base64                     |
-| `detectMimeType` fallback          | `application/pdf`          |
-| `useBinaryFile` fallback           | `application/octet-stream` |
+| Контракт                           | Значение                      |
+| ---------------------------------- | ----------------------------- |
+| `binaryToBlob` MIME                | `application/octet-stream`    |
+| `binaryToBlob` input mode          | base64                        |
+| `detectMimeType` fallback          | `application/pdf`             |
+| `useBinaryFile` fallback           | `application/octet-stream`    |
 | `useBinaryFile` без входа          | `{ data: null, error: null }` |
-| `useBinaryFile` raw binary support | Нет                        |
-| Автоматическое создание object URL | Нет                        |
+| `useBinaryFile` raw binary support | Нет                           |
+| Автоматическое создание object URL | Нет                           |
 
 ## Вопросы и ответы
 

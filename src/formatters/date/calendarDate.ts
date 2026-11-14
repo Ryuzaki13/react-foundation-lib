@@ -1,4 +1,4 @@
-import { CALENDAR_LAST_SECOND, CALENDAR_LAST_HOUR, CALENDAR_LAST_MINUTE, CALENDAR_DAYS_PER_WEEK } from "./calendarDateConstants";
+import { CALENDAR_DAYS_PER_WEEK, CALENDAR_LAST_HOUR, CALENDAR_LAST_MINUTE, CALENDAR_LAST_SECOND } from "./calendarDateConstants";
 
 /**
  * Создаёт календарную дату без timezone-семантики.

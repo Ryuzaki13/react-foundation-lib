@@ -28,7 +28,8 @@ function collectEntries(): Record<string, string> {
 	const sourceRoot = resolve("src");
 	const entries: Record<string, string> = {
 		"indexed-records/schema": resolve(sourceRoot, "indexed-records/schema.ts"),
-		"pwa/sw-cache-policy": resolve(sourceRoot, "pwa/swCachePolicy.ts")
+		"pwa/sw-cache-policy": resolve(sourceRoot, "pwa/swCachePolicy.ts"),
+		"validators/schema": resolve(sourceRoot, "validators/schema.ts")
 	};
 
 	for (const entry of readdirSync(sourceRoot, { withFileTypes: true })) {

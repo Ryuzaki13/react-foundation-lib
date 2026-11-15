@@ -18,6 +18,7 @@ import { Meta } from "@storybook/addon-docs/blocks";
 - [`readPositiveInteger`](#readpositiveinteger)
 - [Image extensions](#image-extensions)
 - [`isDomReference`](#isdomreference)
+- [`httpUrlSchema`](#httpurlschema)
 - [`validateUrl`](#validateurl)
 - [Security boundary](#security-boundary)
 - [Полный API](#полный-api)
@@ -172,6 +173,20 @@ if (isDomReference(floatingReference)) {
 Возвращает `true`, только если reference является browser `Element`. Virtual element Floating UI и `null` возвращают `false`.
 
 Функция выполняет `ref instanceof Element`. В server runtime без global `Element` её вызов может привести к `ReferenceError`; вызывайте только в browser boundary или после проверки DOM environment.
+
+## `httpUrlSchema`
+
+```ts
+import { httpUrlSchema } from "@ryuzaki13/react-foundation-lib/validators/schema";
+
+const address = httpUrlSchema.parse("https://example.org/meeting?id=7#start");
+```
+
+Схема принимает полный HTTP(S)-адрес с явно указанным протоколом и хостом.
+Порт, параметры запроса и фрагмент поддерживаются. Адрес передаётся как
+строка без пробелов, управляющих символов и обратных косых черт. Результат
+сохраняет исходное написание. Этот subpath использует опциональный peer
+`zod`. Обработку пустого ввода и ограничения на хост задаёт потребитель.
 
 ## `validateUrl`
 

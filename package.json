@@ -221,6 +221,10 @@
 			"types": "./dist/validators/index.d.ts",
 			"import": "./dist/validators/index.js"
 		},
+		"./validators/schema": {
+			"types": "./dist/validators/schema.d.ts",
+			"import": "./dist/validators/schema.js"
+		},
 		"./value-transformers": {
 			"types": "./dist/value-transformers/index.d.ts",
 			"import": "./dist/value-transformers/index.js"

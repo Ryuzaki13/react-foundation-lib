@@ -41,6 +41,7 @@ import type { RowRecord } from "@ryuzaki13/react-foundation-lib/types";
 | `hooks` DnD helpers                                       | `@dnd-kit/core`, `@dnd-kit/sortable`.                                                                            |
 | `hooks`, `validators` floating/listbox и DOM references   | `@floating-ui/react`.                                                                                            |
 | `excel`                                                   | `write-excel-file`.                                                                                              |
+| `zip`                                                     | `fflate >=0.8.3 <0.9.0`.                                                                                         |
 | `fingerprint`                                             | `@fingerprintjs/fingerprintjs`.                                                                                  |
 
 Такая схема оставляет пакет библиотечным: зависимости не зашиваются в bundle, а host-приложение контролирует версии React, TanStack, Zod и других runtime-библиотек.
@@ -162,6 +163,7 @@ pnpm run pack:dry-run
 | `/validators`          | [`validators/README.mdx`](./src/validators/README.mdx)                         |
 | `/virtualizer`         | [`virtualizer/README.mdx`](./src/virtualizer/README.mdx)                       |
 | `/xml`                 | [`xml/README.mdx`](./src/xml/README.mdx)                                       |
+| `/zip`                 | [Упаковка файлов в ZIP](./src/zip/README.md)                                  |
 
 ## Форматирование и значения
 

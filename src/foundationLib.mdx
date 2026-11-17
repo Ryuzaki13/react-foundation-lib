@@ -60,6 +60,7 @@ import { formatDateAsDate } from "@ryuzaki13/react-foundation-lib";
 | `zustand`, `immer`, `zod`                       | единый `odata-service`: collection store и OData schemas                                   |
 | `zustand`                                       | `notifications`                                                                            |
 | `write-excel-file`                              | `excel`                                                                                    |
+| `fflate >=0.8.3 <0.9.0`                          | `zip`                                                                                      |
 | `@fingerprintjs/fingerprintjs`                  | `fingerprint`                                                                              |
 
 ## Выбор entrypoint
@@ -105,8 +106,12 @@ import { formatDateAsDate } from "@ryuzaki13/react-foundation-lib";
 | Runtime guards и URL/image validation                                             | `@ryuzaki13/react-foundation-lib/validators`          |
 | Infinite-query подгрузка virtualizer                                              | `@ryuzaki13/react-foundation-lib/virtualizer`         |
 | XML parse/build                                                                   | `@ryuzaki13/react-foundation-lib/xml`                 |
+| Упаковка Blob в ZIP                                                               | `@ryuzaki13/react-foundation-lib/zip`                 |
 
 ## Как читать справочник
+
+Упаковка готовых файлов, сжатие, отмена и ограничения памяти описаны в
+[руководстве ZIP](./zip/README.md).
 
 Каждая последующая страница построена вокруг **published subpath**, а не каталога исходников. В ней указаны точный import, публичные contracts, обязательная инициализация, результат, lifecycle/cleanup и ограничения. Для pure helpers достаточно вызвать функцию; registry, browser и global-store API требуют отдельного раздела «Инициализация и side effects».
 

@@ -237,6 +237,10 @@
 			"types": "./dist/xml/index.d.ts",
 			"import": "./dist/xml/index.js"
 		},
+		"./zip": {
+			"types": "./dist/zip/index.d.ts",
+			"import": "./dist/zip/index.js"
+		},
 		"./package.json": "./package.json"
 	},
 	"scripts": {
@@ -268,6 +272,7 @@
 		"@tanstack/react-router": ">=1.170.23 <2.0.0",
 		"@tanstack/react-table": ">=9.1.0 <10.0.0",
 		"@tanstack/react-virtual": ">=3.14.9 <4.0.0",
+		"fflate": ">=0.8.3 <0.9.0",
 		"immer": ">=11.0.0 <12.0.0",
 		"react": ">=19.2.0 <20.0.0",
 		"write-excel-file": ">=4.0.0 <5.0.0",
@@ -295,6 +300,7 @@
 		"eslint-plugin-react-hooks": "^7.1.1",
 		"eslint-plugin-react-refresh": "^0.5.3",
 		"fake-indexeddb": "^6.2.5",
+		"fflate": "^0.8.3",
 		"globals": "^17.8.0",
 		"immer": "^11.1.15",
 		"jiti": "^2.7.0",
@@ -342,6 +348,9 @@
 			"optional": true
 		},
 		"@tanstack/react-virtual": {
+			"optional": true
+		},
+		"fflate": {
 			"optional": true
 		},
 		"immer": {

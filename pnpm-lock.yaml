@@ -230,6 +230,9 @@ importers:
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       globals:
         specifier: ^17.8.0
         version: 17.8.0

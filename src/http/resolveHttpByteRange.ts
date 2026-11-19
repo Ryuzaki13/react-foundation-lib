@@ -18,10 +18,12 @@ export function resolveHttpByteRange(header: string | null, size: number): HttpB
 		return length && size ? { start: Math.max(0, size - length), end: size - 1 } : "unsatisfiable";
 	}
 
-	const start = Number(match[1]);
-	const requestedEnd = match[2] ? Number(match[2]) : Infinity;
-	if (requestedEnd < start) return null;
+	// HTTP не ограничивает число десятичных разрядов. Сначала проверяем порядок
+	// границ точно, затем приводим уже ограниченные размером индексы к number.
+	const start = BigInt(match[1]);
+	const requestedEnd = match[2] ? BigInt(match[2]) : null;
+	if (requestedEnd !== null && requestedEnd < start) return null;
 	if (start >= size) return "unsatisfiable";
 
-	return { start, end: Math.min(requestedEnd, size - 1) };
+	return { start: Number(start), end: requestedEnd !== null && requestedEnd < size ? Number(requestedEnd) : size - 1 };
 }

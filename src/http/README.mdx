@@ -124,3 +124,7 @@ type TextHttpResponseOptions = {
 | ------------------------ | ---------------- |
 | `createNoStoreHeaders`   | Новый `Headers`  |
 | `createTextHttpResponse` | Новый `Response` |
+
+`resolveHttpByteRange(range, size)` принимает заголовок Range и проверенный размер в байтах.
+Объект с включительными границами задаёт ответ 206, значение `"unsatisfiable"` означает 416,
+а `null` позволяет выдать представление полностью, в том числе при нескольких диапазонах.

@@ -32,7 +32,10 @@ const EXTENSION_CONTENT_TYPE: Readonly<Record<string, string>> = {
 	jpeg: MIME_TYPE_IMAGE_JPEG,
 	png: MIME_TYPE_IMAGE_PNG,
 	gif: MIME_TYPE_IMAGE_GIF,
-	webp: MIME_TYPE_IMAGE_WEBP
+	webp: MIME_TYPE_IMAGE_WEBP,
+	mp4: "video/mp4",
+	webm: "video/webm",
+	mov: "video/quicktime"
 };
 
 export function resolveMimeTypeByExtension(extension: string): string {
